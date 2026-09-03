@@ -1,0 +1,6 @@
+RSS đầu: 2176kB
+A. heap sạch                                 make = 7ms        RSS sau = 7040kB
+sau 64MB rác + GC (không scavenge)  RSS = 73216kB
+B. sau vùng bẩn — dự đoán: CHẬM, RSS 4 GiB   make = 7.138s     RSS sau = 4267520kB
+sau 64MB rác + FreeOSMemory          RSS = 7900kB
+C. sau vùng bẩn đã scavenge — dự đoán: nhanh make = 3ms        RSS sau = 7900kB

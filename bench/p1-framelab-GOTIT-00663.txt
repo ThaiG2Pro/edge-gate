@@ -1,0 +1,26 @@
+mode=dribble  gửi 3 frame = 62 byte  (header 10 byte/frame)
+client Write : 62 lần
+Read thô đầu : 1 byte  (TCP giao bao nhiêu là tuỳ nó — đây là lý do phải ReadFull)
+server Read  : 62 lần, 62 byte  (nhỏ nhất 1, lớn nhất 1 byte/Read)
+Read/frame   : 20.67
+server nhận  : 3 frame trong 644ms
+  [0] type=1 len=5 "alpha"
+  [1] type=2 len=0 ""
+  [2] type=1 len=27 "gamma-with-a-longer-payload"
+✔ tách đúng ranh giới
+mode=coalesce  gửi 3 frame = 62 byte  (header 10 byte/frame)
+client Write : 1 lần
+Read thô đầu : 62 byte  (TCP giao bao nhiêu là tuỳ nó — đây là lý do phải ReadFull)
+server Read  : 5 lần, 62 byte  (nhỏ nhất 5, lớn nhất 27 byte/Read)
+Read/frame   : 1.67
+server nhận  : 3 frame trong 0s
+  [0] type=1 len=5 "alpha"
+  [1] type=2 len=0 ""
+  [2] type=1 len=27 "gamma-with-a-longer-payload"
+✔ tách đúng ranh giới
+mode=oversize  gửi 3 frame = 62 byte  (header 10 byte/frame)
+client Write : 1 lần
+Read thô đầu : 10 byte  (TCP giao bao nhiêu là tuỳ nó — đây là lý do phải ReadFull)
+server Read  : 1 lần, 10 byte  (nhỏ nhất 10, lớn nhất 10 byte/Read)
+server nhận  : 0 frame trong 0s
+server từ chối: frame: length vượt trần: 4294967295 > 65536  ✔ (không cấp phát)

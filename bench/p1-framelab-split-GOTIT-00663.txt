@@ -1,0 +1,8 @@
+mode=coalesce  gửi 3 frame = 62 byte  (header 10 byte/frame)
+Read thô đầu : 7 byte / buffer 7  (TCP giao bao nhiêu là tuỳ nó — đây là lý do phải ReadFull)
+server Read  : 6 lần, 62 byte  (nhỏ nhất 3, lớn nhất 27 byte/Read)
+✔ tách đúng ranh giới
+mode=coalesce  gửi 3 frame = 62 byte  (header 10 byte/frame)
+Read thô đầu : 12 byte / buffer 12  (TCP giao bao nhiêu là tuỳ nó — đây là lý do phải ReadFull)
+server Read  : 6 lần, 62 byte  (nhỏ nhất 2, lớn nhất 27 byte/Read)
+✔ tách đúng ranh giới
