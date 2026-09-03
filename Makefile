@@ -1,0 +1,252 @@
+.PHONY: all fmt vet test bench check clean \
+	envcap phase0 netlab netlab-rtt netlab-omission netlab-mem netlab-limits \
+	netlab-server netlab-client \
+	framelab fuzz-frame \
+	httplab fuzz-http difffuzz difffuzz-chunk \
+	proxylab upstream \
+	smugglelab smugglelab-nodefense \
+	poollab poollab-rtt \
+	lblab lblab-skew \
+	chaoslab slowlab ratelab \
+	tlslab \
+	perflab bench-vs-nginx epolllab \
+	rtt-up rtt-down
+
+all: fmt vet test
+
+fmt:
+	gofmt -w .
+
+vet:
+	go vet ./...
+
+test:
+	go test ./... -count=1 -race
+
+bench:
+	go test ./... -run '^$$' -bench . -benchmem
+
+# ---------------------------------------------------------------------------
+# Bơm/tháo RTT. MỌI thí nghiệm nào kết luận phụ thuộc RTT phải chạy CẢ HAI lần.
+# Quên `rtt-down` là làm sai mọi bench sau đó.
+# ---------------------------------------------------------------------------
+# delay 10ms, KHÔNG phải 20ms. Trên `lo` cả gói đi và gói hồi đều qua qdisc của
+# `lo`, nên netem áp delay HAI LẦN cho một round-trip: `delay 10ms` -> RTT 20.157ms,
+# `delay 20ms` -> RTT 40.201ms (đo được, xem diary/phase0.md). Target này từng đặt
+# 20ms và nếu không kiểm bằng ping thì mọi diary từ phase 5 đã sai nhãn 2x.
+RTT_TARGET_MS ?= 20
+rtt-up:
+	sudo tc qdisc add dev lo root netem delay $$(( $(RTT_TARGET_MS) / 2 ))ms
+	@echo "== RTT phải ĐO, không được suy từ tham số netem =="
+	ping -c 5 -i 0.2 127.0.0.1 | tail -1
+	@echo "== RTT trung bình ở trên phải ≈ $(RTT_TARGET_MS)ms. Ghi con số ĐO ĐƯỢC vào diary. =="
+
+rtt-down:
+	sudo tc qdisc del dev lo root
+	tc qdisc show dev lo
+
+# ---------------------------------------------------------------------------
+# Phase 0: 5 sự thật vật lý (syscall, RTT, coordinated omission, RSS/conn, trần OS)
+# ---------------------------------------------------------------------------
+# Chụp môi trường TRƯỚC mọi thí nghiệm. Không có file này thì số đo không so được
+# giữa hai máy, và không so được với chính máy này ba tháng sau.
+envcap:
+	./scripts/envcap.sh
+
+# Chạy trọn phase 0, mỗi thí nghiệm một file trong bench/<host>-<tag>-*.txt
+phase0:
+	./scripts/phase0-run.sh rtt0
+
+# -bufio=false là BẮT BUỘC ở đây, không phải tuỳ chọn: với bufio=true thì
+# bufio.Writer gộp 2 lần Write thành 1 syscall, tỉ số G1 ra 1.02x thay vì 1.41x,
+# và spike Nagle 44ms bị che sạch (12.4µs). Xem diary/phase0.md, mục G1.
+netlab:
+	@echo "== ulimit -n = $$(ulimit -n) — ghi con số này vào diary =="
+	go run ./cmd/netlab -all -bufio=false
+
+# Cùng lệnh trên, nhưng có RTT 20ms. Tỉ số giữa hai lần chạy MỚI là kết luận.
+# Đây là món nợ P0-1: chưa chạy được vì thiếu sudo.
+# ĐÃ TRẢ (nợ P0-1). Giữ lại để chạy lại được: 2.00x ở RTT 20.157ms và 40.201ms.
+netlab-rtt:
+	./scripts/pay-P0-1.sh
+
+# Cùng một rate danh nghĩa, đo bằng closed-loop và open-loop -> coordinated omission
+# -rate 885 = 1.2 x capacity ĐO ĐƯỢC (737 rps, P0-2). Bản cũ 1200 là 1.63x mà tưởng 1.2x.
+netlab-omission:
+	go run ./cmd/netlab -exp omission -rate 885 -duration 10s -svc 1ms -workers 1 -bufio=false
+
+# Hai lần chạy, HIỆU của chúng là giá riêng của bufio (đo được 10.31 KB/conn)
+netlab-mem:
+	go run ./cmd/netlab -exp mem -conns 10000 -bufio=true
+	go run ./cmd/netlab -exp mem -conns 10000 -bufio=false
+
+# G6 KHÔNG chạy được qua 127.0.0.1: tcp_tw_reuse=2 nghĩa là "chỉ bật cho loopback",
+# kernel tái dùng TIME_WAIT ngay và port exhaustion biến mất. Phải dùng IP của một
+# interface thật. Xem diary/phase0.md, mục G6.
+netlab-limits:
+	@ip=$$(ip -4 -o addr show scope global | awk 'NR==1{print $$4}' | cut -d/ -f1); \
+	echo "== dùng IP không-loopback: $$ip (tcp_tw_reuse=$$(cat /proc/sys/net/ipv4/tcp_tw_reuse)) =="; \
+	go run ./cmd/netlab -exp limits -duration 40s -bufio=false -addr $$ip:9200
+
+# Đường sang máy khác. Trả luôn cả P0-1 (RTT thật) và P0-3 (không chung CPU).
+netlab-server:
+	go run ./cmd/netlab -role server -addr :9000 -workers 1 -bufio=false
+
+netlab-client:
+	@test -n "$(ADDR)" || (echo "cần ADDR=<ip>:9000" && exit 2)
+	ping -c 5 $(firstword $(subst :, ,$(ADDR))) | tail -2
+	go run ./cmd/netlab -role client -addr $(ADDR) -all -bufio=false -tag "lan"
+
+# ---------------------------------------------------------------------------
+# Phase 1: framing — TCP không có ranh giới tin nhắn
+# ---------------------------------------------------------------------------
+framelab:
+	go run ./cmd/framelab -mode dribble    # 1 byte mỗi 10ms
+	go run ./cmd/framelab -mode coalesce   # 3 frame trong 1 lần Write
+	go run ./cmd/framelab -mode oversize   # length = 0xFFFFFFFF, phải bị từ chối TRƯỚC make()
+
+# P1-5: frame 1 (15 byte) bị cắt giữa header (7) hoặc giữa payload (12) bởi Read thô
+framelab-split:
+	go run ./cmd/framelab -mode coalesce -rawbuf 7
+	go run ./cmd/framelab -mode coalesce -rawbuf 12
+
+# P1-3/P1-6: bài 4 GiB ảo. Từng chậm 5-8s ngẫu nhiên — không phải vì -race mà vì
+# span đè lên trang bẩn ⇒ runtime zero cả 4 GiB. Test giờ FreeOSMemory trước make.
+test-huge:
+	go test ./internal/frame/ -run TestPayloadOverUint32 -count=1 -v
+
+# P1-6: cho THẤY make(4 GiB) = 4ms trên heap sạch và ~7s + RSS 4 GiB sau 64 MB rác bẩn.
+needzerolab:
+	go run ./cmd/needzerolab
+
+# Tắt phòng tuyến (checkLength luôn trả nil) -> bộ test PHẢI đỏ, và đỏ đúng
+# chỗ: TestCapBeforeAlloc báo decoder cấp phát ~4 GiB. Nếu XANH là thất bại.
+framelab-nodefense:
+	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
+	! go test ./internal/frame/ -run 'TestCapBeforeAlloc|TestCustomMax' -count=1 -tags nodefense
+
+fuzz-frame:
+	go test ./internal/frame/ -run '^$$' -fuzz FuzzFrameDecode -fuzztime 120s -fuzzminimizetime 1s
+
+# ---------------------------------------------------------------------------
+# Phase 2: HTTP/1.1 engine
+# ---------------------------------------------------------------------------
+httplab:
+	go run ./cmd/httplab -mode parse -file testdata/requests/basic.txt
+	go run ./cmd/httplab -mode slowloris -interval 50ms -header-timeout 300ms
+	go run ./cmd/httplab -mode response
+
+# Bài I2 của phase 2: chunk-size FFFFFFFF không làm reader cấp phát; điểm đo
+# đối chứng (decoder ngây thơ) cấp phát đúng 4 GiB. Cần ~4 GiB RAM ảo.
+test-chunkalloc:
+	go test ./internal/httpx/ -run TestChunkSizeDoesNotAllocate -v -count=1
+
+fuzz-http:
+	go test ./internal/httpx/ -run '^$$' -fuzz FuzzReadRequest -fuzztime 120s -fuzzminimizetime 1s
+
+# Bằng chứng MẠNH HƠN "không panic": cùng byte string, parser mình và net/http
+# phải đồng ý về SỐ BYTE của body. Lệch một byte = một lỗ hổng smuggling.
+difffuzz:
+	go test ./internal/httpx/ -run '^$$' -fuzz FuzzAgainstNetHTTP -fuzztime 300s -fuzzminimizetime 1s
+
+# P2-1: fuzz CÓ CẤU TRÚC — head cố định, chỉ đột biến dòng chunk-size. Trên bản
+# khoan dung whitespace nó tìm ra lệch " 3" trong 0.10s; fuzz phẳng 390s không.
+difffuzz-chunk:
+	go test ./internal/httpx/ -run '^$$' -fuzz FuzzChunkLineAgainstNetHTTP -fuzztime 120s -fuzzminimizetime 1s
+
+# ---------------------------------------------------------------------------
+# Phase 3: vertical slice — curl xuyên proxy
+# ---------------------------------------------------------------------------
+upstream:
+	go run ./cmd/upstream -addr :8081
+
+proxylab:
+	go run ./cmd/edgegate -config config/dev.json &
+	sleep 1
+	curl -sS -i http://localhost:8080/hello
+	curl -sS -i -X POST -d 'xin chao' http://localhost:8080/echo
+	curl -sS -i http://localhost:8080/chunked      # response chunked: KHÔNG được treo
+	-pkill -f 'cmd/edgegate'
+
+# ---------------------------------------------------------------------------
+# Phase 4: smuggling. Bài phản chứng BẮT BUỘC ĐỎ.
+# ---------------------------------------------------------------------------
+smugglelab:
+	go test ./internal/httpx/ -run TestSmuggling -v -count=1
+
+# Tắt phòng tuyến -> bộ test PHẢI fail. Nếu vẫn xanh thì bộ test không chứng
+# minh gì cả. `make smugglelab-nodefense` XANH là một thất bại.
+smugglelab-nodefense:
+	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
+	! go test ./internal/httpx/ -run TestSmuggling -count=1 -tags nodefense
+
+# ---------------------------------------------------------------------------
+# Phase 5: connection pool. Hai con số, và chúng rất khác nhau.
+# ---------------------------------------------------------------------------
+poollab:
+	go run ./cmd/poollab -pool=false -n 2000
+	go run ./cmd/poollab -pool=true  -n 2000
+
+poollab-rtt: rtt-up
+	-go run ./cmd/poollab -pool=false -n 200
+	-go run ./cmd/poollab -pool=true  -n 200
+	$(MAKE) rtt-down
+
+# ---------------------------------------------------------------------------
+# Phase 6: load balancing
+# ---------------------------------------------------------------------------
+lblab:
+	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -n 100000
+
+# Backend CỐ Ý lệch: 1 node chậm 10x, 1 node trả 5xx 30%. Đây mới là bài thật.
+lblab-skew:
+	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 100000
+
+# ---------------------------------------------------------------------------
+# Phase 7: resiliency
+# ---------------------------------------------------------------------------
+slowlab:
+	go run ./cmd/slowlab -conns 500 -byte-every 10s -probe
+
+ratelab:
+	go run ./cmd/ratelab -ips 100 -rate 50 -burst 10
+	@echo "== và thử bypass bằng header giả: PHẢI bị chặn =="
+	go run ./cmd/ratelab -spoof-xff
+
+chaoslab:
+	go run ./cmd/chaoslab -duration 60s -kill -slow -flap
+	@echo "== invariant: goroutine và connection phải về mức nền =="
+	ss -tan | grep -c ESTAB
+
+# ---------------------------------------------------------------------------
+# Phase 8: TLS + SNI
+# ---------------------------------------------------------------------------
+tlslab:
+	./scripts/gen-certs.sh
+	go run ./cmd/edgegate -config config/tls.json &
+	sleep 1
+	curl -sS -k --resolve a.test:8443:127.0.0.1 https://a.test:8443/ -w '\n%{ssl_verify_result}\n'
+	curl -sS -k --resolve b.test:8443:127.0.0.1 https://b.test:8443/
+	-pkill -f 'cmd/edgegate'
+
+# ---------------------------------------------------------------------------
+# Phase 9: performance
+# ---------------------------------------------------------------------------
+perflab:
+	go test ./internal/... -run '^$$' -bench . -benchmem -count=5 | tee bench/perf-$$(date +%F).txt
+	@echo "== ghi allocs/op TRƯỚC và SAU sync.Pool vào diary/phase9.md =="
+
+# Giá phải trả của L7: io.Copy (splice) vs parse-and-reserialize, payload 10MB
+epolllab:
+	go run ./cmd/epolllab -mode netpoller -conns 10000 -report-rss
+	go run ./cmd/epolllab -mode epoll     -conns 10000 -report-rss -reuseport
+
+bench-vs-nginx:
+	./scripts/bench-vs-nginx.sh    # 3 cột: EdgeGate / nginx / httputil.ReverseProxy
+
+check: fmt vet test
+	@echo "== nợ kỹ thuật chưa trả =="
+	@grep -c '^### ' docs/debts.md
+
+clean:
+	rm -rf bin/ *.prof *.test

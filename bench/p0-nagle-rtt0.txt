@@ -1,0 +1,14 @@
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G7: Nagle + delayed ACK (50 request mỗi biến thể)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+1 Write, NoDelay(true)             -              50    45.5µs    41.2µs    46.0µs   148.1µs   330.9µs      0
+2 Write, NoDelay(true)             -              50    34.4µs    32.0µs    34.2µs    75.2µs    85.4µs      0
+2 Write, NoDelay(FALSE) — write-write-read -              50   44.32ms   44.03ms   44.57ms   47.99ms   48.02ms      0
+  [G7] p99 Nagle-write-write / p99 NoDelay-write-write 638.01x   (kỳ vọng rất lớn nếu spike xảy ra)
+  Số phải tìm: p99 hoặc max của dòng cuối ≈ 40ms (delayed ACK timeout của Linux).
+  Nếu KHÔNG thấy 40ms: đó vẫn là một kết quả, và nó nói về LOOPBACK, không
+  nói rằng Nagle vô hại. Loopback có MSS ~64KB và gần như không delayed ACK.
+  Ghi vào bảng giả thuyết sai, rồi thử lại qua `tc netem` hoặc 2 máy thật.

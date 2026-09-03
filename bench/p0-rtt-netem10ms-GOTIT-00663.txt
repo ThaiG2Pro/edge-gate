@@ -1,0 +1,32 @@
+=== netlab · môi trường ===
+tag              : netem-delay-10ms-RTT-DO-DUOC-20.157ms
+thời điểm        : 2026-09-03T14:20:59+07:00
+role             : both
+go               : go1.26.2 linux/amd64
+NumCPU / GOMAXPROCS: 6 / 6
+kernel           : Linux 6.6.87.2-microsoft-standard-WSL2 x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 1024
+sockstat         : TCP: inuse 22 orphan 0 tw 1 alloc 62 mem 31
+qdisc lo         : qdisc netem 8001: root refcnt 2 limit 1000 delay 10ms
+cpu              : 12th Gen Intel(R) Core(TM) i5-1235U
+⚠️  WSL2: loopback không phải NIC thật và tc netem có thể hành xử khác Linux thuần.
+⚠️  Số tuyệt đối ở đây KHÔNG mang sang máy khác được. Chỉ tỉ số mang được.
+===========================
+server nội bộ: 127.0.0.1:43937 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+reuse 1 connection                 -             300   20.45ms   20.43ms   20.55ms   20.66ms   26.75ms      0
+dial mới mỗi request               -             300   41.01ms   40.90ms   41.15ms   43.90ms   49.49ms      0
+  [G2/G3] p50 dial / p50 reuse                             2.00x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+  [G2/G3] p99 dial / p99 reuse                             2.12x   (kỳ vọng —)
+
+  Nếu tỉ số trên ~1.x thì KẾT LUẬN KHÔNG PHẢI "pool vô dụng".
+  Kết luận đúng là: môi trường đo không có RTT. Chạy lại với
+  `sudo tc qdisc add dev lo root netem delay 20ms`, hoặc `-role server`/`-role client` trên 2 máy.

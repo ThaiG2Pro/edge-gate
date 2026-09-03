@@ -1,0 +1,20 @@
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G4: coordinated omission (server capacity ≈ 1000 rps, áp 1200 rps)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+closed-loop, 1 conn                closed       7545    1.32ms    1.28ms    1.57ms    1.87ms    6.82ms      0
+closed-loop, 50 conn               closed       7389   67.90ms   64.05ms   83.32ms  100.71ms  104.07ms      0
+open-loop, rate cố định            open         9040  617.50ms  139.59ms     2.09s     3.35s     4.15s      0
+  rps closed-loop, 1 conn            yêu cầu     1200  đạt được      754  (62.9%)
+  ghi chú closed-loop, 1 conn        client KHÔNG BAO GIỜ áp nổi 1200 rps: nó chỉ gửi khi được trả lời
+  rps closed-loop, 50 conn           yêu cầu     1200  đạt được      733  (61.1%)
+  ghi chú closed-loop, 50 conn       client KHÔNG BAO GIỜ áp nổi 1200 rps: nó chỉ gửi khi được trả lời
+  rps open-loop, rate cố định        yêu cầu     1200  đạt được      714  (59.5%)
+  ghi chú open-loop, rate cố định    2960 request bị drop vì hết connection rỗi (backlog thật)
+  [G4] p99 open-loop / p99 closed-loop 1 conn         1787.50x   (kỳ vọng >3x)
+  [G4] p99 open-loop / p99 closed-loop 50 conn         33.26x   (kỳ vọng >3x)
+
+  Đọc cột `rps yêu cầu` vs `đạt được`: closed-loop không đạt được rate đã đặt.
+  Nó báo p99 của một tải NHẸ HƠN tải mình tưởng đang áp. Đó là lời nói dối.

@@ -1,0 +1,21 @@
+########## n=100 ##########
+tw TRƯỚC: TCP: inuse 30 orphan 0 tw 25 alloc 70 mem 0
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+reuse 1 connection                 -             100    11.3µs     9.6µs    12.7µs    33.8µs    63.0µs      0
+dial mới mỗi request               -             100   351.7µs   341.3µs   463.7µs   579.9µs   591.4µs      0
+  [G2/G3] p50 dial / p50 reuse                            35.52x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+tw SAU  : TCP: inuse 30 orphan 0 tw 126 alloc 70 mem 0
+########## n=500 ##########
+tw TRƯỚC: TCP: inuse 30 orphan 0 tw 126 alloc 70 mem 0
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+reuse 1 connection                 -             500    10.5µs    10.0µs    12.3µs    19.5µs    72.0µs      0
+dial mới mỗi request               -             500   344.9µs   345.0µs   444.9µs   611.4µs    1.64ms      0
+  [G2/G3] p50 dial / p50 reuse                            34.35x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+tw SAU  : TCP: inuse 30 orphan 0 tw 627 alloc 70 mem 0
+########## n=2000 ##########
+tw TRƯỚC: TCP: inuse 30 orphan 0 tw 627 alloc 70 mem 0
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+reuse 1 connection                 -            2000    18.0µs    11.2µs    26.1µs    69.8µs    1.54ms      0
+dial mới mỗi request               -            2000   295.0µs   303.9µs   377.9µs   517.1µs    1.32ms      0
+  [G2/G3] p50 dial / p50 reuse                            27.01x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+tw SAU  : TCP: inuse 30 orphan 0 tw 2618 alloc 70 mem 0

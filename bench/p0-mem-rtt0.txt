@@ -1,0 +1,34 @@
+server nội bộ: 127.0.0.1:42641 (workers=1 bufio=true)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G5: bộ nhớ của 1000 connection rỗi (bufio=true)
+  RSS       : 5248 KB -> 25216 KB   (delta 19968 KB)
+  RSS/conn  : 19.97 KB   (đây là CẶP client+server trong 1 process)
+  HeapAlloc : 1.2 MB -> 19.0 MB  => 17.36 KB/conn
+  goroutine : 2 -> 1002   (1.0/conn)
+  StackSys  : 0.5 MB -> 4.6 MB  => 4.06 KB/conn
+  => so với 2KB stack khởi tạo của goroutine: 9.98x
+server nội bộ: 127.0.0.1:46847 (workers=1 bufio=true)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G5: bộ nhớ của 10000 connection rỗi (bufio=true)
+  RSS       : 5376 KB -> 199424 KB   (delta 194048 KB)
+  RSS/conn  : 19.40 KB   (đây là CẶP client+server trong 1 process)
+  HeapAlloc : 1.2 MB -> 178.9 MB  => 17.35 KB/conn
+  goroutine : 2 -> 10002   (1.0/conn)
+  StackSys  : 0.4 MB -> 41.5 MB  => 4.01 KB/conn
+  => so với 2KB stack khởi tạo của goroutine: 9.70x
+###### bufio=false, 10k ######
+server nội bộ: 127.0.0.1:34965 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G5: bộ nhớ của 10000 connection rỗi (bufio=false)
+  RSS       : 5632 KB -> 96512 KB   (delta 90880 KB)
+  RSS/conn  : 9.09 KB   (đây là CẶP client+server trong 1 process)
+  HeapAlloc : 1.2 MB -> 95.4 MB  => 9.20 KB/conn
+  goroutine : 2 -> 10002   (1.0/conn)
+  StackSys  : 0.5 MB -> 21.0 MB  => 2.01 KB/conn
+  => so với 2KB stack khởi tạo của goroutine: 4.54x

@@ -1,0 +1,35 @@
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+reuse 1 connection                 -             500     9.1µs     8.5µs    11.1µs    26.2µs    78.5µs      0
+dial mới mỗi request               -             500   162.3µs   154.4µs   222.1µs   389.4µs   606.2µs      0
+  [G2/G3] p50 dial / p50 reuse                            18.24x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+  [G2/G3] p99 dial / p99 reuse                            14.85x   (kỳ vọng —)
+== run 1
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+reuse 1 connection                 -             500     8.4µs     7.8µs    10.0µs    17.0µs    32.5µs      0
+dial mới mỗi request               -             500   158.1µs   141.5µs   227.7µs   356.3µs   573.8µs      0
+  [G2/G3] p50 dial / p50 reuse                            18.05x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+  [G2/G3] p99 dial / p99 reuse                            21.02x   (kỳ vọng —)
+== run 2
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+reuse 1 connection                 -             500     8.5µs     7.5µs     9.9µs    20.1µs    59.2µs      0
+dial mới mỗi request               -             500   144.4µs   125.6µs   210.2µs   311.5µs   582.4µs      0
+  [G2/G3] p50 dial / p50 reuse                            16.65x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+  [G2/G3] p99 dial / p99 reuse                            15.47x   (kỳ vọng —)
+== run 3
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+reuse 1 connection                 -             500     8.6µs     8.1µs    10.1µs    20.1µs    58.5µs      0
+dial mới mỗi request               -             500   142.9µs   127.7µs   201.6µs   334.0µs    1.23ms      0
+  [G2/G3] p50 dial / p50 reuse                            15.77x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+  [G2/G3] p99 dial / p99 reuse                            16.66x   (kỳ vọng —)
+== run 4
+--- G2/G3: dial mới vs reuse (đọc kèm RTT của môi trường!)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+reuse 1 connection                 -             500     8.6µs     7.6µs    10.0µs    20.7µs    58.4µs      0
+dial mới mỗi request               -             500   146.1µs   138.8µs   190.3µs   274.3µs   727.3µs      0
+  [G2/G3] p50 dial / p50 reuse                            18.23x   (kỳ vọng RTT 0: 1.0-1.3x · RTT 20ms: >15x)
+  [G2/G3] p99 dial / p99 reuse                            13.23x   (kỳ vọng —)
+== run 5

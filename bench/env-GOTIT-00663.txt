@@ -1,0 +1,38 @@
+# chụp lúc: 2026-09-03T13:47:43+07:00
+# host: GOTIT-00663
+
+$ uname -srmo
+Linux 6.6.87.2-microsoft-standard-WSL2 x86_64 GNU/Linux
+
+$ go version
+go version go1.26.2 linux/amd64
+
+$ nproc
+6
+
+$ ulimit -n
+1048576
+
+$ grep "model name" /proc/cpuinfo | head -1
+model name	: 12th Gen Intel(R) Core(TM) i5-1235U
+
+$ free -m | head -2
+               total        used        free      shared  buff/cache   available
+Mem:           11962        7062         971         100        4233        4900
+
+$ sysctl net.ipv4.ip_local_port_range net.core.somaxconn net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_tw_reuse
+net.ipv4.ip_local_port_range = 32768	60999
+net.core.somaxconn = 4096
+net.ipv4.tcp_max_syn_backlog = 1024
+net.ipv4.tcp_tw_reuse = 2
+
+$ ss -s | head -3
+Total: 600
+TCP:   95 (estab 21, closed 51, orphaned 0, timewait 20)
+
+
+$ tc qdisc show dev lo
+qdisc noqueue 0: root refcnt 2 
+
+$ grep -qi microsoft /proc/version && echo WSL2 || echo "Linux thuần"
+WSL2

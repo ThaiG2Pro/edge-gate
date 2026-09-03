@@ -1,0 +1,37 @@
+=== netlab · môi trường ===
+thời điểm        : 2026-09-03T22:04:18+07:00
+role             : both
+go               : go1.26.2 linux/amd64
+NumCPU / GOMAXPROCS: 6 / 6
+kernel           : Linux 6.6.87.2-microsoft-standard-WSL2 x86_64 GNU/Linux
+ulimit -n        : 1048576
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 1024
+sockstat         : TCP: inuse 35 orphan 0 tw 20 alloc 51 mem 0
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : 12th Gen Intel(R) Core(TM) i5-1235U
+⚠️  WSL2: loopback không phải NIC thật và tc netem có thể hành xử khác Linux thuần.
+⚠️  Số tuyệt đối ở đây KHÔNG mang sang máy khác được. Chỉ tỉ số mang được.
+===========================
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+server nội bộ: 127.0.0.1:35895 (workers=1 bufio=false)
+
+--- G4: coordinated omission (server capacity ≈ 1000 rps, áp 1200 rps)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+closed-loop, 1 conn                closed       3100    1.61ms    1.60ms    1.87ms    2.13ms    4.02ms      0
+closed-loop, 50 conn               closed       3521   71.46ms   71.74ms   76.23ms   80.64ms   82.02ms      0
+open-loop, rate cố định            open         3841  648.65ms  751.81ms  779.10ms  790.41ms  793.93ms      0
+  rps closed-loop, 1 conn            yêu cầu     1200  đạt được      620  (51.7%)
+  ghi chú closed-loop, 1 conn        client KHÔNG BAO GIỜ áp nổi 1200 rps: nó chỉ gửi khi được trả lời
+  rps closed-loop, 50 conn           yêu cầu     1200  đạt được      693  (57.8%)
+  ghi chú closed-loop, 50 conn       client KHÔNG BAO GIỜ áp nổi 1200 rps: nó chỉ gửi khi được trả lời
+  rps open-loop, rate cố định        yêu cầu     1200  đạt được      677  (56.4%)
+  ghi chú open-loop, rate cố định    2159 request bị drop vì hết connection rỗi (backlog thật)
+  [G4] p99 open-loop / p99 closed-loop 1 conn         370.56x   (kỳ vọng >3x)
+
+  Đọc cột `rps yêu cầu` vs `đạt được`: closed-loop không đạt được rate đã đặt.
+  Nó báo p99 của một tải NHẸ HƠN tải mình tưởng đang áp. Đó là lời nói dối.
+  [G4] p99 open-loop / p99 closed-loop 50 conn          9.80x   (kỳ vọng >3x)

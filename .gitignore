@@ -1,0 +1,5 @@
+bin/
+*.prof
+*.test
+*.out
+.codegraph/

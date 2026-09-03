@@ -1,0 +1,13 @@
+server nội bộ: 172.19.62.65:9111 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G6: cái gì chạm trần trước khi không pool
+  ulimit -n            : 65536
+  ip_local_port_range  : 32768	60999
+  sockstat TRƯỚC       : TCP: inuse 31 orphan 0 tw 12907 alloc 71 mem 284
+  sockstat SAU         : TCP: inuse 47 orphan 0 tw 18500 alloc 87 mem 28
+  connection thành công: 18440 trong 25.002s = 738 conn/s
+  connection lỗi       : 0
+  => chưa chạm trần trong 25s. Tăng -duration, hoặc so conn/s này với
+     (số port khả dụng / 60s) để biết mức bền vững thật.
