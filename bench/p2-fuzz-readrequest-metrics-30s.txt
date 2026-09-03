@@ -1,0 +1,13 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/263 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 263/263 completed, now fuzzing with 6 workers
+fuzz: elapsed: 2s, execs: 74293 (39727/sec), new interesting: 0 (total: 263)
+--- FAIL: FuzzReadRequest (2.01s)
+    --- FAIL: FuzzReadRequest (0.00s)
+        fuzz_test.go:90: cấp phát 506232 byte cho input 44 byte
+    
+    Failing input written to testdata/fuzz/FuzzReadRequest/e0403d4ef1261316
+    To re-run:
+    go test -run=FuzzReadRequest/e0403d4ef1261316
+FAIL
+exit status 1
+FAIL	github.com/thaivro/edgegate/internal/httpx	2.019s

@@ -1,0 +1,10 @@
+--- FAIL: FuzzAgainstNetHTTP (0.00s)
+    --- FAIL: FuzzAgainstNetHTTP/chunk-bws-ext (0.00s)
+        fuzz_test.go:122: NGUY HIỂM: mình đọc body xong (3 byte), net/http lỗi invalid byte in chunk length
+            input="POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n3 ;x\r\nabc\r\n0\r\n\r\n"
+    --- FAIL: FuzzAgainstNetHTTP/chunk-leading-space (0.00s)
+        fuzz_test.go:122: NGUY HIỂM: mình đọc body xong (3 byte), net/http lỗi invalid byte in chunk length
+            input="POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n 3\r\nabc\r\n0\r\n\r\n"
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/httpx	0.018s
+FAIL

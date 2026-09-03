@@ -1,0 +1,16 @@
+#1  GET  /hello   HTTP/1.1  head= 61 B  framing=CL:0     body=0 B  close=false
+#2  POST /form    HTTP/1.1  head= 85 B  framing=CL:5     body=5 B  close=false
+#3  POST /upload  HTTP/1.1  head= 70 B  framing=chunked  body=9 B  close=false  trailer=1
+#4  GET  /bye     HTTP/1.0  head= 21 B  framing=CL:0     body=0 B  close=true
+4 request từ 281 byte, sau request cuối buffer còn 0 byte
+✔ ranh giới đúng, không byte nào lẫn giữa các request
+client nhỏ giọt 1 byte/50ms, head 76 byte ⇒ cần 3.8s để gửi hết
+server HeaderTimeout=300ms sau byte đầu: ReadRequest trả sau 300ms, nhận 6 byte
+err = read tcp 127.0.0.1:40887->127.0.0.1:47316: i/o timeout
+✔ cắt ở 300ms (dự đoán ≈ 300ms), trả 408 và đóng
+#1  GET  ⇒ 200  framing=CL:5     body=5 B  close=false  buffered-sau=221
+#2  GET  ⇒ 204  framing=CL:0     body=0 B  close=false  buffered-sau=175
+#3  HEAD ⇒ 200  framing=CL:0     body=0 B  close=false  buffered-sau=135
+#4  GET  ⇒ 200  framing=chunked  body=9 B  close=false  buffered-sau=54
+#5  GET  ⇒ 200  framing=tới-EOF  body=16 B  close=true  buffered-sau=0
+✔ 5 response, 5 ranh giới đúng; response cuối đọc tới EOF và Close=true

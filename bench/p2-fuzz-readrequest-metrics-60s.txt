@@ -1,0 +1,25 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/263 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 263/263 completed, now fuzzing with 6 workers
+fuzz: elapsed: 3s, execs: 133124 (44367/sec), new interesting: 2 (total: 265)
+fuzz: elapsed: 6s, execs: 306143 (57664/sec), new interesting: 4 (total: 267)
+fuzz: elapsed: 9s, execs: 488339 (60749/sec), new interesting: 9 (total: 272)
+fuzz: elapsed: 12s, execs: 598678 (36751/sec), new interesting: 10 (total: 273)
+fuzz: elapsed: 15s, execs: 685801 (29059/sec), new interesting: 11 (total: 274)
+fuzz: elapsed: 18s, execs: 758374 (24171/sec), new interesting: 13 (total: 276)
+fuzz: elapsed: 21s, execs: 828826 (23504/sec), new interesting: 14 (total: 277)
+fuzz: elapsed: 24s, execs: 894457 (21858/sec), new interesting: 16 (total: 279)
+fuzz: elapsed: 27s, execs: 974179 (26582/sec), new interesting: 20 (total: 283)
+fuzz: elapsed: 30s, execs: 1056871 (27577/sec), new interesting: 20 (total: 283)
+fuzz: elapsed: 33s, execs: 1117950 (20363/sec), new interesting: 25 (total: 288)
+fuzz: elapsed: 36s, execs: 1182343 (21464/sec), new interesting: 26 (total: 289)
+fuzz: elapsed: 39s, execs: 1269155 (28920/sec), new interesting: 27 (total: 290)
+fuzz: elapsed: 42s, execs: 1356706 (29160/sec), new interesting: 27 (total: 290)
+fuzz: elapsed: 45s, execs: 1443449 (28951/sec), new interesting: 29 (total: 292)
+fuzz: elapsed: 48s, execs: 1539152 (31906/sec), new interesting: 30 (total: 293)
+fuzz: elapsed: 51s, execs: 1620955 (27270/sec), new interesting: 32 (total: 295)
+fuzz: elapsed: 54s, execs: 1700635 (26558/sec), new interesting: 35 (total: 298)
+fuzz: elapsed: 57s, execs: 1775918 (25092/sec), new interesting: 36 (total: 299)
+fuzz: elapsed: 1m0s, execs: 1874459 (32828/sec), new interesting: 37 (total: 300)
+fuzz: elapsed: 1m0s, execs: 1874459 (0/sec), new interesting: 37 (total: 300)
+PASS
+ok  	github.com/thaivro/edgegate/internal/httpx	60.265s
