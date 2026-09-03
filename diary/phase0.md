@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 0.5 ngày · **thực tế:** ~0.5 ngày
 - **Bắt đầu:** 2026-09-03 · **Kết thúc:** 2026-09-03
 - **Trạng thái:** ✅ xong trên máy này · ⬜ **còn một thí nghiệm (G3) chưa chạy được vì thiếu sudo**
-- **Commit:** `_______` — mọi số đo trong file này thuộc về cây làm việc của commit đó
+- **Commit:** `5ec5557` — git init 2026-09-03 sau khi phase 0-2 đã xong; commit này chứa cây làm việc phase 0 ở trạng thái cuối (kể cả errata và các nợ đã trả), không phải snapshot lúc đo. Số đo nào cũng kèm lệnh + output nên vẫn chạy lại được.
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase0-log.md`](phase0-log.md). File này là bản biên tập.
 >

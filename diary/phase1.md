@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 1 ngày · **thực tế:** ~0.5 ngày (3 turn: code / run+fix / diary)
 - **Bắt đầu:** 2026-09-03 · **Kết thúc:** 2026-09-03
 - **Trạng thái:** ✅ xong. Hai bài quyết định xanh, fuzz 120s sạch, **bài phản chứng đỏ đúng chỗ**
-- **Commit:** `_______` — repo chưa init git; mọi số đo thuộc cây làm việc lúc viết file này
+- **Commit:** `2a3fb30` — git init 2026-09-03 sau khi phase 0-2 đã xong; commit này là cây làm việc phase 1 ở trạng thái cuối, không phải snapshot lúc đo.
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase1-log.md`](phase1-log.md). File này là bản biên tập.
 >

@@ -4,7 +4,7 @@
 - **Bắt đầu:** 2026-09-03 · **Kết thúc:** 2026-09-03
 - **Trạng thái:** ✅ xong phần engine. Diff-fuzz 300s ×2, bộ so có phản chứng đỏ, 3 lệch thật đã đóng.
   Còn 4 nợ mở (P2-1..P2-4), nợ P2-1 là nợ *về bằng chứng*, không phải về code
-- **Commit:** `_______` — repo chưa init git; mọi số đo thuộc cây làm việc lúc viết file này
+- **Commit:** `a2b0ab5` — git init 2026-09-03 sau khi phase 2 đã xong; commit này là cây làm việc phase 2 ở trạng thái cuối (đã trả P2-1, P2-4), không phải snapshot lúc đo.
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase2-log.md`](phase2-log.md). File này là bản biên tập.
 >
