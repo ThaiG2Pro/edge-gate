@@ -1,0 +1,7 @@
+{
+  "listen": ":8080",
+  "upstream": "127.0.0.1:8081",
+  "dial_timeout_ms": 2000,
+  "upstream_header_timeout_ms": 5000,
+  "upstream_body_timeout_ms": 30000
+}

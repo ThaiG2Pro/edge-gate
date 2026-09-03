@@ -157,16 +157,24 @@ difffuzz-chunk:
 # ---------------------------------------------------------------------------
 # Phase 3: vertical slice — curl xuyên proxy
 # ---------------------------------------------------------------------------
+# Terminal 1: make upstream · Terminal 2: make proxylab
 upstream:
 	go run ./cmd/upstream -addr :8081
 
+# 3 curl phải đúng byte, KHÔNG treo. Không thấy "chunk 4" hoặc curl đứng > 1s ⇒ bẫy #2.
 proxylab:
-	go run ./cmd/edgegate -config config/dev.json &
-	sleep 1
-	curl -sS -i http://localhost:8080/hello
-	curl -sS -i -X POST -d 'xin chao' http://localhost:8080/echo
-	curl -sS -i http://localhost:8080/chunked      # response chunked: KHÔNG được treo
-	-pkill -f 'cmd/edgegate'
+	go run ./cmd/edgegate -config config/dev.json & echo $$! > /tmp/edgegate.pid; sleep 1
+	curl -sS -i --max-time 5 http://localhost:8080/hello
+	curl -sS -i --max-time 5 -X POST -d 'xin chao' http://localhost:8080/echo
+	curl -sS -i --max-time 5 http://localhost:8080/chunked      # response chunked: KHÔNG được treo
+	curl -sS -i --max-time 5 http://localhost:8080/eof          # body tới EOF ⇒ client thấy chunked (D3)
+	-kill $$(cat /tmp/edgegate.pid); rm -f /tmp/edgegate.pid
+
+# Tắt hai phòng tuyến (drain body khi upstream chết; framing thay io.Copy thô)
+# ⇒ TestDrainOnUpstreamDown và TestRawCopyTrap PHẢI đỏ. Xanh là thất bại.
+proxylab-nodefense:
+	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
+	! go test ./internal/proxy/ -run 'TestDrainOnUpstreamDown|TestRawCopyTrap' -count=1 -tags nodefense
 
 # ---------------------------------------------------------------------------
 # Phase 4: smuggling. Bài phản chứng BẮT BUỘC ĐỎ.

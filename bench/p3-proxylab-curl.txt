@@ -1,0 +1,73 @@
+# 2026-09-03 turn 1 phase 3 — bin/upstream :8081 + bin/edgegate config/dev.json, loopback
+
+$ curl -sS -i --max-time 5 http://localhost:8080/hello
+HTTP/1.1 200 OK
+Content-Length: 20
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 03 Sep 2026 15:39:06 GMT
+
+hello from upstream
+wall 0.06s
+
+$ curl -sS -i --max-time 5 http://localhost:8080/echo -X POST -d xin_chao
+HTTP/1.1 200 OK
+Content-Length: 8
+Content-Type: application/octet-stream
+Date: Thu, 03 Sep 2026 15:39:06 GMT
+
+xin_chaowall 0.00s
+
+$ curl -sS -i --max-time 5 http://localhost:8080/chunked
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 03 Sep 2026 15:39:06 GMT
+Transfer-Encoding: chunked
+
+chunk 0
+chunk 1
+chunk 2
+chunk 3
+chunk 4
+wall 0.11s
+
+$ curl -sS -i --max-time 5 http://localhost:8080/eof
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Transfer-Encoding: chunked
+
+body until eof
+wall 0.00s
+
+$ curl -sS -i --max-time 5 -X POST -H "Transfer-Encoding: chunked" -d @config/dev.json http://localhost:8080/echo
+HTTP/1.1 200 OK
+Content-Length: 151
+Content-Type: application/octet-stream
+Date: Thu, 03 Sep 2026 15:39:06 GMT
+
+{  "listen": ":8080",  "upstream": "127.0.0.1:8081",  "dial_timeout_ms": 2000,  "upstream_header_timeout_ms": 5000,  "upstream_body_timeout_ms": 30000}
+
+$ curl -sS -i --max-time 5 --http1.0 http://localhost:8080/eof
+HTTP/1.1 200 OK
+Connection: close
+Content-Type: text/plain
+
+body until eof
+
+$ curl -sS -i --max-time 5 -I http://localhost:8080/hello
+HTTP/1.1 200 OK
+Content-Length: 20
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 03 Sep 2026 15:39:06 GMT
+
+$ curl -sS -i --max-time 5 http://localhost:8080/hello http://localhost:8080/nobody   # 2 request, 1 connection (keep-alive)
+HTTP/1.1 200 OK
+Content-Length: 20
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 03 Sep 2026 15:39:07 GMT
+
+hello from upstream
+conn_reused=1
+HTTP/1.1 204 No Content
+Date: Thu, 03 Sep 2026 15:39:07 GMT
+
+conn_reused=0
