@@ -396,7 +396,8 @@ func TestNoGoroutineLeak(t *testing.T) {
 	nk.CloseIdleConnections()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if runtime.NumGoroutine() <= before+2 {
+		if n := runtime.NumGoroutine(); n <= before+2 {
+			t.Logf("G6: goroutine trước %d, sau %d (chờ %s)", before, n, time.Since(deadline.Add(-3*time.Second)).Round(time.Millisecond))
 			return
 		}
 		time.Sleep(20 * time.Millisecond)

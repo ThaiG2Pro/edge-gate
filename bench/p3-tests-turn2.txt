@@ -1,0 +1,52 @@
+## G1: TestRawCopyTrap -tags nodefense, 3 lần (UpstreamBodyTimeout=3s)
+=== RUN   TestRawCopyTrap
+    proxy_test.go:329: đọc response: read tcp 127.0.0.1:55440->127.0.0.1:33047: i/o timeout
+--- FAIL: TestRawCopyTrap (3.01s)
+=== RUN   TestRawCopyTrap
+    proxy_test.go:329: đọc response: read tcp 127.0.0.1:42802->127.0.0.1:36991: i/o timeout
+--- FAIL: TestRawCopyTrap (3.00s)
+=== RUN   TestRawCopyTrap
+    proxy_test.go:329: đọc response: read tcp 127.0.0.1:58490->127.0.0.1:38419: i/o timeout
+--- FAIL: TestRawCopyTrap (3.00s)
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	9.016s
+FAIL
+
+## G5/G6 + toàn bộ proxy test, -race, -v
+--- PASS: TestGET (0.01s)
+--- PASS: TestPOSTEcho (0.18s)
+--- PASS: TestPOSTChunkedRequestBody (0.01s)
+--- PASS: TestChunkedResponse (0.11s)
+--- PASS: TestEOFBodyBecomesChunked (0.00s)
+--- PASS: TestHEADAnd204HaveNoBody (0.00s)
+--- PASS: TestHopByHopAndXFF (0.00s)
+--- PASS: TestKeepAliveSequential (0.11s)
+--- PASS: TestHTTP10ClientGetsEOFBodyAndClose (0.00s)
+--- PASS: TestDrainOnUpstreamDown (0.00s)
+--- PASS: TestRawCopyTrap (0.00s)
+--- PASS: TestUpstreamSlowIs504 (2.00s)
+--- PASS: TestBadRequestGets400AndClose (0.00s)
+--- PASS: TestNoGoroutineLeak (0.27s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	3.723s
+
+## toàn repo -race
+ok  	github.com/thaivro/edgegate/internal/frame	2.239s
+ok  	github.com/thaivro/edgegate/internal/httpx	1.332s
+ok  	github.com/thaivro/edgegate/internal/proxy	3.711s
+
+## phản chứng
+    proxy_test.go:329: đọc response: read tcp 127.0.0.1:53774->127.0.0.1:34581: i/o timeout
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	3.011s
+FAIL
+exit=0
+
+## G6 chi tiết, 3 lần -race
+    proxy_test.go:400: G6: goroutine trước 4, sau 6 (chờ 0s)
+--- PASS: TestNoGoroutineLeak (0.28s)
+    proxy_test.go:400: G6: goroutine trước 4, sau 4 (chờ 21ms)
+--- PASS: TestNoGoroutineLeak (0.28s)
+    proxy_test.go:400: G6: goroutine trước 4, sau 5 (chờ 0s)
+--- PASS: TestNoGoroutineLeak (0.26s)
+PASS

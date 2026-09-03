@@ -40,15 +40,26 @@ func Handler() http.Handler {
 		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 		w.Write(b)
 	})
+	// /chunked?n=5&ms=20 — n chunk, ngủ ms giữa mỗi chunk. ms=0 dùng cho G4
+	// (Nagle): chunk phải dồn sát nhau thì delayed-ACK 40 ms mới lộ.
 	mux.HandleFunc("/chunked", func(w http.ResponseWriter, r *http.Request) {
+		n, ms := 5, 20
+		if v, err := strconv.Atoi(r.URL.Query().Get("n")); err == nil && v > 0 {
+			n = v
+		}
+		if v, err := strconv.Atoi(r.URL.Query().Get("ms")); err == nil && v >= 0 {
+			ms = v
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fl, _ := w.(http.Flusher)
-		for i := 0; i < 5; i++ {
+		for i := 0; i < n; i++ {
 			fmt.Fprintf(w, "chunk %d\n", i)
 			if fl != nil {
 				fl.Flush()
 			}
-			time.Sleep(20 * time.Millisecond)
+			if ms > 0 {
+				time.Sleep(time.Duration(ms) * time.Millisecond)
+			}
 		}
 	})
 	mux.HandleFunc("/eof", func(w http.ResponseWriter, r *http.Request) {

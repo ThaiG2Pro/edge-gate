@@ -205,9 +205,14 @@ func (s *Server) replyReadError(c net.Conn, bw *bufio.Writer, err error) {
 	}
 }
 
+// setNoDelay đặt TCP_NODELAY = cfg.NoDelay một cách TƯỚNG MINH cả hai chiều.
+// Bản đầu chỉ gọi SetNoDelay(true) khi cfg.NoDelay=true và "bỏ qua" khi false —
+// vô nghĩa, vì Go đã setNoDelay(fd, true) trong newTCPConn (net/tcpsock.go):
+// muốn Nagle bật để đo G4 thì phải gọi SetNoDelay(false). Lộ ở turn 2 phase 3
+// khi -nodelay=false không đổi một micro giây nào.
 func (s *Server) setNoDelay(c net.Conn) {
-	if tc, ok := c.(*net.TCPConn); ok && *s.cfg.NoDelay {
-		tc.SetNoDelay(true)
+	if tc, ok := c.(*net.TCPConn); ok {
+		tc.SetNoDelay(*s.cfg.NoDelay)
 	}
 }
 

@@ -45,3 +45,39 @@
   `&`); turn 2 chạy đúng target và ghi output.
 - Câu hỏi để turn 2: G2/G3/G4 chưa đo. G1 có số sơ bộ (3.00 s = timeout) từ bài phản chứng,
   chưa lập lại. G5, G6 đã có test xanh + phản chứng đỏ, chưa ghi vào bảng số đo.
+
+## §2 Turn 2 — run + fix + measure (23:40 → 23:55)
+
+- 23:40 Môi trường: `Linux 6.6.87.2-microsoft-standard-WSL2 x86_64`, `go1.26.2`, 6 core,
+  `ulimit -n` 1048576. Cùng máy GOTIT-00663.
+- 23:43 `make proxylab` nguyên bản: **exit 0, 4 curl đúng byte**, không treo. Nhưng lệnh của tôi
+  treo 2 phút: recipe `go run … & echo $! > pid` rồi `kill $(cat pid)` giết **`go run`**, không
+  giết binary con `/tmp/go-build…/exe/edgegate` ⇒ tiến trình mồ côi giữ cổng 8080 và giữ stdout
+  của pipe. `make` xanh mà hệ thống bẩn. Sửa recipe: `go build -o bin/edgegate` rồi chạy binary
+  trực tiếp. Chạy lại: exit 0, log `edgegate: đóng`, `pgrep` không còn gì. Output:
+  `bench/p3-make-proxylab-GOTIT-00663.txt`.
+- 23:45 Viết `cmd/proxylab` (client thô `net` + httpx, không net/http) đo G2/G3/G4; thêm
+  `?n=&ms=` cho `/chunked` của fixture. `pkill -f 'bin/upstream'` trong cùng dòng lệnh **tự giết
+  shell** (dòng lệnh chứa chuỗi khớp) ⇒ exit 144, không có output. Chuyển sang script file +
+  `pkill -x` (khớp tên tiến trình).
+- 23:47 **G2 = 3.39x** (p50 473 µs qua proxy / 139 µs thẳng, n=2000), trong khoảng 3-5x; chênh
+  tuyệt đối 333 µs ≈ dial upstream (~300 µs phase 0) + parse 2 chiều. p99 chỉ 2.63x — đuôi của
+  đường thẳng đã dày sẵn (scheduler), proxy không thêm đuôi tương ứng.
+  **G3 = 1.44x** (657 / 456 µs), đúng 1.2-1.6x: D1 dial upstream mới cho cả hai mẫu nên keep-alive
+  client chỉ tiết kiệm được đúng một dial loopback.
+- 23:48 **G4 sai lần 1:** `-nodelay=false` ⇒ p50 473 µs vs 511 µs với `true` — **không khác gì**.
+  Nghi 5 chunk `ms=0` gộp vào một Read ⇒ thêm `-chunkms` 2/5/10 ms: vẫn không khác (14.3/29.7/54.2
+  vs 13.4/27.8/55.0 ms). Vậy không phải do gộp. Đọc `setNoDelay`: `if *cfg.NoDelay { SetNoDelay(true) }`
+  — khi false thì **không gọi gì**, mà Go đã `setNoDelay(fd, true)` trong `newTCPConn`
+  (`net/tcpsock.go:290`). Flag là no-op; phase 0 netlab gọi `SetNoDelay(false)` tường minh nên
+  mới thấy 44 ms. Sửa: `tc.SetNoDelay(*s.cfg.NoDelay)`.
+- 23:49 **G4 lần 2, Nagle thật sự bật:** ms=0 ⇒ p50 **44.004 ms** (vs 430 µs), ms=2 ⇒ 43.97 ms
+  (vs 14.4), ms=5 ⇒ 44.00 ms (vs 29.1), ms=10 ⇒ 56.2 ms (vs 54.4). Không phải "+40 ms hằng số"
+  như đăng ký: là **sàn ≈ 44 ms** — chunk terminator `0\r\n\r\n` (write nhỏ thứ hai, sau
+  head+chunk) bị Nagle giữ tới khi delayed-ACK của segment trước về (~40 ms); response nào tự nó
+  đã dài hơn 44 ms thì gần như không thêm. Cùng cơ chế phase 0 G3, khác hình dạng.
+- 23:50 G1 lập lại 3 lần `-tags nodefense`: **3.01 / 3.00 / 3.00 s** với `UpstreamBodyTimeout=3s`
+  ⇒ treo = timeout ± 10 ms, đúng ± 50 ms đã đăng ký. `go test ./internal/proxy -race -v`: 14/14
+  (đếm lại: 14, không phải 13). G6 thêm `t.Logf`: trước 4 → sau 6 / 4 / 5 qua 3 lần.
+  Toàn repo `-race` xanh; `make proxylab-nodefense` đỏ đúng.
+- Turn 3 còn: bảng Invariant, Rút ra, nợ P3-k (`docs/debts.md`), ROADMAP/README, `Commit:`.

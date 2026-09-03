@@ -1,0 +1,36 @@
+go build -o bin/edgegate ./cmd/edgegate
+./bin/edgegate -config config/dev.json & echo $! > /tmp/edgegate.pid; sleep 1
+2026/09/03 23:45:37 edgegate: :8080 → 127.0.0.1:8081 (nodelay=true)
+curl -sS -i --max-time 5 http://localhost:8080/hello
+HTTP/1.1 200 OK
+Content-Length: 20
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 03 Sep 2026 16:45:38 GMT
+
+hello from upstream
+curl -sS -i --max-time 5 -X POST -d 'xin chao' http://localhost:8080/echo
+HTTP/1.1 200 OK
+Content-Length: 8
+Content-Type: application/octet-stream
+Date: Thu, 03 Sep 2026 16:45:38 GMT
+
+xin chaocurl -sS -i --max-time 5 http://localhost:8080/chunked      # response chunked: KHÔNG được treo
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 03 Sep 2026 16:45:38 GMT
+Transfer-Encoding: chunked
+
+chunk 0
+chunk 1
+chunk 2
+chunk 3
+chunk 4
+curl -sS -i --max-time 5 http://localhost:8080/eof          # body tới EOF ⇒ client thấy chunked (D3)
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Transfer-Encoding: chunked
+
+body until eof
+kill $(cat /tmp/edgegate.pid); rm -f /tmp/edgegate.pid
+2026/09/03 23:45:38 edgegate: đóng
+make exit=0

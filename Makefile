@@ -3,7 +3,7 @@
 	netlab-server netlab-client \
 	framelab fuzz-frame \
 	httplab fuzz-http difffuzz difffuzz-chunk \
-	proxylab upstream \
+	proxylab proxybench upstream \
 	smugglelab smugglelab-nodefense \
 	poollab poollab-rtt \
 	lblab lblab-skew \
@@ -162,13 +162,30 @@ upstream:
 	go run ./cmd/upstream -addr :8081
 
 # 3 curl phải đúng byte, KHÔNG treo. Không thấy "chunk 4" hoặc curl đứng > 1s ⇒ bẫy #2.
+# Build trước rồi chạy binary: `go run … &` sinh tiến trình con, kill pid của
+# `go run` KHÔNG giết edgegate ⇒ mồ côi giữ cổng 8080 (phát hiện turn 2 phase 3).
 proxylab:
-	go run ./cmd/edgegate -config config/dev.json & echo $$! > /tmp/edgegate.pid; sleep 1
+	go build -o bin/edgegate ./cmd/edgegate
+	./bin/edgegate -config config/dev.json & echo $$! > /tmp/edgegate.pid; sleep 1
 	curl -sS -i --max-time 5 http://localhost:8080/hello
 	curl -sS -i --max-time 5 -X POST -d 'xin chao' http://localhost:8080/echo
 	curl -sS -i --max-time 5 http://localhost:8080/chunked      # response chunked: KHÔNG được treo
 	curl -sS -i --max-time 5 http://localhost:8080/eof          # body tới EOF ⇒ client thấy chunked (D3)
 	-kill $$(cat /tmp/edgegate.pid); rm -f /tmp/edgegate.pid
+
+# Số đo G2/G3/G4: tự chạy upstream + proxy (2 lần: -nodelay=true / false).
+# Closed-loop, 1 conn, cùng máy — chỉ đo OVERHEAD TƯƠNG ĐỐI của hop L7.
+proxybench:
+	go build -o bin/edgegate ./cmd/edgegate && go build -o bin/upstream ./cmd/upstream && go build -o bin/proxylab ./cmd/proxylab
+	./bin/upstream -addr :8081 & echo $$! > /tmp/upstream.pid; sleep 0.5
+	./bin/edgegate -config config/dev.json & echo $$! > /tmp/edgegate.pid; sleep 0.5
+	./bin/proxylab -mode overhead -n 2000
+	./bin/proxylab -mode keepalive -n 2000
+	./bin/proxylab -mode nagle -n 100 -chunkms 0 -label "[nodelay=true]"
+	-kill $$(cat /tmp/edgegate.pid); sleep 0.5
+	./bin/edgegate -config config/dev.json -nodelay=false & echo $$! > /tmp/edgegate.pid; sleep 0.5
+	./bin/proxylab -mode nagle -n 100 -chunkms 0 -label "[nodelay=false]"
+	-kill $$(cat /tmp/edgegate.pid) $$(cat /tmp/upstream.pid); rm -f /tmp/edgegate.pid /tmp/upstream.pid
 
 # Tắt hai phòng tuyến (drain body khi upstream chết; framing thay io.Copy thô)
 # ⇒ TestDrainOnUpstreamDown và TestRawCopyTrap PHẢI đỏ. Xanh là thất bại.
