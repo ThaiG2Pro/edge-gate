@@ -1,0 +1,142 @@
+# Phản chứng phase 4 — make smugglelab-nodefense PHẢI đỏ, 2026-09-04 12:35, GOTIT-00663, HEAD dc3a824+wip
+== bài phản chứng: lệnh này PHẢI đỏ ==
+! go test ./internal/httpx/ -run 'TestSmuggling$' -count=1 -tags nodefense
+--- FAIL: TestSmuggling (0.02s)
+--- FAIL: TestSmuggling/01-clte-basic.txt (0.00s)
+smuggle_test.go:126: CL.TE cơ bản: CL=6, TE=chunked: muốn head bị từ chối 400, có status 0 err=<nil> (body="0\r\n\r\nG" rest="")
+--- FAIL: TestSmuggling/02-tecl-basic.txt (0.00s)
+smuggle_test.go:126: TE.CL cơ bản: TE=chunked, CL=4: muốn head bị từ chối 400, có status 0 err=<nil> (body="5c\r\n" rest="GPOST / HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 15\r\n\r\nx=1\r\n0\r\n\r\n")
+--- FAIL: TestSmuggling/03-clte-cl-zero.txt (0.00s)
+smuggle_test.go:126: CL=0 + TE=chunked: muốn head bị từ chối 400, có status 0 err=<nil> (body="" rest="5\r\nhello\r\n0\r\n\r\n")
+--- FAIL: TestSmuggling/10-tete-double-header.txt (0.00s)
+smuggle_test.go:126: TE.TE: hai dòng Transfer-Encoding: muốn head bị từ chối 400, có status 0 err=<nil> (body="0\r\n\r\n" rest="")
+--- FAIL: TestSmuggling/11-tete-chunked-chunked.txt (0.00s)
+smuggle_test.go:126: TE: chunked, chunked: muốn head bị từ chối 501, có status 0 err=<nil> (body="" rest="")
+--- FAIL: TestSmuggling/12-tete-xchunked.txt (0.00s)
+smuggle_test.go:126: TE: xchunked: muốn head bị từ chối 400, có status 0 err=<nil> (body="0\r\n\r\n" rest="")
+--- FAIL: TestSmuggling/13-tete-space-before-colon.txt (0.00s)
+smuggle_test.go:126: 'Transfer-Encoding : chunked' (SP trước ':'): muốn head bị từ chối 400, có status 0 err=<nil> (body="0\r\n\r\n" rest="")
+--- FAIL: TestSmuggling/14-tete-identity-chunked.txt (0.00s)
+smuggle_test.go:126: TE: identity, chunked: muốn head bị từ chối 501, có status 0 err=<nil> (body="" rest="")
+--- FAIL: TestSmuggling/15-tete-chunked-identity.txt (0.00s)
+smuggle_test.go:126: TE: chunked, identity: muốn head bị từ chối 501, có status 0 err=<nil> (body="" rest="")
+--- FAIL: TestSmuggling/20-cl-dup-diff.txt (0.00s)
+smuggle_test.go:126: Hai CL khác nhau (5, 6): muốn head bị từ chối 400, có status 0 err=<nil> (body="hello" rest="!")
+--- FAIL: TestSmuggling/21-cl-dup-same.txt (0.00s)
+smuggle_test.go:126: Hai CL giống nhau (5, 5): muốn head bị từ chối 400, có status 0 err=<nil> (body="hello" rest="")
+--- FAIL: TestSmuggling/22-cl-plus.txt (0.00s)
+smuggle_test.go:126: CL: +5: muốn head bị từ chối 400, có status 0 err=<nil> (body="hello" rest="")
+--- FAIL: TestSmuggling/30-bare-lf-request-line.txt (0.00s)
+smuggle_test.go:126: Bare LF sau request line: muốn head bị từ chối 400, có status 0 err=<nil> (body="hello" rest="")
+--- FAIL: TestSmuggling/31-bare-lf-header.txt (0.00s)
+smuggle_test.go:126: Bare LF ở một dòng header: muốn head bị từ chối 400, có status 0 err=<nil> (body="hello" rest="")
+--- FAIL: TestSmuggling/45-trailer-content-length.txt (0.00s)
+smuggle_test.go:122: Trailer mang Content-Length: body muốn lỗi 400, có status 0 err=<nil> body="hello" rest=""
+--- FAIL: TestSmuggling/46-trailer-transfer-encoding.txt (0.00s)
+smuggle_test.go:122: Trailer mang Transfer-Encoding: body muốn lỗi 400, có status 0 err=<nil> body="" rest=""
+--- FAIL: TestSmuggling/47-trailer-host.txt (0.00s)
+smuggle_test.go:122: Trailer mang Host: body muốn lỗi 400, có status 0 err=<nil> body="" rest=""
+--- FAIL: TestSmuggling/90-resp-clte.txt (0.00s)
+smuggle_test.go:126: Response CL=5 + TE=chunked (response splitting): muốn head bị từ chối 400, có status 0 err=<nil> (body="0\r\n\r\n" rest="HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nEVL")
+--- FAIL: TestSmuggling/91-resp-cl-dup-diff.txt (0.00s)
+smuggle_test.go:126: Response hai CL khác nhau: muốn head bị từ chối 400, có status 0 err=<nil> (body="hello" rest="!")
+--- FAIL: TestSmuggling/94-resp-trailer-content-length.txt (0.00s)
+smuggle_test.go:122: Response trailer mang Content-Length: body muốn lỗi 400, có status 0 err=<nil> body="abc" rest=""
+smuggle_test.go:131: G1: 61 ca — 47 request từ chối, 7 request nhận, 7 response
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/httpx	0.045s
+FAIL
+== và e2e cũng phải đỏ ==
+! go test ./internal/proxy/ -run TestSmugglingE2E -count=1 -tags nodefense
+--- FAIL: TestSmugglingE2E (2.18s)
+--- FAIL: TestSmugglingE2E/01-clte-basic.txt (0.01s)
+smuggle_test.go:91: CL.TE cơ bản: CL=6, TE=chunked: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/02-tecl-basic.txt (0.00s)
+smuggle_test.go:91: TE.CL cơ bản: TE=chunked, CL=4: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/03-clte-cl-zero.txt (0.00s)
+smuggle_test.go:91: CL=0 + TE=chunked: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/10-tete-double-header.txt (0.00s)
+smuggle_test.go:91: TE.TE: hai dòng Transfer-Encoding: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/11-tete-chunked-chunked.txt (0.01s)
+smuggle_test.go:91: TE: chunked, chunked: status 404, muốn 501
+--- FAIL: TestSmugglingE2E/12-tete-xchunked.txt (0.00s)
+smuggle_test.go:91: TE: xchunked: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/13-tete-space-before-colon.txt (0.00s)
+smuggle_test.go:91: 'Transfer-Encoding : chunked' (SP trước ':'): status 404, muốn 400
+--- FAIL: TestSmugglingE2E/14-tete-identity-chunked.txt (0.01s)
+smuggle_test.go:91: TE: identity, chunked: status 404, muốn 501
+--- FAIL: TestSmugglingE2E/15-tete-chunked-identity.txt (0.00s)
+smuggle_test.go:91: TE: chunked, identity: status 404, muốn 501
+--- FAIL: TestSmugglingE2E/20-cl-dup-diff.txt (0.01s)
+smuggle_test.go:94: Hai CL khác nhau (5, 6): thiếu Connection: close
+--- FAIL: TestSmugglingE2E/21-cl-dup-same.txt (0.01s)
+smuggle_test.go:91: Hai CL giống nhau (5, 5): status 404, muốn 400
+--- FAIL: TestSmugglingE2E/22-cl-plus.txt (0.00s)
+smuggle_test.go:94: CL: +5: thiếu Connection: close
+--- FAIL: TestSmugglingE2E/30-bare-lf-request-line.txt (0.00s)
+smuggle_test.go:91: Bare LF sau request line: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/31-bare-lf-header.txt (0.00s)
+smuggle_test.go:91: Bare LF ở một dòng header: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/45-trailer-content-length.txt (0.00s)
+smuggle_test.go:91: Trailer mang Content-Length: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/46-trailer-transfer-encoding.txt (0.01s)
+smuggle_test.go:91: Trailer mang Transfer-Encoding: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/47-trailer-host.txt (0.01s)
+smuggle_test.go:91: Trailer mang Host: status 404, muốn 400
+--- FAIL: TestSmugglingE2E/90-resp-clte.txt (0.01s)
+smuggle_test.go:136: Response CL=5 + TE=chunked (response splitting): status 200, muốn 502 (upstream trả response mơ hồ)
+--- FAIL: TestSmugglingE2E/91-resp-cl-dup-diff.txt (0.00s)
+smuggle_test.go:136: Response hai CL khác nhau: status 200, muốn 502 (upstream trả response mơ hồ)
+--- FAIL: TestSmugglingE2E/94-resp-trailer-content-length.txt (0.00s)
+smuggle_test.go:132: Response trailer mang Content-Length: body đọc trọn "abc" — proxy đã nuốt trailer bẩn thay vì đóng
+--- FAIL: TestSmugglingE2E/95-resp-ok-eof.txt (2.01s)
+smuggle_test.go:123: OK: response không CL/TE ⇒ tới EOF: 200 body="" err=unexpected EOF, muốn 200 "abc"
+smuggle_test.go:76: G5: 47 ca request từ chối, G7: 7 ca response qua proxy thật
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	2.200s
+FAIL
+exit=0
+
+## ca lật ở parser (TestSmuggling):
+01-clte-basic.txt
+02-tecl-basic.txt
+03-clte-cl-zero.txt
+10-tete-double-header.txt
+11-tete-chunked-chunked.txt
+12-tete-xchunked.txt
+13-tete-space-before-colon.txt
+14-tete-identity-chunked.txt
+15-tete-chunked-identity.txt
+20-cl-dup-diff.txt
+21-cl-dup-same.txt
+22-cl-plus.txt
+30-bare-lf-request-line.txt
+31-bare-lf-header.txt
+45-trailer-content-length.txt
+46-trailer-transfer-encoding.txt
+47-trailer-host.txt
+90-resp-clte.txt
+91-resp-cl-dup-diff.txt
+94-resp-trailer-content-length.txt
+## ca lật e2e (TestSmugglingE2E):
+01-clte-basic.txt
+02-tecl-basic.txt
+03-clte-cl-zero.txt
+10-tete-double-header.txt
+11-tete-chunked-chunked.txt
+12-tete-xchunked.txt
+13-tete-space-before-colon.txt
+14-tete-identity-chunked.txt
+15-tete-chunked-identity.txt
+20-cl-dup-diff.txt
+21-cl-dup-same.txt
+22-cl-plus.txt
+30-bare-lf-request-line.txt
+31-bare-lf-header.txt
+45-trailer-content-length.txt
+46-trailer-transfer-encoding.txt
+47-trailer-host.txt
+90-resp-clte.txt
+91-resp-cl-dup-diff.txt
+94-resp-trailer-content-length.txt
+95-resp-ok-eof.txt

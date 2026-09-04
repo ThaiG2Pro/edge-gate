@@ -1,0 +1,105 @@
+# G4 phase 4 — BenchmarkReadRequest, commit nền b3e08f0 vs HEAD dc3a824, 2026-09-04 12:28, GOTIT-00663, -count 6, máy rỗi (chưa chạy fuzz)
+## nền b3e08f0
+goos: linux
+cpu: 12th Gen Intel(R) Core(TM) i5-1235U
+BenchmarkReadRequest-6   	  607094	      2063 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  661891	      1999 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  630849	      2344 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  634599	      1824 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  632179	      1904 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  563044	      1936 ns/op	     864 B/op	      26 allocs/op
+## HEAD
+BenchmarkReadRequest-6   	  502545	      2261 ns/op	     904 B/op	      28 allocs/op
+BenchmarkReadRequest-6   	  556294	      2250 ns/op	     904 B/op	      28 allocs/op
+BenchmarkReadRequest-6   	  533623	      2159 ns/op	     904 B/op	      28 allocs/op
+BenchmarkReadRequest-6   	  539577	      2213 ns/op	     904 B/op	      28 allocs/op
+BenchmarkReadRequest-6   	  537818	      2279 ns/op	     904 B/op	      28 allocs/op
+BenchmarkReadRequest-6   	  594051	      1930 ns/op	     904 B/op	      28 allocs/op
+
+## HEAD sau khi bỏ bytes.Split trong checkConnectionTokens (12:29)
+BenchmarkReadRequest-6   	  438096	      2623 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  399226	      3098 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  577930	      2233 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  475774	      2148 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  586996	      2197 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest-6   	  551238	      2304 ns/op	     864 B/op	      26 allocs/op
+
+## benchstat nền vs HEAD turn 1 (bytes.Split)
+              │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/base.txt │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/head1.txt │
+              │                                                sec/op                                                │                                        sec/op                                         vs base         │
+ReadRequest-6                                                                                           1.968µ ± 19%                                                                           2.232µ ± 14%  ~ (p=0.180 n=6)
+
+              │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/base.txt │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/head1.txt │
+              │                                                 B/op                                                 │                                      B/op                                        vs base              │
+ReadRequest-6                                                                                             864.0 ± 0%                                                                        904.0 ± 0%  +4.63% (p=0.002 n=6)
+
+              │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/base.txt │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/head1.txt │
+              │                                              allocs/op                                               │                                    allocs/op                                     vs base              │
+ReadRequest-6                                                                                             26.00 ± 0%                                                                        28.00 ± 0%  +7.69% (p=0.002 n=6)
+
+## benchstat nền vs HEAD sau sửa
+              │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/base.txt │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/head2.txt │
+              │                                                sec/op                                                │                                     sec/op                                      vs base               │
+ReadRequest-6                                                                                           1.968µ ± 19%                                                                     2.269µ ± 37%  +15.30% (p=0.026 n=6)
+
+              │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/base.txt │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/head2.txt │
+              │                                                 B/op                                                 │                                        B/op                                         vs base           │
+ReadRequest-6                                                                                             864.0 ± 0%                                                                           864.0 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+              │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/base.txt │ /tmp/claude-1000/-home-thaivro-test-project/2247dd87-db99-4372-8d3a-73aa0f99e9c9/scratchpad/head2.txt │
+              │                                              allocs/op                                               │                                     allocs/op                                       vs base           │
+ReadRequest-6                                                                                             26.00 ± 0%                                                                           26.00 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+## Đo lại (12:30): binary test build sẵn, taskset -c 2, xen kẽ nền/HEAD 5 vòng × count 2 = n=10 mỗi bên
+### nền
+BenchmarkReadRequest 	  579938	      1971 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  602155	      1927 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  588040	      2008 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  593181	      2400 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  544286	      2217 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  588132	      2015 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  544272	      2123 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  595148	      2142 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  564345	      2006 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  607077	      1907 ns/op	     864 B/op	      26 allocs/op
+### HEAD (sau sửa alloc)
+BenchmarkReadRequest 	  552604	      2122 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  511984	      2241 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  536253	      2977 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  397381	      3984 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  549076	      2311 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  472748	      2219 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  495625	      2211 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  515620	      2740 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  555844	      2774 ns/op	     864 B/op	      26 allocs/op
+BenchmarkReadRequest 	  366628	      3455 ns/op	     864 B/op	      26 allocs/op
+### benchstat
+            │ base3.txt │ head3.txt │
+            │                                                sec/op                                                 │                                    sec/op                                      vs base                │
+ReadRequest                                                                                            2.012µ ± 10%                                                                    2.526µ ± 37%  +25.55% (p=0.001 n=10)
+
+            │ base3.txt │ head3.txt │
+            │                                                 B/op                                                  │                                       B/op                                         vs base            │
+ReadRequest                                                                                              864.0 ± 0%                                                                          864.0 ± 0%  ~ (p=1.000 n=10) ¹
+¹ all samples are equal
+
+            │ base3.txt │ head3.txt │
+            │                                               allocs/op                                               │                                     allocs/op                                      vs base            │
+ReadRequest                                                                                              26.00 ± 0%                                                                          26.00 ± 0%  ~ (p=1.000 n=10) ¹
+¹ all samples are equal
+
+## CPU profile share của hàm phase 4 trong ReadRequest (taskset -c 2, benchtime 3s)
+### trước khi bỏ tra map Host lặp
+Duration: 3.85s, Total samples = 4.07s (105.75%)
+         0     0%     0%      0.28s  6.88%  github.com/thaivro/edgegate/internal/httpx.ReadRequest
+         0     0%     0%      0.14s  3.44%  github.com/thaivro/edgegate/internal/httpx.checkConnectionTokens
+         0     0%     0%      0.14s  3.44%  github.com/thaivro/edgegate/internal/httpx.normalizeTarget
+     0.02s  0.49%  5.16%      0.02s  0.49%  github.com/thaivro/edgegate/internal/httpx.validHost
+### sau
+Duration: 5.52s, Total samples = 6s (108.65%)
+         0     0%     0%      0.39s  6.50%  github.com/thaivro/edgegate/internal/httpx.ReadRequest
+         0     0%     0%      0.30s  5.00%  github.com/thaivro/edgegate/internal/httpx.checkConnectionTokens
+     0.02s  0.33%  1.33%      0.09s  1.50%  github.com/thaivro/edgegate/internal/httpx.normalizeTarget
+     0.07s  1.17%  2.50%      0.07s  1.17%  github.com/thaivro/edgegate/internal/httpx.validHost

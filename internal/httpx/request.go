@@ -94,7 +94,7 @@ func ReadRequest(br *bufio.Reader, lim Limits) (*Request, error) {
 	}
 	// Phase 4 D4/D5/D6: Host phải đúng cú pháp uri-host[:port]; request-target
 	// phải về được origin-form và không mâu thuẫn với Host; CONNECT ⇒ 501.
-	if err := normalizeTarget(req, h); err != nil {
+	if err := normalizeTarget(req, h, hosts); err != nil {
 		return nil, err
 	}
 	// Phase 4 D7: Connection: không được liệt kê Host / Content-Length.
@@ -124,7 +124,14 @@ func ReadRequest(br *bufio.Reader, lim Limits) (*Request, error) {
 //   - Dạng khác (authority-form không CONNECT, "//x", "foo") ⇒ 400.
 //
 // Sau đó Host (dù lấy từ đâu) phải đúng cú pháp uri-host[":" port].
-func normalizeTarget(req *Request, h Header) error {
+//
+// hosts là h.Values("Host") caller đã tra — tránh tra map (kèm
+// CanonicalMIMEHeaderKey) thêm ba lần trên đường nóng (profile turn 2).
+func normalizeTarget(req *Request, h Header, hosts []string) error {
+	hasHost, host := len(hosts) > 0, ""
+	if hasHost {
+		host = hosts[0]
+	}
 	if req.Method == "CONNECT" {
 		return ErrConnectNotSupported
 	}
@@ -158,13 +165,14 @@ func normalizeTarget(req *Request, h Header) error {
 		if authority == "" || !validHost(authority) {
 			return ErrBadTarget
 		}
-		if hv := h.Get("Host"); h.Has("Host") && !strings.EqualFold(hv, authority) {
+		if hasHost && !strings.EqualFold(host, authority) {
 			return ErrBadHost // hai nguồn, hai địa chỉ ⇒ không đoán
 		}
 		h.Set("Host", authority)
+		hasHost, host = true, authority
 		req.Target = path
 	}
-	if h.Has("Host") && !validHost(h.Get("Host")) {
+	if hasHost && !validHost(host) {
 		return ErrBadHost
 	}
 	return nil

@@ -1,0 +1,5 @@
+# G3 phase 4 — FuzzAgainstNetHTTP 300s sau D1/D2, HEAD dc3a824+wip, 2026-09-04 12:38, GOTIT-00663, máy chỉ chạy fuzz
+PASS
+ok  	github.com/thaivro/edgegate/internal/httpx	300.489s
+fuzz: elapsed: 5m0s, execs: 7753072 (0/sec), new interesting: 40 (total: 767)
+exit=0

@@ -1,0 +1,10 @@
+# Phase 4 turn 2 — go test ./... -race -count=1, 2026-09-04 12:35, HEAD dc3a824+wip, chạy song song với fuzz 300s (CPU tranh chấp)
+ok  	github.com/thaivro/edgegate/internal/frame	2.503s
+ok  	github.com/thaivro/edgegate/internal/httpx	2.578s
+ok  	github.com/thaivro/edgegate/internal/proxy	9.929s
+exit=0
+
+## số test theo package (-v, đếm '--- PASS' cấp 1)
+httpx: 28
+proxy: 18
+frame: 11

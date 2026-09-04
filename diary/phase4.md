@@ -2,7 +2,7 @@
 
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** _______
 - **Bắt đầu:** 2026-09-04 11:11 · **Kết thúc:** _______
-- **Trạng thái:** 🔨 turn 1 xong 11:55 (code + test xanh + phản chứng đỏ 20/52 ca; G1 nửa sau và G2 **trông sai** ở lần chạy đầu — chấm ở turn 2). Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
+- **Trạng thái:** 🔨 turn 2 xong 12:45 — **3/7 giả thuyết sai** (G1 nửa sau 38 % vs ≥ 40 %, G2 46 % vs 60-75 %, G4 6.5 % vs < 5 %), cộng 3 lỗi vận hành (`pkill -f` lần hai, `&&`+`&`, hook `rtk` tóm tắt). 57 test xanh `-race`, 61/61 ca parser, 54/54 e2e, phản chứng đỏ 20/52, diff-fuzz 7.75 M exec 0 lệch. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
 - **Commit:** _______ (commit nền `b3e08f0`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase4-log.md`](phase4-log.md). File này là bản biên tập.
@@ -102,19 +102,68 @@ connection**, byte pipelined sau ca bị từ chối không bao giờ được t
 
 ## Reproduce toàn bộ phase
 
-_(điền ở turn 2)_
+```bash
+# 1. bộ ca smuggling, hai tầng (không cần server nào chạy)
+make smugglelab                      # TestSmuggling (61 ca, parser) + TestSmugglingE2E (proxy thật) + XFF + absolute-form
+make smugglelab-nodefense            # PHẢI đỏ: 20/52 ca từ chối lật ở parser, 21 ở e2e
+rtk proxy go test ./internal/httpx/ -run TestSmugglingOracle -v   # G2: bảng "mình strict hơn net/http ở đâu"
+
+# 2. toàn bộ test + diff-fuzz sau D1/D2
+go test ./... -race -count=1
+go test ./internal/httpx/ -run '^$' -fuzz FuzzAgainstNetHTTP -fuzztime 300s -fuzzminimizetime 1s   # G3
+
+# 3. G4: chi phí kiểm tra thêm. So allocs/op và CPU share, KHÔNG so ns/op trên WSL2
+git worktree add /tmp/base b3e08f0 && cp internal/httpx/smuggle_test.go /tmp/base/internal/httpx/bench_base_test.go  # (giữ lại chỉ BenchmarkReadRequest)
+(cd /tmp/base && go test -c -o /tmp/base.test ./internal/httpx/) && go test -c -o /tmp/head.test ./internal/httpx/
+for i in 1 2 3 4 5; do for t in base head; do taskset -c 2 /tmp/$t.test -test.run '^$' -test.bench 'ReadRequest$' -test.count 2 -test.benchmem >> /tmp/$t.txt; done; done
+go run golang.org/x/perf/cmd/benchstat@latest /tmp/base.txt /tmp/head.txt
+taskset -c 2 /tmp/head.test -test.run '^$' -test.bench 'ReadRequest$' -test.benchtime 3s -test.cpuprofile /tmp/cpu.out
+go tool pprof -top -cum -focus='normalizeTarget|validHost|checkConnectionTokens' /tmp/head.test /tmp/cpu.out
+
+# 4. e2e binary thật: make proxylab + 3 payload thô qua nc (script: xem bench/p4-e2e-binary.txt)
+```
 
 ## Nhật ký
 
-_(turn 2)_
+Chi tiết theo giờ ở `diary/phase4-log.md`. Tóm tắt turn 2:
+
+1. G4 đo trước khi máy bận. Alloc lộ 2 cấp phát mới (`bytes.Split` trong `checkConnectionTokens`),
+   sửa về 26 allocs/op như nền. ns/op nhiễu ± 10-37 % trên WSL2, không đo được hiệu ứng ~5 %; đổi
+   thước sang **CPU share theo pprof**: hàm phase 4 chiếm **6.5 %** của `ReadRequest`.
+2. Hook `rtk` tóm tắt output `go test -v` trong script ⇒ ba file bench rỗng; chạy lại bằng `rtk proxy`.
+3. `pkill -f` với pattern nằm trong dòng lệnh: **tự sát lần hai** (phase 3 đã ghi). Fuzz phải chạy lại.
+4. `go build … && ./bin/x &` đưa cả chuỗi vào nền ⇒ `nc` gõ vào cổng chưa mở. Tách build ra.
+5. Mọi bài đúng/sai xanh ngay: 61/61 ca parser, 54/54 ca e2e, phản chứng đỏ 20/52. Hai giả thuyết
+   **số** (G1 nửa sau 38 % vs ≥ 40 %, G2 46 % vs 60-75 %) sai; G4 sai sát (6.5 % vs < 5 %).
 
 ## Giả thuyết sai
 
-_(turn 2)_
+| Tôi tưởng là | Thực tế là | Lệnh + output đã lật tẩy | Đã sửa thế nào |
+|---|---|---|---|
+| G2: `net/http` cùng từ chối 60-75 % ca | **46 %** (24/52). Go **nhận** CL.TE cơ bản (ưu tiên TE, đúng RFC 9112 §6.1), TE.CL, bare LF, trailer mang CL, `Connection: Host`, response CL+TE, TE trên response 1.0 | `rtk proxy go test ./internal/httpx -run TestSmugglingOracle -v` → `G2: ca từ chối 52 — oracle cùng từ chối 24 (46 %), mình strict hơn 28, hướng nguy hiểm 0` (`bench/p4-oracle.txt`) | Không sửa code: hướng lệch là hướng an toàn. Sửa cách nghĩ: backend Go khoan dung **đúng những chỗ RFC cho phép**, và mỗi chỗ đó là một ca proxy phải chặn thay nó |
+| G1 nửa sau: tắt 7 phòng tuyến lật ≥ 40 % ca từ chối | **38 %** (20/52) ở parser. 32 ca còn lại bị chặn bởi hàng rào phase 2 không có công tắc (CTL, obs-fold, tên header không token, chunk-size, Host/target, CONNECT…) | `make smugglelab-nodefense` → 20 dòng `--- FAIL` (`bench/p4-smugglelab-nodefense.txt`) | Không nới bản nodefense để đủ số. Ghi: bộ ca đo **cả** hàng rào phase 2; phần "lật được" chỉ là phần phase 4 thêm |
+| G4: kiểm tra thêm < 5 % | **≈ 6.5 %** CPU share (`pprof -focus`, 3 s, taskset). ns/op không dùng được: ± 10-37 % | `bench/p4-bench-readrequest.txt`: benchstat `+25.5 % (p=0.001)` nhưng mẫu HEAD 3455/3984 ns; pprof: `ReadRequest 6.50 %` trong focus | Bỏ 2 alloc (`bytes.Split` → `strings.Cut`), bỏ 3 lần tra map Host. Đổi thước đo sang allocs/op + CPU share |
+| Ca 10/12 (TE.TE kèm CL) ⇒ 501 | **400**: có CL ⇒ D1 bắt trước kiểm TE | `go test -race` lần 1 turn 1: `status 400, muốn 501` | Sửa `expect`; thứ tự phòng tuyến quyết định status, ghi vào `why` |
+| Response bẩn ⇒ 502 **và** đóng connection client | Client giữ được (D6 phase 3: body request đã đọc hết, chưa gửi gì); chỉ upstream bị đóng | turn 1 lần 1: `502 phải kèm Connection: close` đỏ 4 ca | Sửa test + D10 |
+| `pkill -f <pattern>` trong cùng dòng với lệnh mới là vô hại nếu pattern khác | Dòng lệnh chứa pattern ⇒ pkill giết chính shell ⇒ exit 144, lệnh mới chết theo. **Lần hai** (phase 3 §2 23:45 đã ghi) | task `bict1p1tm` exit 144 | Quy tắc: `pkill` luôn ở lệnh riêng; kiểm `pgrep -c -x` trước |
+| `go build … && ./bin/x … &` chạy build đồng bộ rồi mới nền | `&` áp cho cả danh sách `&&` ⇒ build cũng vào nền, `sleep 0.5` hết trước khi build xong | e2e lần 1: 3 mục `nc` rỗng | Build ở dòng riêng |
+| Output `go test -v` trong `{ …; } > file` là thô | Hook `rtk` viết lại `go test` ⇒ `-json` + tóm tắt, mất `--- FAIL`/`t.Logf` | `bench/p4-oracle.txt` lần 1: `Go test: 1 passed in 1 packages` | `rtk proxy go test` cho mọi lệnh cần output thô |
 
 ## Số đo
 
-_(turn 2)_
+Phase này đo **đúng/sai theo ca**; chỉ G4 là thời gian (closed-loop vô nghĩa ở đây — là micro-bench
+một hàm, `taskset -c 2`, WSL2, cùng máy phase 0-3). Nguồn: `bench/p4-*.txt`, HEAD `dc3a824`+turn 2,
+2026-09-04 12:28-12:45.
+
+| # | Đăng ký | Đo được | Kết luận |
+|---|---|---|---|
+| G1 | ≥ 40 ca (≥ 30 từ chối / ≥ 5 nhận / ≥ 5 response), N/N đúng; nodefense lật ≥ 40 % ca từ chối | **61 ca** (47 request từ chối, 7 nhận, 7 response), **61/61** parser, **54/54** e2e; nodefense lật **20/52 = 38 %** parser (01 02 03 10-15 20 21 22 30 31 45 46 47 90 91 94), 21 e2e (thêm `95-resp-ok-eof` — do bẫy #2 phase 3 cũng bật dưới cùng tag) | Nửa đầu **đúng**, nửa sau **sai sát ranh**. Phản chứng **đỏ** ở cả hai tầng |
+| G2 | oracle cùng từ chối 60-75 %; 0 ca hướng nguy hiểm | **24/52 = 46 %** cùng từ chối; mình strict hơn **28**; hướng nguy hiểm **0** | Tỉ lệ **sai**, phần an toàn **đúng**. Danh sách 28 ca ở `bench/p4-oracle.txt` |
+| G3 | diff-fuzz 300 s: 0 lệch, ≥ 300 k exec | **7 753 072 exec**, 0 "NGUY HIỂM"/"LỆCH", 40 input mới (corpus 767), PASS 300.5 s (`bench/p4-difffuzz-300s.txt`) | **Đúng.** D1/D2 chỉ đi hướng vô hại: mọi input Go nhận mà mình cũng nhận vẫn cùng body và cùng phần dư |
+| G4 | kiểm tra thêm < 5 % ns/op | allocs 26 → 28 → **26** (sau sửa); ns/op nhiễu ± 10-37 %, benchstat +25 % không tin được; **CPU share 6.9 % → 6.5 %** sau bỏ tra map | **Sai** (6.5 % > 5 %), và sai cả **thước đo**: ns/op trên WSL2 không phân giải được 5 % |
+| G5 | 100 % ca từ chối: status đúng + close + đúng 1 response dù pipeline | **47/47** (`TestSmugglingE2E`); binary thật qua `nc`: CL.TE + GET pipelined ⇒ 1 response `400`, `Connection: close` | **Đúng** |
+| G6 | XFF giả từ peer không tin: 0/N lọt, `X-Real-IP` = peer; peer tin: N/N append | `TestXFFUntrustedReplaced` PASS (0 lần `1.2.3.4`, `X-Forwarded-For: 127.0.0.1`, `X-Real-Ip: 127.0.0.1`, `Forwarded` mất); `TestHopByHopAndXFF` với `127.0.0.0/8` ⇒ `10.0.0.1, 127.0.0.1`; binary thật `nc`: cùng kết quả | **Đúng** |
+| G7 | 4 ca response bẩn ⇒ 502, 0 byte lọt | 4 ca head bẩn (90 91 92 93) ⇒ **502**, body không chứa `EVL`/`hello`; ca 94 (trailer bẩn, head sạch) ⇒ 200 rồi **đóng giữa body**, client thấy lỗi đọc, không 502 thứ hai | **Đúng**; ca 94 là hệ quả "một response cho một request" phase 3 |
 
 ## Invariant + lệnh kiểm chứng
 

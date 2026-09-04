@@ -1,0 +1,286 @@
+# G1/G5/G6/G7 phase 4 — make smugglelab, 2026-09-04 12:32, GOTIT-00663
+go test ./internal/httpx/ -run 'TestSmuggling' -v -count=1
+=== RUN   TestSmuggling
+=== RUN   TestSmuggling/01-clte-basic.txt
+=== RUN   TestSmuggling/02-tecl-basic.txt
+=== RUN   TestSmuggling/03-clte-cl-zero.txt
+=== RUN   TestSmuggling/10-tete-double-header.txt
+=== RUN   TestSmuggling/11-tete-chunked-chunked.txt
+=== RUN   TestSmuggling/12-tete-xchunked.txt
+=== RUN   TestSmuggling/13-tete-space-before-colon.txt
+=== RUN   TestSmuggling/14-tete-identity-chunked.txt
+=== RUN   TestSmuggling/15-tete-chunked-identity.txt
+=== RUN   TestSmuggling/16-te-http10.txt
+=== RUN   TestSmuggling/17-te-vertical-tab.txt
+=== RUN   TestSmuggling/18-te-obs-fold.txt
+=== RUN   TestSmuggling/19-te-name-nul.txt
+=== RUN   TestSmuggling/20-cl-dup-diff.txt
+=== RUN   TestSmuggling/21-cl-dup-same.txt
+=== RUN   TestSmuggling/22-cl-plus.txt
+=== RUN   TestSmuggling/23-cl-hex.txt
+=== RUN   TestSmuggling/24-cl-comma-list.txt
+=== RUN   TestSmuggling/25-cl-negative.txt
+=== RUN   TestSmuggling/26-cl-overflow.txt
+=== RUN   TestSmuggling/27-cl-trailing-space-inner.txt
+=== RUN   TestSmuggling/30-bare-lf-request-line.txt
+=== RUN   TestSmuggling/31-bare-lf-header.txt
+=== RUN   TestSmuggling/32-stray-cr-in-value.txt
+=== RUN   TestSmuggling/40-chunk-size-leading-space.txt
+=== RUN   TestSmuggling/41-chunk-size-trailing-space.txt
+=== RUN   TestSmuggling/42-chunk-size-hex-prefix.txt
+=== RUN   TestSmuggling/43-chunk-size-ext-space.txt
+=== RUN   TestSmuggling/44-chunk-data-no-crlf.txt
+=== RUN   TestSmuggling/45-trailer-content-length.txt
+=== RUN   TestSmuggling/46-trailer-transfer-encoding.txt
+=== RUN   TestSmuggling/47-trailer-host.txt
+=== RUN   TestSmuggling/50-connection-host.txt
+=== RUN   TestSmuggling/51-connection-content-length.txt
+=== RUN   TestSmuggling/52-connection-bad-token.txt
+=== RUN   TestSmuggling/60-host-dup.txt
+=== RUN   TestSmuggling/61-host-missing-11.txt
+=== RUN   TestSmuggling/62-host-space.txt
+=== RUN   TestSmuggling/63-host-slash.txt
+=== RUN   TestSmuggling/64-host-at.txt
+=== RUN   TestSmuggling/65-absolute-form-host-mismatch.txt
+=== RUN   TestSmuggling/66-absolute-form-https.txt
+=== RUN   TestSmuggling/67-asterisk-get.txt
+=== RUN   TestSmuggling/68-connect.txt
+=== RUN   TestSmuggling/69-target-space.txt
+=== RUN   TestSmuggling/70-target-network-path.txt
+=== RUN   TestSmuggling/71-absolute-form-no-host.txt
+=== RUN   TestSmuggling/80-ok-cl.txt
+=== RUN   TestSmuggling/81-ok-chunked.txt
+=== RUN   TestSmuggling/82-ok-chunked-uppercase.txt
+=== RUN   TestSmuggling/83-ok-absolute-form.txt
+=== RUN   TestSmuggling/84-ok-options-asterisk.txt
+=== RUN   TestSmuggling/85-ok-http10-no-host.txt
+=== RUN   TestSmuggling/86-ok-host-ipv6-port.txt
+=== RUN   TestSmuggling/90-resp-clte.txt
+=== RUN   TestSmuggling/91-resp-cl-dup-diff.txt
+=== RUN   TestSmuggling/92-resp-header-nul.txt
+=== RUN   TestSmuggling/93-resp-te-http10.txt
+=== RUN   TestSmuggling/94-resp-trailer-content-length.txt
+=== RUN   TestSmuggling/95-resp-ok-eof.txt
+=== RUN   TestSmuggling/96-resp-ok-head-with-cl.txt
+=== NAME  TestSmuggling
+    smuggle_test.go:131: G1: 61 ca — 47 request từ chối, 7 request nhận, 7 response
+--- PASS: TestSmuggling (0.01s)
+    --- PASS: TestSmuggling/01-clte-basic.txt (0.00s)
+    --- PASS: TestSmuggling/02-tecl-basic.txt (0.00s)
+    --- PASS: TestSmuggling/03-clte-cl-zero.txt (0.00s)
+    --- PASS: TestSmuggling/10-tete-double-header.txt (0.00s)
+    --- PASS: TestSmuggling/11-tete-chunked-chunked.txt (0.00s)
+    --- PASS: TestSmuggling/12-tete-xchunked.txt (0.00s)
+    --- PASS: TestSmuggling/13-tete-space-before-colon.txt (0.00s)
+    --- PASS: TestSmuggling/14-tete-identity-chunked.txt (0.00s)
+    --- PASS: TestSmuggling/15-tete-chunked-identity.txt (0.00s)
+    --- PASS: TestSmuggling/16-te-http10.txt (0.00s)
+    --- PASS: TestSmuggling/17-te-vertical-tab.txt (0.00s)
+    --- PASS: TestSmuggling/18-te-obs-fold.txt (0.00s)
+    --- PASS: TestSmuggling/19-te-name-nul.txt (0.00s)
+    --- PASS: TestSmuggling/20-cl-dup-diff.txt (0.00s)
+    --- PASS: TestSmuggling/21-cl-dup-same.txt (0.00s)
+    --- PASS: TestSmuggling/22-cl-plus.txt (0.00s)
+    --- PASS: TestSmuggling/23-cl-hex.txt (0.00s)
+    --- PASS: TestSmuggling/24-cl-comma-list.txt (0.00s)
+    --- PASS: TestSmuggling/25-cl-negative.txt (0.00s)
+    --- PASS: TestSmuggling/26-cl-overflow.txt (0.00s)
+    --- PASS: TestSmuggling/27-cl-trailing-space-inner.txt (0.00s)
+    --- PASS: TestSmuggling/30-bare-lf-request-line.txt (0.00s)
+    --- PASS: TestSmuggling/31-bare-lf-header.txt (0.00s)
+    --- PASS: TestSmuggling/32-stray-cr-in-value.txt (0.00s)
+    --- PASS: TestSmuggling/40-chunk-size-leading-space.txt (0.00s)
+    --- PASS: TestSmuggling/41-chunk-size-trailing-space.txt (0.00s)
+    --- PASS: TestSmuggling/42-chunk-size-hex-prefix.txt (0.00s)
+    --- PASS: TestSmuggling/43-chunk-size-ext-space.txt (0.00s)
+    --- PASS: TestSmuggling/44-chunk-data-no-crlf.txt (0.00s)
+    --- PASS: TestSmuggling/45-trailer-content-length.txt (0.00s)
+    --- PASS: TestSmuggling/46-trailer-transfer-encoding.txt (0.00s)
+    --- PASS: TestSmuggling/47-trailer-host.txt (0.00s)
+    --- PASS: TestSmuggling/50-connection-host.txt (0.00s)
+    --- PASS: TestSmuggling/51-connection-content-length.txt (0.00s)
+    --- PASS: TestSmuggling/52-connection-bad-token.txt (0.00s)
+    --- PASS: TestSmuggling/60-host-dup.txt (0.00s)
+    --- PASS: TestSmuggling/61-host-missing-11.txt (0.00s)
+    --- PASS: TestSmuggling/62-host-space.txt (0.00s)
+    --- PASS: TestSmuggling/63-host-slash.txt (0.00s)
+    --- PASS: TestSmuggling/64-host-at.txt (0.00s)
+    --- PASS: TestSmuggling/65-absolute-form-host-mismatch.txt (0.00s)
+    --- PASS: TestSmuggling/66-absolute-form-https.txt (0.00s)
+    --- PASS: TestSmuggling/67-asterisk-get.txt (0.00s)
+    --- PASS: TestSmuggling/68-connect.txt (0.00s)
+    --- PASS: TestSmuggling/69-target-space.txt (0.00s)
+    --- PASS: TestSmuggling/70-target-network-path.txt (0.00s)
+    --- PASS: TestSmuggling/71-absolute-form-no-host.txt (0.00s)
+    --- PASS: TestSmuggling/80-ok-cl.txt (0.00s)
+    --- PASS: TestSmuggling/81-ok-chunked.txt (0.00s)
+    --- PASS: TestSmuggling/82-ok-chunked-uppercase.txt (0.00s)
+    --- PASS: TestSmuggling/83-ok-absolute-form.txt (0.00s)
+    --- PASS: TestSmuggling/84-ok-options-asterisk.txt (0.00s)
+    --- PASS: TestSmuggling/85-ok-http10-no-host.txt (0.00s)
+    --- PASS: TestSmuggling/86-ok-host-ipv6-port.txt (0.00s)
+    --- PASS: TestSmuggling/90-resp-clte.txt (0.00s)
+    --- PASS: TestSmuggling/91-resp-cl-dup-diff.txt (0.00s)
+    --- PASS: TestSmuggling/92-resp-header-nul.txt (0.00s)
+    --- PASS: TestSmuggling/93-resp-te-http10.txt (0.00s)
+    --- PASS: TestSmuggling/94-resp-trailer-content-length.txt (0.00s)
+    --- PASS: TestSmuggling/95-resp-ok-eof.txt (0.00s)
+    --- PASS: TestSmuggling/96-resp-ok-head-with-cl.txt (0.00s)
+=== RUN   TestSmugglingOracle
+    smuggle_test.go:170: G2: ca từ chối 52 — oracle cùng từ chối 24 (46 %), mình strict hơn 28, hướng nguy hiểm 0
+    smuggle_test.go:172: G2: mình strict hơn net/http ở:
+          01-clte-basic.txt (oracle body="" dư="G")
+          02-tecl-basic.txt (oracle body="GPOST / HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 15\r\n\r\nx=1" dư="")
+          03-clte-cl-zero.txt (oracle body="hello" dư="")
+          13-tete-space-before-colon.txt (oracle body="0\r\n\r\n" dư="")
+          16-te-http10.txt (oracle body="" dư="0\r\n\r\n")
+          18-te-obs-fold.txt (oracle body="" dư="")
+          21-cl-dup-same.txt (oracle body="hello" dư="")
+          30-bare-lf-request-line.txt (oracle body="hello" dư="")
+          31-bare-lf-header.txt (oracle body="hello" dư="")
+          41-chunk-size-trailing-space.txt (oracle body="hello" dư="")
+          45-trailer-content-length.txt (oracle body="hello" dư="")
+          46-trailer-transfer-encoding.txt (oracle body="" dư="")
+          47-trailer-host.txt (oracle body="" dư="")
+          50-connection-host.txt (oracle body="" dư="")
+          51-connection-content-length.txt (oracle body="hello" dư="")
+          52-connection-bad-token.txt (oracle body="" dư="")
+          62-host-space.txt (oracle body="" dư="")
+          63-host-slash.txt (oracle body="" dư="")
+          64-host-at.txt (oracle body="" dư="")
+          65-absolute-form-host-mismatch.txt (oracle body="" dư="")
+          66-absolute-form-https.txt (oracle body="" dư="")
+          67-asterisk-get.txt (oracle body="" dư="")
+          68-connect.txt (oracle body="" dư="")
+          70-target-network-path.txt (oracle body="" dư="")
+          71-absolute-form-no-host.txt (oracle body="" dư="")
+          90-resp-clte.txt (oracle body="" dư="HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nEVL")
+          93-resp-te-http10.txt (oracle body="0\r\n\r\n" dư="")
+          94-resp-trailer-content-length.txt (oracle body="abc" dư="")
+--- PASS: TestSmugglingOracle (0.01s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/httpx	0.093s
+go test ./internal/proxy/ -run 'TestSmugglingE2E|TestXFF|TestAbsoluteForm' -v -count=1
+=== RUN   TestSmugglingE2E
+=== RUN   TestSmugglingE2E/01-clte-basic.txt
+=== RUN   TestSmugglingE2E/02-tecl-basic.txt
+=== RUN   TestSmugglingE2E/03-clte-cl-zero.txt
+=== RUN   TestSmugglingE2E/10-tete-double-header.txt
+=== RUN   TestSmugglingE2E/11-tete-chunked-chunked.txt
+=== RUN   TestSmugglingE2E/12-tete-xchunked.txt
+=== RUN   TestSmugglingE2E/13-tete-space-before-colon.txt
+=== RUN   TestSmugglingE2E/14-tete-identity-chunked.txt
+=== RUN   TestSmugglingE2E/15-tete-chunked-identity.txt
+=== RUN   TestSmugglingE2E/16-te-http10.txt
+=== RUN   TestSmugglingE2E/17-te-vertical-tab.txt
+=== RUN   TestSmugglingE2E/18-te-obs-fold.txt
+=== RUN   TestSmugglingE2E/19-te-name-nul.txt
+=== RUN   TestSmugglingE2E/20-cl-dup-diff.txt
+=== RUN   TestSmugglingE2E/21-cl-dup-same.txt
+=== RUN   TestSmugglingE2E/22-cl-plus.txt
+=== RUN   TestSmugglingE2E/23-cl-hex.txt
+=== RUN   TestSmugglingE2E/24-cl-comma-list.txt
+=== RUN   TestSmugglingE2E/25-cl-negative.txt
+=== RUN   TestSmugglingE2E/26-cl-overflow.txt
+=== RUN   TestSmugglingE2E/27-cl-trailing-space-inner.txt
+=== RUN   TestSmugglingE2E/30-bare-lf-request-line.txt
+=== RUN   TestSmugglingE2E/31-bare-lf-header.txt
+=== RUN   TestSmugglingE2E/32-stray-cr-in-value.txt
+=== RUN   TestSmugglingE2E/40-chunk-size-leading-space.txt
+=== RUN   TestSmugglingE2E/41-chunk-size-trailing-space.txt
+=== RUN   TestSmugglingE2E/42-chunk-size-hex-prefix.txt
+=== RUN   TestSmugglingE2E/43-chunk-size-ext-space.txt
+=== RUN   TestSmugglingE2E/44-chunk-data-no-crlf.txt
+=== RUN   TestSmugglingE2E/45-trailer-content-length.txt
+=== RUN   TestSmugglingE2E/46-trailer-transfer-encoding.txt
+=== RUN   TestSmugglingE2E/47-trailer-host.txt
+=== RUN   TestSmugglingE2E/50-connection-host.txt
+=== RUN   TestSmugglingE2E/51-connection-content-length.txt
+=== RUN   TestSmugglingE2E/52-connection-bad-token.txt
+=== RUN   TestSmugglingE2E/60-host-dup.txt
+=== RUN   TestSmugglingE2E/61-host-missing-11.txt
+=== RUN   TestSmugglingE2E/62-host-space.txt
+=== RUN   TestSmugglingE2E/63-host-slash.txt
+=== RUN   TestSmugglingE2E/64-host-at.txt
+=== RUN   TestSmugglingE2E/65-absolute-form-host-mismatch.txt
+=== RUN   TestSmugglingE2E/66-absolute-form-https.txt
+=== RUN   TestSmugglingE2E/67-asterisk-get.txt
+=== RUN   TestSmugglingE2E/68-connect.txt
+=== RUN   TestSmugglingE2E/69-target-space.txt
+=== RUN   TestSmugglingE2E/70-target-network-path.txt
+=== RUN   TestSmugglingE2E/71-absolute-form-no-host.txt
+=== RUN   TestSmugglingE2E/90-resp-clte.txt
+    forward.go:103: proxy: đọc response: http 400: Content-Length and Transfer-Encoding both present
+=== RUN   TestSmugglingE2E/91-resp-cl-dup-diff.txt
+    forward.go:103: proxy: đọc response: http 400: bad Content-Length
+=== RUN   TestSmugglingE2E/92-resp-header-nul.txt
+    forward.go:103: proxy: đọc response: http 400: giá trị header chứa CTL
+=== RUN   TestSmugglingE2E/93-resp-te-http10.txt
+    forward.go:103: proxy: đọc response: http 400: Transfer-Encoding trên HTTP/1.0
+=== RUN   TestSmugglingE2E/94-resp-trailer-content-length.txt
+=== RUN   TestSmugglingE2E/95-resp-ok-eof.txt
+=== RUN   TestSmugglingE2E/96-resp-ok-head-with-cl.txt
+=== NAME  TestSmugglingE2E
+    smuggle_test.go:76: G5: 47 ca request từ chối, G7: 7 ca response qua proxy thật
+--- PASS: TestSmugglingE2E (2.16s)
+    --- PASS: TestSmugglingE2E/01-clte-basic.txt (0.00s)
+    --- PASS: TestSmugglingE2E/02-tecl-basic.txt (0.01s)
+    --- PASS: TestSmugglingE2E/03-clte-cl-zero.txt (0.00s)
+    --- PASS: TestSmugglingE2E/10-tete-double-header.txt (0.00s)
+    --- PASS: TestSmugglingE2E/11-tete-chunked-chunked.txt (0.00s)
+    --- PASS: TestSmugglingE2E/12-tete-xchunked.txt (0.00s)
+    --- PASS: TestSmugglingE2E/13-tete-space-before-colon.txt (0.00s)
+    --- PASS: TestSmugglingE2E/14-tete-identity-chunked.txt (0.00s)
+    --- PASS: TestSmugglingE2E/15-tete-chunked-identity.txt (0.00s)
+    --- PASS: TestSmugglingE2E/16-te-http10.txt (0.00s)
+    --- PASS: TestSmugglingE2E/17-te-vertical-tab.txt (0.00s)
+    --- PASS: TestSmugglingE2E/18-te-obs-fold.txt (0.00s)
+    --- PASS: TestSmugglingE2E/19-te-name-nul.txt (0.00s)
+    --- PASS: TestSmugglingE2E/20-cl-dup-diff.txt (0.00s)
+    --- PASS: TestSmugglingE2E/21-cl-dup-same.txt (0.00s)
+    --- PASS: TestSmugglingE2E/22-cl-plus.txt (0.00s)
+    --- PASS: TestSmugglingE2E/23-cl-hex.txt (0.00s)
+    --- PASS: TestSmugglingE2E/24-cl-comma-list.txt (0.00s)
+    --- PASS: TestSmugglingE2E/25-cl-negative.txt (0.00s)
+    --- PASS: TestSmugglingE2E/26-cl-overflow.txt (0.01s)
+    --- PASS: TestSmugglingE2E/27-cl-trailing-space-inner.txt (0.00s)
+    --- PASS: TestSmugglingE2E/30-bare-lf-request-line.txt (0.00s)
+    --- PASS: TestSmugglingE2E/31-bare-lf-header.txt (0.00s)
+    --- PASS: TestSmugglingE2E/32-stray-cr-in-value.txt (0.00s)
+    --- PASS: TestSmugglingE2E/40-chunk-size-leading-space.txt (0.01s)
+    --- PASS: TestSmugglingE2E/41-chunk-size-trailing-space.txt (0.01s)
+    --- PASS: TestSmugglingE2E/42-chunk-size-hex-prefix.txt (0.00s)
+    --- PASS: TestSmugglingE2E/43-chunk-size-ext-space.txt (0.00s)
+    --- PASS: TestSmugglingE2E/44-chunk-data-no-crlf.txt (0.00s)
+    --- PASS: TestSmugglingE2E/45-trailer-content-length.txt (0.01s)
+    --- PASS: TestSmugglingE2E/46-trailer-transfer-encoding.txt (0.00s)
+    --- PASS: TestSmugglingE2E/47-trailer-host.txt (0.00s)
+    --- PASS: TestSmugglingE2E/50-connection-host.txt (0.00s)
+    --- PASS: TestSmugglingE2E/51-connection-content-length.txt (0.00s)
+    --- PASS: TestSmugglingE2E/52-connection-bad-token.txt (0.00s)
+    --- PASS: TestSmugglingE2E/60-host-dup.txt (0.00s)
+    --- PASS: TestSmugglingE2E/61-host-missing-11.txt (0.00s)
+    --- PASS: TestSmugglingE2E/62-host-space.txt (0.00s)
+    --- PASS: TestSmugglingE2E/63-host-slash.txt (0.00s)
+    --- PASS: TestSmugglingE2E/64-host-at.txt (0.00s)
+    --- PASS: TestSmugglingE2E/65-absolute-form-host-mismatch.txt (0.00s)
+    --- PASS: TestSmugglingE2E/66-absolute-form-https.txt (0.00s)
+    --- PASS: TestSmugglingE2E/67-asterisk-get.txt (0.00s)
+    --- PASS: TestSmugglingE2E/68-connect.txt (0.00s)
+    --- PASS: TestSmugglingE2E/69-target-space.txt (0.00s)
+    --- PASS: TestSmugglingE2E/70-target-network-path.txt (0.00s)
+    --- PASS: TestSmugglingE2E/71-absolute-form-no-host.txt (0.00s)
+    --- PASS: TestSmugglingE2E/90-resp-clte.txt (0.00s)
+    --- PASS: TestSmugglingE2E/91-resp-cl-dup-diff.txt (0.00s)
+    --- PASS: TestSmugglingE2E/92-resp-header-nul.txt (0.01s)
+    --- PASS: TestSmugglingE2E/93-resp-te-http10.txt (0.00s)
+    --- PASS: TestSmugglingE2E/94-resp-trailer-content-length.txt (2.00s)
+    --- PASS: TestSmugglingE2E/95-resp-ok-eof.txt (0.01s)
+    --- PASS: TestSmugglingE2E/96-resp-ok-head-with-cl.txt (0.00s)
+=== RUN   TestXFFUntrustedReplaced
+--- PASS: TestXFFUntrustedReplaced (0.00s)
+=== RUN   TestAbsoluteFormRewritten
+--- PASS: TestAbsoluteFormRewritten (0.00s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	2.202s
+exit=0

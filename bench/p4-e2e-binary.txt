@@ -1,0 +1,56 @@
+# Phase 4 e2e binary thật, 2026-09-04 12:37, GOTIT-00663, HEAD dc3a824+wip
+## make proxylab
+go build -o bin/edgegate ./cmd/edgegate
+./bin/edgegate -config config/dev.json & echo $! > /tmp/edgegate.pid; sleep 1
+2026/09/04 12:37:24 edgegate: :8080 → 127.0.0.1:8081 (nodelay=true, trusted_proxies=[])
+curl -sS -i --max-time 5 http://localhost:8080/hello
+HTTP/1.1 200 OK
+Content-Length: 20
+Content-Type: text/plain; charset=utf-8
+Date: Fri, 04 Sep 2026 05:37:27 GMT
+
+hello from upstream
+curl -sS -i --max-time 5 -X POST -d 'xin chao' http://localhost:8080/echo
+HTTP/1.1 200 OK
+Content-Length: 8
+Content-Type: application/octet-stream
+Date: Fri, 04 Sep 2026 05:37:27 GMT
+
+xin chaocurl -sS -i --max-time 5 http://localhost:8080/chunked      # response chunked: KHÔNG được treo
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Fri, 04 Sep 2026 05:37:27 GMT
+Transfer-Encoding: chunked
+
+chunk 0
+chunk 1
+chunk 2
+chunk 3
+chunk 4
+curl -sS -i --max-time 5 http://localhost:8080/eof          # body tới EOF ⇒ client thấy chunked (D3)
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Transfer-Encoding: chunked
+
+body until eof
+kill $(cat /tmp/edgegate.pid); rm -f /tmp/edgegate.pid
+2026/09/04 12:37:27 edgegate: đóng
+exit=0
+
+## payload thô qua nc tới bin/edgegate (:8080), trusted_proxies=[]
+### CL.TE + GET pipelined — chỉ được 1 response:
+HTTP/1.1 400 Bad Request
+Connection: close
+Content-Length: 67
+Content-Type: text/plain; charset=utf-8
+
+400 Bad Request: Content-Length and Transfer-Encoding both present
+
+### XFF giả từ peer không tin:
+X-Forwarded-For: 127.0.0.1
+X-Real-Ip: 127.0.0.1
+### CONNECT:
+HTTP/1.1 501 Not Implemented
+
+
+còn tiến trình: 0

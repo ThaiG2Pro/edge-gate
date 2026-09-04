@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 )
 
 // readLine đọc một dòng kết thúc bằng CRLF và trả về nội dung KHÔNG gồm CRLF.
@@ -213,20 +214,38 @@ func shouldClose(proto string, h Header) bool {
 // không được là Host / Content-Length — RFC 9110 §7.6.1 cấm liệt kê chúng.
 // Nếu cho qua, StripHopByHop sẽ xoá Host theo lệnh client rồi proxy tự sinh
 // lại: client điều khiển được Host mà upstream nhìn thấy.
+//
+// Duyệt bằng strings.Cut trên string gốc, không bytes.Split: bản đầu (turn 1)
+// tốn 2 alloc/request chỉ cho một kiểm tra — lộ ở BenchmarkReadRequest turn 2
+// (26 → 28 allocs/op).
 func checkConnectionTokens(h Header) error {
 	for _, v := range h.Values("Connection") {
-		for _, tok := range bytes.Split([]byte(v), []byte{','}) {
-			tok = trimOWS(tok)
-			if len(tok) == 0 {
+		for v != "" {
+			var tok string
+			tok, v, _ = strings.Cut(v, ",")
+			tok = strings.Trim(tok, " \t")
+			if tok == "" {
 				continue
 			}
-			if !isToken(tok) {
+			if !isTokenString(tok) {
 				return badRequest("Connection: token không hợp lệ %q", tok)
 			}
-			if bytes.EqualFold(tok, []byte("Host")) || bytes.EqualFold(tok, []byte("Content-Length")) {
+			if strings.EqualFold(tok, "Host") || strings.EqualFold(tok, "Content-Length") {
 				return ErrBadConnectionToken
 			}
 		}
 	}
 	return nil
+}
+
+func isTokenString(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if !isTokenByte(s[i]) {
+			return false
+		}
+	}
+	return true
 }
