@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 1-2 ngày · **thực tế:** _______
 - **Bắt đầu:** 2026-09-03 22:30 · **Kết thúc:** _______
 - **Trạng thái:** ✅ xong 2026-09-04 00:15 — **1/6 giả thuyết sai** (G4, sai hai lần), cộng 2 lỗi vận hành (mồ côi `go run`, `pkill -f` tự sát). 14 test xanh `-race`, phản chứng đỏ 2/2, G2 = 3.39x, G3 = 1.44x là mốc cho phase 5. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
-- **Commit:** `_______` (điền khi chốt phase; commit nền là `ba4ed2f`)
+- **Commit:** `62aa5e2` (turn 1 `eca7605`, turn 2 `c2dd510`, turn 3 `62aa5e2`; commit nền `ba4ed2f`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase3-log.md`](phase3-log.md). File này là bản biên tập.
 >
