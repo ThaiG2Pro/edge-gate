@@ -92,10 +92,12 @@ P-env-2/P3-5 trên Linux thuần: `taskset`, `-count 20`, benchstat hai commit `
 có rate limit (phase 7) cần hàm "IP client thật" = phần tử phải nhất của XFF **không** nằm trong
 `trusted_proxies`. Peer tin gửi `X-Real-IP: not-an-ip` hiện được forward nguyên văn.
 
-### 🔧 P4-4 · Tag `nodefense` chung cho phase 1/3/4
+### 🔧 P4-4 · Tag `nodefense` chung cho phase 1/3/4 — **trả một phần 2026-09-04 (phase 5)**
 
 `make smugglelab-nodefense` e2e lật 21 ca, trong đó `95-resp-ok-eof` đỏ vì `rawCopyResponse=true`
 (phase 3) chứ không vì phòng tuyến phase 4. Tách `nodefense4` hoặc ghi chú trong target.
+Phase 5 đã tách `nodefensepool` cho `poolCheckClean` (`internal/proxy/defense_pool*.go`) sau khi
+phản chứng G3 đỏ sai chỗ vì bẫy #2. Còn nợ: phase 1/3/4 vẫn chung `nodefense`.
 
 ```bash
 go test ./internal/proxy -run 'TestSmugglingE2E/95' -tags nodefense -v   # đỏ vì bẫy #2, không vì phase 4
@@ -111,6 +113,49 @@ qua proxy thật (431 + close), request-line có SP thừa cuối. Mỗi ca mộ
 
 Chỉ so với Go. "Hướng an toàn" mới đúng với backend Go. Dựng nginx và h2o (docker) nhận cùng 61 payload
 qua `nc`, ghi status, so ba cột. Đặc biệt các ca 21 (CL trùng), 30/31 (bare LF), 50 (`Connection: Host`).
+
+### 📏 P5-1 · G1/G2 đo lúc máy ồn (load 9 trên 6 core)
+
+`bench/p5-poollab-rtt20.txt`: mẫu qua proxy +5-7 ms ngoài mô hình 3 RTT / 2 RTT, mẫu thẳng +0.5 ms.
+Nghi 4 lần đánh thức tiến trình/request dưới tranh chấp CPU; chưa chứng minh. Trả cùng P-env-2:
+
+```bash
+uptime   # load < 1 rồi mới chạy
+taskset -c 0,1 go run ./cmd/poollab -pool both -n 2000 | tee bench/p5-poollab-rtt0-quiet.txt
+make poollab-rtt 2>&1 | tee bench/p5-poollab-rtt20-quiet.txt
+```
+
+### 🔧 P5-2 · Con quá `MaxIdleTime` ở đáy stack không bị dọn (D9)
+
+`pool.get` chỉ kiểm tuổi con **đỉnh** (LIFO); `put` chỉ bỏ đáy khi đầy. Pool 5 con rỗi, tất cả quá
+tuổi, `get` một lần ⇒ bỏ 1, dùng… không, dial mới, còn 4 con chết nằm đó tới lần đầy. Test fail
+trước: `TestPoolExpiredAtBottom` (5 idle, ngủ quá MaxIdleTime, 1 request, đòi `Idle == 1`). Sửa:
+trong `put`, quét từ đáy bỏ mọi con quá tuổi (dừng ở con đầu còn hạn — LIFO nên đáy già nhất).
+
+### ⏳ P5-3 · Pool một upstream; inflight tính từ đâu
+
+Phase 6 cần `map[addr]*pool`, `MaxIdlePerHost` theo host, và least-conn cần "inflight": tăng ở
+`get` hay giảm ở `put`? Turn 2 G6 cho thấy client nhận response **trước** khi proxy `put` — hai thời
+điểm khác nhau, chọn sai thì least-conn đếm thừa đúng lúc cần chính xác nhất.
+
+### 🔧 P5-4 · Body vào connection chết giữa probe và `Write` ⇒ 502
+
+D4 (c) không retry request có body vì body đã stream (I2). `TestIdleClosedUpstream/noprobe-POST-body-502`
+cho mẫu 25/50 khi tắt probe; với probe là 0/50 nhưng cửa sổ probe→Write vẫn mở. Đo tần suất thật:
+upstream đóng rỗi ngẫu nhiên 1-50 ms sau response, 10k POST, đếm 502. Nếu > 0.1 %: buffer body
+≤ 64 KiB để replay đúng một lần — đổi I2 có điều kiện, đăng ký D trước khi code.
+
+### 🔧 P5-5 · `MaxIdleTime` 60 s bằng nginx mặc định — phải ngắn hơn upstream
+
+Ai đóng trước quyết định ai thấy FIN. Pool phải đóng **trước** upstream để probe/retry chỉ là lưới đỡ.
+Fixture Go không đặt `IdleTimeout` nên chưa lộ. Sửa mặc định 30 s; test fail trước: raw upstream idle
+100 ms, `MaxIdleTime` 50 ms, 20 request cách 70 ms ⇒ `DeadOnProbe == 0`, `DropExpired == 20`.
+
+### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`
+
+`pgrep -a -x upstream` lúc 16:00 phase 5 thấy `./bin/upstream -addr :8081` pid 146978 từ phase 3.
+Target `-kill $$(cat /tmp/upstream.pid)` không chạy khi bước trước lỗi. Sửa: `trap`/`|| true` + `pkill -x
+upstream` cuối target. Luật vận hành (mắc 3 lần): `go build` **một dòng riêng**, rồi mới `./bin/x &`.
 
 ### 🔧 P3-1 · Trailer chunked từ upstream bị bỏ (D4 phase 3)
 

@@ -1,9 +1,9 @@
 # Phase 5 — Upstream connection pool
 
-- **Thời lượng dự kiến:** 2 ngày · **thực tế:** _______
-- **Bắt đầu:** 2026-09-04 15:40 · **Kết thúc:** _______
-- **Trạng thái:** 🔧 turn 2 (đo) xong — **G1 sai hẳn, G2 sai sát biên (0.87 RTT vs 0.9-1.1), G4 sai một nhánh**, G3/G5/G6/G7 đúng. 25 test proxy xanh `-race`, phản chứng đỏ 20/20. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (commit nền `30a1ab0`)
+- **Thời lượng dự kiến:** 2 ngày · **thực tế:** ~3.2 giờ (15:40 → 18:55, ba turn; có khoảng chờ người dùng chạy `sudo`)
+- **Bắt đầu:** 2026-09-04 15:40 · **Kết thúc:** 2026-09-04 18:55
+- **Trạng thái:** ✅ xong 2026-09-04 18:55 — **G1 sai hẳn, G2 sai sát biên (0.87 RTT vs 0.9-1.1), G4 sai một nhánh**, G3/G5/G6/G7 đúng; cộng 3 lỗi dụng cụ đo (RTT từ dial, TIME_WAIT tuyệt đối, race đọc stats) và 1 lỗi vận hành (`&&`+`&` lần ba). 25 test proxy xanh `-race`, phản chứng đỏ 20/20 đúng phòng tuyến. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
+- **Commit:** _______ (turn 1 `f46d851`, turn 2 `991ec79` + `6aaf110`; commit nền `30a1ab0`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase5-log.md`](phase5-log.md). File này là bản biên tập.
 >
@@ -311,7 +311,17 @@ Tất cả: 2026-09-04, commit `f46d851` (+ sửa test waitStats), máy `bench/e
 
 ## Invariant + lệnh kiểm chứng
 
-_(turn 3)_
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **Sống còn**: connection upstream chỉ về pool khi **sạch** — body đã `io.EOF`, `Buffered()==0`, `!resp.Close`, không lỗi ở cả hai chiều (D2) | `forward.go:exchange` — một biến `clean`, mọi đường ra qua `defer` gọi `pool.put` / `pool.discard` | `TestDirtyConnNotPooled -count=20` (A bỏ đi giữa 1 MiB, B GET /hello) | 20/20 B thấy `200 hello`, `DropDirty ≥ 1` |
+| **Phòng tuyến có răng**: tắt kiểm sạch ⇒ đỏ **vì đúng lý do** | `defense_pool.go` ↔ `defense_pool_off.go` (tag riêng `nodefensepool`); test tắt probe để chỉ còn một phòng tuyến | `make poollab-nodefense` PHẢI đỏ | 20/20 đỏ, cùng thông điệp `B: status 502 … connection bẩn về pool` |
+| **Đường bình thường không rò**: 6 kiểu framing (CL, chunked, 204, HEAD, chunked response, CL response) đều để connection sạch | `httpx` body reader trả `io.EOF` đúng ranh giới; `exchange` tính `bodyDone` | `TestPoolReuseMixed`: 200 request ⇒ đúng **1** dial | dials 1, reuses 199, dropDirty 0 |
+| **Body-tới-EOF không bao giờ về pool** (`resp.Close`) | `ReadResponse` đặt `Close` khi CL<0 && !chunked; `exchange` `clean = … && !resp.Close` | 10 GET /eof trong `TestPoolReuseMixed` | dials +9, dropDirty 10, idle 0, puts +0 |
+| **FIN nằm trong kernel không được lọt vào request** (D3) | `pool_linux.go:probeIdle` — `recv(MSG_PEEK\|MSG_DONTWAIT)` trước mỗi reuse | `TestIdleClosedUpstream/probe-*` | 50/50 GET và 50/50 POST đúng, `DeadOnProbe 50`, `Retries 0` |
+| **Retry đúng một lần, chỉ khi an toàn** (D4): connection reused ∧ 0 byte response ∧ không body; lần hai dial mới; có body ⇒ 502 giữ client | `forward.go:canRetry`, `roundTrip` vòng `attempt`, `pool.dialNew` cho lần hai; `countReader` đếm byte | `TestIdleClosedUpstream/noprobe-*` | GET: 50/50 cứu, `Retries 50`; POST: 25×502 xen kẽ 25×200, `Retries 0`, 502 không `Connection: close` |
+| **Pool có trần và không sinh goroutine** (D1/D9) | `pool.put` bỏ con **đáy** khi đầy; `get` bỏ con quá `MaxIdleTime`; không goroutine dọn | `TestPoolMaxIdle` (16×50, MaxIdle 4), `TestPoolMaxIdleTime`, `TestNoGoroutineLeak` | idle **= 4**, dropFull 104; dropExpired 1; goroutine 4 → 6 |
+| **Deadline không rò giữa hai lần dùng** (D8); `Close()` đóng cả idle | `pool.put` `SetDeadline(time.Time{})`; `Server.Close` → `pool.closeAll` sau `wg.Wait` | `TestPoolClosedWithServer`; toàn bộ suite `-race` | idle 1 → 0 sau Close; 25 test xanh |
+| **Pool chạy thật, không chỉ có flag** (D6) | `PoolStats` 9 bộ đếm; `poollab` in stats mỗi mẫu; upstream log đếm peer | `make poollab`; 6 curl qua `bin/edgegate` | off `Dials:2020`, on `Dials:1 Reuses:2019`; upstream thấy **một** port proxy cho 6 client |
 
 ## Đọc gì
 
@@ -323,8 +333,94 @@ _(turn 3)_
 
 ## Rút ra
 
-_(turn 3)_
+**1. "Sạch" là gì.** Sạch không phải một điều kiện, nó là năm điều kiện và thiếu bất kỳ cái nào
+cũng rò theo một kiểu riêng. Body chưa `io.EOF` ⇒ đuôi body của A thành status-line của B (G3 đã thấy:
+B nhận 502, ở proxy `io.Copy` thô sẽ nhận nguyên byte của A). `Buffered() > 0` ⇒ upstream gửi thừa,
+byte thừa đó *là* response của B mà không ai hỏi. `resp.Close` bị bỏ qua ⇒ connection body-tới-EOF
+về pool, request kế treo tới deadline vì ranh giới của nó là "khi upstream đóng". Lỗi phía client giữa
+body response (client bỏ đi) mà vẫn put ⇒ đúng ca G3. Lỗi phía upstream giữa body ⇒ connection đang
+ở giữa một frame, không ai biết đang ở đâu. Cái bọc lại tất cả là một quy tắc thực thi: **một biến
+`clean`, mọi đường ra đi qua một `defer`**, và mặc định là *bẩn*. Không có "cố cứu"; đóng một
+connection tốn một dial (~1 ms loopback, 1 RTT mạng thật), trả một connection bẩn tốn một CVE.
+
+**2. Vì sao `Read` không báo FIN đã nằm trong kernel.** Vì Go không đọc hộ. FIN đến, kernel đánh
+dấu socket readable và xếp EOF vào queue, nhưng `net.Conn.Read` chỉ chạy khi có ai gọi — pool không
+gọi, nên connection "chết" trông y như connection rỗi. `net/http` giải bằng một goroutine `readLoop`
+ngồi `Peek(1)` trên mỗi connection rỗi: đúng nhưng tốn một goroutine + stack cho mỗi con idle. Một
+`recv(MSG_PEEK|MSG_DONTWAIT)` trả lời cùng câu hỏi trong một syscall không chờ, không tiêu byte: EAGAIN
+là sống, 0 là FIN, lỗi là RST, có byte là bẩn. Phát hiện ngoài dự tính của phase: probe **bắt luôn cả
+connection bẩn** (G3 lần đầu đỏ vì probe thấy byte thừa trước cả kiểm sạch) — nó là phòng tuyến thứ
+hai cho D2, không chỉ cho FIN. Nhưng nó có một cửa sổ: upstream đóng *giữa* probe và `Write`. Cửa sổ
+ấy là việc của retry.
+
+**3. Retry: khi nào, và vì sao "Write thành công" không nghĩa là gì cả.** `Write` trả nil khi byte
+vào send buffer của kernel — RST tới sau, lúc `Read`. Nên tiêu chí không phải "ghi được chưa" mà là
+**"đã nhận được byte response nào chưa"**: 0 byte ⇒ upstream chưa cho thấy side-effect nào; ≥ 1 byte
+⇒ nó đã xử lý, gửi lại là gửi hai lần. Điều kiện thứ hai: connection phải là **đồ dùng lại** — một
+connection vừa dial mà chết là upstream chết thật, retry chỉ kéo dài cơn đau. Điều kiện thứ ba đắt
+nhất: **không body**. Body đã stream từ `bufio.Reader` của client vào connection chết, không buffer
+(I2 phase 1), nên không replay được — POST vào connection chết là 502, và G4 nhánh 4 cho thấy mẫu
+xen kẽ 200/502 khi tắt probe. Đó là giá của không buffer body; probe làm giá đó gần bằng 0 ở đường
+thường. Timeout với 0 byte **không** retry: upstream sống nhưng chậm có thể đang xử lý.
+
+**4. Bao nhiêu RTT mỗi request — và vì sao loopback nói dối theo cách ngược với ROADMAP.** Ở RTT
+20 ms pool tiết kiệm 17.9 ms ≈ 0.87 RTT, và một `net.Dial` đo được đúng 1.0 RTT: pool tiết kiệm *một
+handshake*, đúng sách. Ở loopback pool tiết kiệm 0.96 ms trong khi RTT là 30-80 µs — **một dial
+loopback ≈ 20 RTT**, vì cái đắt không phải mạng mà là `socket`+`connect`+`accept`+goroutine+hai lần
+lên lịch ở hai tiến trình. Nên tỉ số ở loopback (5.34x) *phồng* còn ở mạng thật (1.37x) *xẹp*, trong
+khi khoản tiết kiệm đi ngược: 0.96 → 17.9 ms. ROADMAP viết "~1.1x / >15x" — ngược cả hai chiều, và
+phase 0 đã đoán trước điều này bằng netlab. Câu trả lời cho "vì sao pooling quan trọng" do đó không
+phải một tỉ số mà là: **mỗi request không pool trả thêm đúng một handshake, và handshake tính bằng
+RTT của mạng thật, không bằng RTT của máy dev.**
+
+**5. Không pool thì cạn gì trước, ở đâu.** TIME_WAIT, và ở **proxy**, không ở upstream: +1964 phía
+proxy / +0 phía upstream cho 2000 request. TIME_WAIT thuộc bên **đóng trước**; phase 3 gửi
+`Connection: close` nên upstream đóng và gánh; phase 5 bỏ header đó, upstream giữ, proxy đóng ⇒ proxy
+gánh. Mỗi TIME_WAIT giữ một ephemeral port 60 s, và proxy là bên có *một* IP nguồn tới *một* đích ⇒
+bộ (src, sport, dst, dport) chỉ còn sport biến thiên ⇒ ~28k port / 60 s ≈ 470 request/s là trần cứng
+không liên quan CPU. G7 đúng — nhưng ô đăng ký có vết tự sửa "upstream… không, proxy", và vết đó đáng
+giữ: bên gánh TIME_WAIT **đổi khi đổi header**, không phải hằng số kiến trúc.
+
+**6. Giá của pool và LIFO.** Mỗi connection rỗi giữ ở hai đầu: fd, hai socket buffer kernel, bên proxy
+16 KiB bufio + `pooledConn`, bên upstream Go một goroutine `conn.serve` đang chờ `Read` (~8 KiB stack)
+— phase 0 G5 đo ~19 KB/connection rỗi cho cặp. `MaxIdle` là trần của khoản đó; `MaxIdleTime` phải
+**ngắn hơn** idle timeout của upstream (nginx `keepalive_timeout` 60-75 s, Go `IdleTimeout` tuỳ cấu
+hình) để mình đóng trước, không để upstream đóng rồi mình gặp FIN — probe và retry chỉ là lưới đỡ cho
+khi cấu hình hai bên lệch. LIFO quan trọng đúng vì thế: connection vừa dùng là con **chắc còn sống
+nhất** và còn ấm (cwnd, cache); FIFO xoay đều nên mọi con đều "vừa được dùng" và không con nào già
+đủ để bị bỏ, pool phình đúng bằng peak rồi giữ mãi. Với LIFO, con ở đáy tự già quá `MaxIdleTime`;
+phase này chọn dọn đáy lúc `put` đầy thay vì goroutine định kỳ (D9) — giá là con quá tuổi ở đáy
+sống tới lần `put` đầy kế tiếp, chấp nhận vì pool không có goroutine riêng (G5 đếm goroutine sạch).
+
+**Ngoài sáu câu hỏi — về cách đo.** Ba giả thuyết sai của phase đều sai theo cùng một kiểu: **mang hằng
+số của ngày khác sang** (dial 300 µs của máy rỗi phase 3 ⇒ G1 sai 3x; mô hình 3/2 RTT không có hạng tử
+"đánh thức tiến trình" ⇒ G2 lệch 5-7 ms). Sửa không nằm ở code mà ở nghi thức: `poollab` giờ **đo chi
+phí dial và RTT tại chỗ trước khi đo pool**, và cột chốt là khoản tuyệt đối off − on — thứ duy nhất ổn
+định qua ba dụng cụ khi máy load 9/6 core (958 / 988 / 657 µs). Và một lần nữa về phản chứng: đỏ
+**không đủ**, phải đỏ *vì đúng phòng tuyến*. Tag `nodefense` chung làm G3 đỏ vì bẫy #2 phase 3 và vì
+probe — hai thứ đúng, nhưng không phải thứ đang kiểm. Tách tag + tắt probe trong test là trả một
+phần P4-4, và là lý do turn 1 phải đọc thông điệp lỗi chứ không đếm `FAIL`.
 
 ## Nợ kỹ thuật
 
-_(turn 3)_
+Chi tiết + lệnh trả trong `docs/debts.md`.
+
+- [ ] **P5-1** 📏 — G1/G2 đo lúc máy load 9/6 core; mỗi mẫu qua proxy cộng 5-7 ms ngoài mô hình ở RTT
+  20 ms. Chạy lại `make poollab` / `poollab-rtt` lúc `uptime` < 1 (kèm P-env-2 ghim core) để tách
+  "đánh thức tiến trình" khỏi "máy ồn".
+- [ ] **P5-2** 🔧 — Con quá `MaxIdleTime` ở **đáy** stack chỉ bị dọn khi `get` chạm tới hoặc `put` đầy (D9).
+  Test: 5 connection rỗi, chờ quá tuổi, `get` một lần ⇒ pool vẫn giữ 4 con chết. Trả bằng quét đáy
+  trong `put` (O(k) với k con quá tuổi) — không goroutine.
+- [ ] **P5-3** ⏳ — Pool một upstream. Phase 6 cần `map[addr]*pool` + `MaxIdlePerHost` đúng nghĩa, và
+  quyết inflight tính từ `get` hay từ `put` (G6 turn 2 lộ hai thời điểm khác nhau).
+- [ ] **P5-4** 🔧 — POST có body vào connection chết giữa probe và `Write` ⇒ 502 (D4 c). `net/http`
+  cũng thế trừ khi có `GetBody`. Đo tần suất thật bằng upstream đóng rỗi ngẫu nhiên; nếu đáng, buffer
+  body ≤ N KiB để replay một lần (đổi I2 có điều kiện, phải đăng ký).
+- [ ] **P5-5** 🔧 — `MaxIdleTime` mặc định 60 s **bằng** nginx `keepalive_timeout` mặc định — phải ngắn hơn
+  upstream để mình đóng trước. Đọc `cmd/upstream` không đặt `IdleTimeout` (Go: vô hạn) nên chưa lộ.
+  Đặt mặc định 30 s + test "upstream idle 100 ms, pool 50 ms ⇒ DeadOnProbe = 0".
+- [ ] **P-ops-1** 🔧 — `make proxybench` để sót `bin/upstream :8081` (pid 146978 từ phase 3, phát hiện
+  16:00). Target phải `pkill -x upstream` ở `-kill` cuối; và ghi luật `go build` riêng dòng trước `&`
+  (mắc lần ba).
+- [x] **P4-4** — trả **một phần**: tag `nodefensepool` riêng cho phase 5. Phần còn lại (tách
+  `nodefense` phase 1/3/4) vẫn mở.

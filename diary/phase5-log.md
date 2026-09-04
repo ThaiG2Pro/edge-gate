@@ -115,3 +115,12 @@
   thẳng +0.5 ms. Nghi máy ồn (4 lần đánh thức/request). Không sửa code. Cặp số ROADMAP: tỉ số
   5.34x → 1.37x, tiết kiệm 0.96 → 17.9 ms. `rtt-down` xong, `qdisc noqueue`.
 - 16:22 chốt turn 2: G1 ❌, G2 ⚠️, G4 ⚠️ (1/4), G3/G5/G6/G7 ✅. Commit.
+
+## §3 Turn 3 — 2026-09-04 18:51
+
+- Invariant 9 hàng, Rút ra 6 câu + mục về cách đo, Nợ P5-1..P5-5 + P-ops-1, P4-4 trả một phần.
+- `docs/debts.md`: thêm 6 món, ghi chú P4-4. README/ROADMAP hàng 5 ✅ với cặp số ngược ROADMAP.
+- Lúc viết P5-2 mới thấy D9 có lỗ: `get` chỉ kiểm tuổi đỉnh, con chết ở đáy sống tới khi đầy. Ghi
+  nợ có test fail-trước thay vì sửa vội ở turn diary.
+- Lúc viết P5-5 mới thấy `MaxIdleTime` 60 s bằng đúng nginx mặc định — vi phạm chính nguyên tắc "mình
+  đóng trước" vừa rút ra ở câu 6. Rút ra rồi mới thấy cấu hình sai: đúng thứ tự cần có.
