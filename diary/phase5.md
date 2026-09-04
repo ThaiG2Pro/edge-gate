@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 2 ngày · **thực tế:** ~3.2 giờ (15:40 → 18:55, ba turn; có khoảng chờ người dùng chạy `sudo`)
 - **Bắt đầu:** 2026-09-04 15:40 · **Kết thúc:** 2026-09-04 18:55
 - **Trạng thái:** ✅ xong 2026-09-04 18:55 — **G1 sai hẳn, G2 sai sát biên (0.87 RTT vs 0.9-1.1), G4 sai một nhánh**, G3/G5/G6/G7 đúng; cộng 3 lỗi dụng cụ đo (RTT từ dial, TIME_WAIT tuyệt đối, race đọc stats) và 1 lỗi vận hành (`&&`+`&` lần ba). 25 test proxy xanh `-race`, phản chứng đỏ 20/20 đúng phòng tuyến. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (turn 1 `f46d851`, turn 2 `991ec79` + `6aaf110`; commit nền `30a1ab0`)
+- **Commit:** `cb1c1bd` (turn 1 `f46d851`, turn 2 `991ec79` + `6aaf110`; commit nền `30a1ab0`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase5-log.md`](phase5-log.md). File này là bản biên tập.
 >
