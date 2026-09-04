@@ -46,9 +46,9 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | Phase | | Trạng thái |
 |---|---|---|
 | 0 | Nền tảng vật lý mạng | ✅ [phase0.md](./diary/phase0.md) — **5/8 giả thuyết sai** |
-| 1 | Framing | ⬜ |
-| 2 | HTTP/1.1 engine | ⬜ |
-| 3 | Vertical slice | ⬜ |
+| 1 | Framing | ✅ [phase1.md](./diary/phase1.md) — **4/7 giả thuyết sai** |
+| 2 | HTTP/1.1 engine | ✅ [phase2.md](./diary/phase2.md) — diff-fuzz 0 lệch, bảng tay tìm 2 lệch thật |
+| 3 | Vertical slice | ✅ [phase3.md](./diary/phase3.md) — **1/6 giả thuyết sai** (G4 sai hai lần), overhead L7 3.39x |
 | 4 | RFC compliance & smuggling | ⬜ |
 | 5 | Upstream connection pool | ⬜ |
 | 6 | Load balancing + health | ⬜ |

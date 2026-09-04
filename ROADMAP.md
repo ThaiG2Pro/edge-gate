@@ -42,7 +42,7 @@ phase 9 — và ở đó ta sẽ đo được **cái giá của chính lựa ch�
 | 0 | ✅ Nền tảng vật lý mạng: syscall, RTT, handshake, coordinated omission, giới hạn OS | 0.5 ngày | ✅ [`diary/phase0.md`](diary/phase0.md) — **5/8 giả thuyết sai**, 4 lần bộ đo sai rồi tự sửa |
 | 1 | ✅ Framing: custom binary protocol, `io.ReadFull`, trần frame | 0.5 ngày | ✅ [`diary/phase1.md`](diary/phase1.md) — **4/7 giả thuyết sai**, phản chứng I2 đỏ đúng chỗ (4294967376 byte), fuzz 1.58M execs sạch |
 | 2 | ✅ HTTP/1.1 engine: request + **response** parser, chunked, keep-alive | 2-3 ngày | [`diary/phase2.md`](diary/phase2.md) — diff-fuzz 300s **0 lệch, nhưng** bảng đối chiếu tay tìm ra 2 lệch thật fuzzer không thấy (G1 ❌); phản chứng bộ so đỏ đúng chỗ; header bomb chặn sau 4096 B |
-| 3 | ⬜ **Vertical slice**: `curl` xuyên proxy tới upstream và về | 1-2 ngày | `make proxylab` — GET + POST body + chunked response, không treo |
+| 3 | ✅ **Vertical slice**: `curl` xuyên proxy tới upstream và về | 1-2 ngày | ✅ [`diary/phase3.md`](diary/phase3.md) — `make proxylab` 4 curl đúng, phản chứng bẫy #2/#3 đỏ; **G4 sai hai lần** (flag `-nodelay=false` là no-op vì Go mặc định NODELAY; Nagle là **sàn 44 ms**, không phải +40 ms); overhead L7 3.39x, keep-alive client chỉ 1.44x vì D1 |
 | 4 | ⬜ **RFC compliance & smuggling**: hop-by-hop, CL vs TE, XFF trust, trần | 2-3 ngày | Bộ 20+ payload CL.TE/TE.CL/TE.TE bị chặn, **và bài phản chứng đỏ** |
 | 5 | ⬜ **Upstream connection pool**: keep-alive tới backend | 2 ngày | Pool on/off ở RTT 0 **và** RTT 20ms, báo cáo bằng **RTT tiết kiệm/request** — phase 0 đã chứng minh tỉ số là đơn vị sai |
 | 6 | ⬜ **Load balancing**: RR / least-conn / **P2C+EWMA** / consistent hash + health | 2-3 ngày | Backend lệch tải: bảng p99 của 4 thuật toán, và **chỗ P2C thua** |

@@ -81,3 +81,11 @@
   (đếm lại: 14, không phải 13). G6 thêm `t.Logf`: trước 4 → sau 6 / 4 / 5 qua 3 lần.
   Toàn repo `-race` xanh; `make proxylab-nodefense` đỏ đúng.
 - Turn 3 còn: bảng Invariant, Rút ra, nợ P3-k (`docs/debts.md`), ROADMAP/README, `Commit:`.
+
+## §3 Turn 3 — diary (00:00 → 00:15, 2026-09-04)
+
+- Điền Invariant (7 dòng, mỗi dòng có lệnh kiểm + kết quả đã chạy ở turn 2), Rút ra (5 câu hỏi +
+  G4 + bài học vận hành), Nợ P3-1..P3-5. Đóng P2-2 (bằng cấu trúc, không bằng `if`). P-arch-1
+  cập nhật trường hợp buộc sinh Host. README/ROADMAP hàng 1-3 lên ✅ (README hàng 1-2 quên từ phase
+  trước).
+- Không đo thêm gì ở turn 3 — mọi số trong diary trỏ về `bench/p3-*`.

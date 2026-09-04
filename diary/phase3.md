@@ -2,7 +2,7 @@
 
 - **Thời lượng dự kiến:** 1-2 ngày · **thực tế:** _______
 - **Bắt đầu:** 2026-09-03 22:30 · **Kết thúc:** _______
-- **Trạng thái:** 🔨 turn 2 (run+fix+measure) xong 23:55 — G1 G2 G3 G5 G6 đúng, **G4 sai** (no-op flag rồi sàn 44 ms, không phải +40 ms). `make proxylab` sửa mồ côi. 14 test xanh `-race`. Turn 3: diary (invariant, rút ra, nợ). Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
+- **Trạng thái:** ✅ xong 2026-09-04 00:15 — **1/6 giả thuyết sai** (G4, sai hai lần), cộng 2 lỗi vận hành (mồ côi `go run`, `pkill -f` tự sát). 14 test xanh `-race`, phản chứng đỏ 2/2, G2 = 3.39x, G3 = 1.44x là mốc cho phase 5. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
 - **Commit:** `_______` (điền khi chốt phase; commit nền là `ba4ed2f`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase3-log.md`](phase3-log.md). File này là bản biên tập.
@@ -149,7 +149,15 @@ Bảng phụ G4 (p50, n=100 mỗi ô, `GET /chunked?n=5&ms=X` qua proxy):
 
 ## Invariant + lệnh kiểm chứng
 
-_(turn 3)_
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **I3** mọi `Read` trên cả hai `net.Conn` đứng sau một `SetReadDeadline` | `proxy.go:serveConn` (Idle rồi Header trước `ReadRequest`), `forward.go:roundTrip` (`BodyTimeout` phía client khi forward body; `UpstreamHeaderTimeout` trước `ReadResponse`; `UpstreamBodyTimeout` trước copy body) | `go test -run TestRawCopyTrap -tags nodefense -count=3 -v` (treo phải = timeout) + `TestUpstreamSlowIs504` | 3.01 / 3.00 / 3.00 s với timeout 3 s; 504 sau 200 ms rồi connection dùng lại được |
+| **Bẫy #1/#2**: không `io.Copy` thô trên connection có keep-alive | `forward.go:copyBody` đọc `req.Body` / `resp.Body` — reader có ranh giới của httpx; `rawCopyResponse` chỉ bật dưới `-tags nodefense` | `make proxylab-nodefense` PHẢI đỏ; `make proxylab` 4 curl không treo | đỏ đúng (`TestRawCopyTrap` 3.00 s); curl chunked wall 0.11 s |
+| **Bẫy #3 / keep-alive**: giữ connection client ⇔ body request đã ra khỏi `br` trọn vẹn (forward hoặc drain) VÀ chưa gửi head response nào rồi bỏ dở | `forward.go` biến `drained`, hàm `drain`, mọi `writeError(…, keep)` tính `keep = drained && !req.Close` | `TestDrainOnUpstreamDown` + phản chứng `nodefense` | drain: 502 + 502; bỏ drain: request 2 hỏng (đỏ) |
+| **Một response cho một request**: đã ghi head cho client thì lỗi sau đó chỉ được **đóng**, không được ghi 502 | `forward.go` đoạn sau `out.WriteHead`: mọi lỗi ⇒ `return false`, không `writeError` | đọc code; `TestChunkedResponse`/`TestEOFBodyBecomesChunked` không thấy byte lạ sau body | đúng theo test; chưa có test cắt upstream giữa body (nợ P3-3) |
+| **Client luôn biết ranh giới body** (D3) | `forward.go` chọn `mode`: NoBody / chunked / CL / EOF⇒chunked (1.1) hoặc EOF⇒close (1.0) | `TestEOFBodyBecomesChunked`, `TestHTTP10ClientGetsEOFBodyAndClose`, curl `--http1.0 /eof` | 1.1: `Transfer-Encoding: chunked`; 1.0: `Connection: close`, không TE |
+| **Hop-by-hop không lọt qua** | `httpx.Header.StripHopByHop` gọi ở cả hai chiều trong `forward.go`; TE được **đặt lại** khi chính proxy chunked | `TestHopByHopAndXFF`, `TestHEADAnd204HaveNoBody` | `X-Secret`/`Keep-Alive`/`Proxy-Authorization` mất; HEAD/204 không TE (đóng P2-2) |
+| **Goroutine không leak** | `proxy.go:serveConn` `defer` đóng + xoá khỏi `conns`; `Close()` đóng tất cả rồi `wg.Wait` | `go test -run TestNoGoroutineLeak -race -count=3 -v` | 4 → 6 / 4 / 5 |
 
 ## Đọc gì
 
@@ -159,8 +167,54 @@ _(turn 3)_
 
 ## Rút ra
 
-_(turn 3)_
+**Trả lời 5 câu hỏi đầu file.**
+
+1. *`io.Copy` treo bao lâu.* Không có I3: vô hạn, vì phía kia giữ keep-alive nên EOF không bao
+   giờ tới. Có I3: đúng bằng deadline — 3.01 / 3.00 / 3.00 s cho timeout 3 s. "Một dòng" quyết
+   định không treo không phải là deadline, mà là `copyBody(bw, resp.Body, …)`: `resp.Body` là
+   reader **có ranh giới** của httpx (CL hoặc chunked), nó trả `io.EOF` khi body hết chứ không khi
+   connection đóng. Deadline chỉ biến bug vô hạn thành bug hữu hạn; framing mới là thứ loại bỏ bug.
+2. *Body tới EOF.* Proxy không thể chuyển "EOF của upstream" cho client mà không đóng connection
+   client — trừ khi **đổi framing**: HTTP/1.1 nhận `Transfer-Encoding: chunked` do proxy mã hoá lại
+   (`ChunkedWriter`, flush mỗi Read), connection client sống. HTTP/1.0 không có chunked ⇒ copy tới
+   EOF rồi `Connection: close`. Curl xác nhận cả hai nhánh (`bench/p3-proxylab-curl.txt`).
+3. *Upstream chết giữa body request.* Connection client dùng lại được **khi và chỉ khi** toàn bộ
+   body request đã ra khỏi `bufio.Reader` dùng chung — bằng forward (`readErr == nil`) hoặc bằng
+   `drain` — và chưa có head response nào được ghi. Thiếu một nửa đầu ⇒ byte body thành dòng
+   request kế (bẫy #3, phản chứng đỏ khi tắt drain). Thiếu nửa sau ⇒ hai response cho một request.
+   Cả hai điều kiện gom vào một biến `keep` tính tại mỗi điểm lỗi.
+4. *Giá của lối tắt D1.* Mua được: không pool, body-tới-EOF tự đúng, không có bẫy #3 phía upstream.
+   Trả: một `Dial` loopback mỗi request ≈ 300 µs — đúng bằng chênh tuyệt đối p50 đo được (333 µs,
+   G2), và là lý do G3 chỉ 1.44x thay vì lớn hơn. Trên mạng thật đó là **2 RTT/request** (phase 0
+   đo dial = 2 RTT). Mốc cho phase 5: pool phải đưa p50 qua proxy từ 473 µs về gần 139 µs + parse.
+5. *Header không forward.* `Connection` và mọi tên nó liệt kê, `Keep-Alive`, `Proxy-Authorization`,
+   `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade` — chúng mô tả **hop này**, không phải message.
+   `StripHopByHop` xoá TE vì TE của upstream mô tả cách upstream nói với proxy; proxy tự quyết cách
+   nói với client rồi **đặt lại** TE nếu chính nó chunked. Hệ quả có ích: NoBody (HEAD/204/304) không
+   bao giờ mang TE ra ngoài mà không cần code riêng — P2-2 đóng bằng cấu trúc, không bằng `if`.
+
+**Về G4, cái sai đáng giá nhất phase.** Lần một sai ở tầng đo: "không gọi `SetNoDelay(true)`" không
+phải là "bật Nagle", vì Go đã bật NODELAY trong `newTCPConn`. Một flag có tên, có log, có test dựng
+xung quanh — và là no-op. Chỉ số đo lộ ra, code không lộ. Lần hai sai ở mô hình: Nagle không **cộng**
+40 ms, nó đặt **sàn** ≈ 44 ms lên response, vì write nhỏ thứ hai (chunk terminator) phải chờ
+delayed-ACK của write đầu; response tự dài hơn sàn thì hầu như không mất gì. Cùng số 44 ms của phase
+0, khác hình dạng — và hình dạng mới là thứ quyết định nó có đáng quan tâm hay không ở phase 9.
+
+**Về bằng chứng vận hành.** `make proxylab` exit 0 nhưng để lại tiến trình giữ cổng. Một target xanh
+chưa phải là xong; phải hỏi thêm "sau khi nó xanh, máy có sạch không". Lần này `pgrep` là câu trả lời.
 
 ## Nợ kỹ thuật
 
-_(turn 3; ID `P3-k`, ghi vào `docs/debts.md`)_
+Chi tiết + lệnh trả trong `docs/debts.md`.
+
+- [ ] **P3-1** 🔧 — Trailer chunked từ upstream bị bỏ (D4). Cần test forward `Trailer:` rồi sửa
+  `copyBody` ghi trailer qua `ChunkedWriter`.
+- [ ] **P3-2** ⏳ — 101/Upgrade (WebSocket) ⇒ 502. Cần tunnel hai chiều; phase 7 hoặc sau.
+- [ ] **P3-3** 🔧 — Chưa có test upstream chết **giữa** body response: proxy phải đóng client (không
+  ghi 502 sau head), client thấy body cắt cụt là `ErrUnexpectedEOF`, không phải `EOF`.
+- [ ] **P3-4** 🔧 — `TestNoGoroutineLeak` dùng 200 request, G6 đăng ký 1000. Nâng và giữ ≤ +2.
+- [ ] **P3-5** 📏 — G2/G3 dao động ±0.2x giữa hai lần chạy (3.39/3.20x, 1.44/1.63x) vì 3 tiến trình
+  chia 6 core. Trả cùng P-env-2 (`taskset`), 5 lần, ghi min/median/max.
+- [x] **P2-2** — đóng: NoBody strip TE và không đặt lại ⇒ head ra ngoài không TE (`TestHEADAnd204HaveNoBody`).
+- [~] **P-arch-1** — chưa quyết hẳn, nhưng đã có **trường hợp buộc**: client HTTP/1.0 không `Host` ⇒
+  proxy phải sinh `Host = upstream` (net/http trả 400 nếu không). Phase 4 quyết phần còn lại.

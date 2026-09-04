@@ -77,10 +77,47 @@ Hai lựa chọn hợp lệ (`proxy_set_header Host $host` vs `$proxy_host` củ
 nhau về virtual hosting ở upstream. Phải quyết **có ý thức** ở phase 4 và ghi vào diary, không
 để nó là tình cờ của lần viết code đầu tiên.
 
-### 🔧 P2-2 · Response 204/304 kèm `Transfer-Encoding: chunked`: forward nguyên head?
+*Cập nhật phase 3:* đã có một trường hợp **buộc** sinh Host — client HTTP/1.0 không gửi `Host`,
+proxy nâng lên HTTP/1.1 nên `net/http` upstream trả 400 "missing required Host header". Hiện
+`forward.go` điền `Host = cfg.Upstream` **chỉ khi thiếu**; còn lại forward nguyên văn (D2).
 
-Parser (D8) bỏ body nhưng giữ TE trong header. Client đúng chuẩn không chờ body; client lười có
-thể chờ chunk terminator. Quyết ở phase 3 (strip TE/CL khi NoBody?) — ghi lại quyết định.
+### 🔧 P3-1 · Trailer chunked từ upstream bị bỏ (D4 phase 3)
+
+`forward.go:copyBody` gọi `ChunkedWriter.Close()` không ghi trailer; `resp.Trailer()` bị bỏ.
+gRPC-web / `Trailer: X-Checksum` sẽ mất. Test trước: fixture Hijack ghi chunked + trailer, kỳ
+vọng client thấy trailer ⇒ fail ⇒ sửa.
+
+```bash
+go test ./internal/proxy -run TestTrailerForwarded -v
+```
+
+### ⏳ P3-2 · 101 Switching Protocols ⇒ 502
+
+`forward.go` D7: 101 không thuộc phase 3. WebSocket cần tunnel hai chiều sau head. Phase 7 (khi có
+mô hình connection lifetime) hoặc phase riêng.
+
+### 🔧 P3-3 · Chưa có test upstream chết giữa body response
+
+Invariant "một response cho một request" hiện chỉ đúng theo đọc code. Test: fixture Hijack ghi
+`Content-Length: 100` rồi 50 byte rồi đóng ⇒ proxy **đóng** client, không ghi 502; client
+đọc body phải nhận `io.ErrUnexpectedEOF`.
+
+```bash
+go test ./internal/proxy -run TestUpstreamDiesMidBody -v
+```
+
+### 🔧 P3-4 · G6 đăng ký 1000 request, test chạy 200
+
+`TestNoGoroutineLeak` nâng lên 1000 (nửa keep-alive) và giữ `≤ before+2`, `-race -count=3`.
+
+### 📏 P3-5 · G2/G3 dao động ±0.2x giữa hai lần chạy
+
+3.39x / 3.20x và 1.44x / 1.63x cùng máy, 3 tiến trình chia 6 core. Trả cùng P-env-2:
+
+```bash
+taskset -c 0,1 ./bin/upstream -addr :8081 & taskset -c 2,3 ./bin/edgegate -config config/dev.json &
+for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | grep 'G2 p50'; done
+```
 
 ### 🔧 P2-3 · D4 (CL+TE ⇒ chunked, xoá CL) phải thành từ chối ở phase 4
 
@@ -88,6 +125,13 @@ Kèm phản chứng `make smugglelab-nodefense` đỏ. Test hiện tại
 `TestReadRequestBodyFraming/"CL+TE ⇒ chunked, CL xoá (D4)"` sẽ phải đổi kỳ vọng.
 
 ## Đã trả
+
+### ✅ P2-2 · 204/304 kèm TE: strip hay giữ? — trả 2026-09-04 (phase 3)
+
+Đóng **bằng cấu trúc**: `StripHopByHop` xoá TE ở chiều response, proxy chỉ đặt lại TE khi chính
+nó chunked; với NoBody (HEAD/1xx/204/304) mode là "không body" nên TE không bao giờ được đặt lại.
+Không cần `if` riêng. Bằng chứng `TestHEADAnd204HaveNoBody` (`go test ./internal/proxy -run
+TestHEADAnd204HaveNoBody -v`).
 
 ### ✅ P2-4 · `FuzzReadRequest` chậm 2x vì `ReadMemStats` — trả 2026-09-03
 
@@ -158,6 +202,7 @@ Bằng chứng: `go test ./internal/httpx -count=20 -race` ok (`bench/p2-race20.
 
 | ID | Trả ở phase | Bằng lệnh nào |
 |---|---|---|
+| **P2-2** | 3 | `TestHEADAnd204HaveNoBody`: HEAD/204 qua proxy không mang `Transfer-Encoding`; hệ quả của `StripHopByHop` + chỉ đặt lại TE khi proxy tự chunked |
 | **P1-6** | 1 | `cmd/needzerolab` tái hiện **xác định**: heap sạch `make(4 GiB)` = 7ms / RSS 7 MB; sau **64 MB rác bẩn + GC** = **7.138s / RSS 4.27 GB**; sau `FreeOSMemory` = 3ms. Cơ chế: span đè lên trang free-còn-bẩn ⇒ runtime zero CẢ span ⇒ ~1M page fault (sys 7.7s, user 0.3s). Không liên quan `-race` (không race cũng 7.73s, 2/8). Dự đoán "lần chậm RSS 4 GB" trúng 8/8. Fix test: `FreeOSMemory()` trước `make` ⇒ 8/8 nhanh; gỡ skip-dưới-race; `make test` -race 2.35s ×3 |
 | **P1-3** | 1 | `TestPayloadOverUint32` skip khi int 32-bit, khi `vm.overcommit_memory=2`, ~~và dưới `-race`~~ (skip race đã gỡ khi P1-6 chỉ ra `-race` không liên quan); `make test-huge` chạy riêng |
 | **P1-4** | 1 | `TestTransportDifference`: net.Pipe vs TCP trên 4 kịch bản ⇒ **G6 sai một nửa**. Pipe tái tạo được short read (7/7) và nhiều-frame-một-Read (62/62); không tái tạo được Write bất đồng bộ (`tcp=true pipe=false`) và gom Write rời (pipe luôn 1; tcp 1 hoặc 11 — không xác định) |
