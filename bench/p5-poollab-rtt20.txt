@@ -1,0 +1,34 @@
+sudo tc qdisc add dev lo root netem delay $(( 20 / 2 ))ms
+== RTT phải ĐO, không được suy từ tham số netem ==
+ping -c 5 -i 0.2 127.0.0.1 | tail -1
+rtt min/avg/max/mdev = 20.163/20.448/21.204/0.381 ms
+== RTT trung bình ở trên phải ≈ 20ms. Ghi con số ĐO ĐƯỢC vào diary. ==
+go run ./cmd/poollab -pool both -n 200
+upstream 127.0.0.1:36967 · target /hello · n=200 · conns=1 · closed-loop, cùng máy
+RTT = 21.51ms (srtt kernel, ss -tin, rttvar 1.598 ms) · ping = 21.593ms (ping avg, 5 gói) · chi phí một net.Dial (p50/20) = 20.757ms
+  một net.Dial = 1.0 RTT — phần vượt 1 RTT là dựng socket/accept/goroutine, không phải mạng (phase 0 G2)
+
+== baseline ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, keep-alive                      200  20.974ms  22.845ms  29.631ms    4.761s     0
+  [qua proxy, pool-off (dial mỗi request)] Δ TIME_WAIT: phía proxy (dport=36967) +220 · phía upstream (sport=36967) +0
+  [qua proxy, pool-on] Δ TIME_WAIT: phía proxy (dport=36967) +0 · phía upstream (sport=36967) +0
+
+== qua proxy, GET /hello, closed-loop, n=200, conns=1 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, pool-off (dial mỗi request)          200  65.943ms   84.51ms 111.686ms   15.455s     0
+qua proxy, pool-on                              200   48.08ms  65.157ms  86.327ms   11.401s     0
+  pool-off stats: {Dials:220 Reuses:0 Puts:0 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+  pool-on  stats: {Dials:1 Reuses:219 Puts:220 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+
+  G1/G2 tỉ số        p50 off / p50 on   = 1.37x
+  G1/G2 tiết kiệm     p50 off − p50 on   = 17.863ms / request
+  G1/G2 theo RTT      tiết kiệm / RTT     = 0.83 RTT / request
+  overhead còn lại    p50 on − p50 thẳng = 27.106ms (= parse 2 chiều + goroutine, KHÔNG còn dial)
+  wall off / wall on = 1.36x
+make rtt-down
+make[1]: Entering directory '/home/thaivro/test-project/edge-gate'
+sudo tc qdisc del dev lo root
+tc qdisc show dev lo
+qdisc noqueue 0: root refcnt 2 
+make[1]: Leaving directory '/home/thaivro/test-project/edge-gate'

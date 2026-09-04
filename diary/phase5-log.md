@@ -109,3 +109,9 @@
 - 16:08 `go test ./... -race` ok ×3 package, proxy 25 PASS → `bench/p5-tests-turn2.txt`.
 - 16:12 ghi phase5.md: Nhật ký (3 mục), Giả thuyết sai (7 hàng), Số đo (G2 để ⏳). Commit turn 2.
   Còn: `make poollab-rtt` (người dùng chạy) → điền G2, rồi turn 3.
+- 16:20 người dùng chạy `! make poollab-rtt 2>&1 | tee bench/p5-poollab-rtt20.txt` (sudo). ping 20.448 ms.
+  off 65.943 / on 48.08 / thẳng 20.974 ms ⇒ 1.37x, 17.86 ms, 0.87 RTT. Dial = 20.757 ms = 1.0 RTT.
+  **G2 sai sát biên cả ba cột, cùng hướng thấp**: mẫu qua proxy +5-7 ms ngoài mô hình 3/2 RTT, mẫu
+  thẳng +0.5 ms. Nghi máy ồn (4 lần đánh thức/request). Không sửa code. Cặp số ROADMAP: tỉ số
+  5.34x → 1.37x, tiết kiệm 0.96 → 17.9 ms. `rtt-down` xong, `qdisc noqueue`.
+- 16:22 chốt turn 2: G1 ❌, G2 ⚠️, G4 ⚠️ (1/4), G3/G5/G6/G7 ✅. Commit.

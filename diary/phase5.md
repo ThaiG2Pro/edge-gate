@@ -2,7 +2,7 @@
 
 - **Thời lượng dự kiến:** 2 ngày · **thực tế:** _______
 - **Bắt đầu:** 2026-09-04 15:40 · **Kết thúc:** _______
-- **Trạng thái:** 🔧 turn 2 (đo) xong phần RTT 0 — **G1 sai, G4 sai một nhánh**, G3/G5/G6/G7 đúng; **G2 chờ `make poollab-rtt`** (cần sudo). 25 test proxy xanh `-race`, phản chứng đỏ 20/20. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
+- **Trạng thái:** 🔧 turn 2 (đo) xong — **G1 sai hẳn, G2 sai sát biên (0.87 RTT vs 0.9-1.1), G4 sai một nhánh**, G3/G5/G6/G7 đúng. 25 test proxy xanh `-race`, phản chứng đỏ 20/20. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
 - **Commit:** _______ (commit nền `30a1ab0`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase5-log.md`](phase5-log.md). File này là bản biên tập.
@@ -217,6 +217,44 @@ nhánh thứ tư sai như đã ghi turn 1. G5 idle **= 4** đúng bằng MaxIdle
 16 + 104; goroutine 4 → 6 (pool không sinh goroutine). G6 **đúng 1 dial** cho 200 request 6 kiểu
 framing, /eof thêm đúng 10 dial và **0 put** — `resp.Close` chặn đúng.
 
+### 2026-09-04 16:20 — G2: RTT 20 ms, tỉ số tụt 4x nhưng khoản tiết kiệm tăng 19x
+
+Người dùng chạy (cần sudo): `! make poollab-rtt 2>&1 | tee bench/p5-poollab-rtt20.txt`.
+
+```console
+$ make poollab-rtt
+sudo tc qdisc add dev lo root netem delay 10ms
+rtt min/avg/max/mdev = 20.163/20.448/21.204/0.381 ms          # ping: RTT ĐO ĐƯỢC = 20.45 ms
+go run ./cmd/poollab -pool both -n 200
+RTT = 21.51ms (srtt kernel, ss -tin, rttvar 1.598 ms) · ping = 21.593ms (ping avg, 5 gói) · chi phí một net.Dial (p50/20) = 20.757ms
+  một net.Dial = 1.0 RTT
+thẳng upstream, keep-alive                      200  20.974ms  22.845ms  29.631ms    4.761s     0
+  [pool-off] Δ TIME_WAIT: phía proxy +220 · phía upstream +0      [pool-on] +0 · +0
+qua proxy, pool-off (dial mỗi request)          200  65.943ms   84.51ms 111.686ms   15.455s     0
+qua proxy, pool-on                              200   48.08ms  65.157ms  86.327ms   11.401s     0
+  pool-off stats: {Dials:220 Reuses:0 ...}   pool-on stats: {Dials:1 Reuses:219 Puts:220 ... Idle:1}
+  G1/G2 tỉ số        p50 off / p50 on   = 1.37x
+  G1/G2 tiết kiệm     p50 off − p50 on   = 17.863ms / request
+  G1/G2 theo RTT      tiết kiệm / RTT     = 0.83 RTT / request     (0.87 RTT theo ping 20.45 ms)
+  overhead còn lại    p50 on − p50 thẳng = 27.106ms
+make rtt-down → qdisc noqueue 0: root refcnt 2
+```
+
+**Đọc kết quả:** đây là cặp số ROADMAP hỏi, và nó nói **ngược** với ROADMAP đúng như phase 0 dự báo:
+tỉ số **5.34x → 1.37x** khi RTT tăng, còn khoản tiết kiệm **0.96 ms → 17.9 ms** (19x). Ai báo cáo bằng
+tỉ số sẽ kết luận "pool vô dụng khi mạng chậm" — sai 180°. Ba nguồn RTT giờ hội tụ (ping 20.45,
+srtt 21.5, dial 20.76 ms): **một dial = 1.0 RTT** ở đây, so với **20 RTT** ở loopback trần — trả lời
+câu hỏi 4: ở loopback pool tiết kiệm "một lần dựng socket", ở mạng thật pool tiết kiệm "một RTT",
+và hai thứ đó chỉ trùng tên.
+
+G2 đăng ký 1.4-1.6x / 19-21 ms / 0.9-1.1 RTT; thực tế **1.37x / 17.86 ms / 0.87 RTT** — lệch thấp
+**cả ba, cùng hướng**, sát biên. Mô hình "off = 3 RTT, on = 2 RTT" cho 61 / 41 ms; đo được 65.9 /
+48.1 — mỗi mẫu qua proxy **cộng thêm 5-7 ms** không có trong mô hình, còn mẫu thẳng chỉ +0.5 ms.
+Phần cộng thêm này làm tỉ số tụt (mẫu số phồng) và ăn vào khoản tiết kiệm. Nghi phạm: **máy ồn**
+(load 9/6 core) — mỗi request qua proxy có 4 lần đánh thức tiến trình thay vì 2, mỗi lần chờ
+run-queue vài ms dưới tranh chấp CPU; p90 pool-on 65 ms ≈ 3 RTT củng cố "đôi lúc mất thêm hẳn một
+nhịp". Chưa chứng minh được (cần chạy lại lúc máy rỗi — nợ), nên ghi là nghi phạm, không phải kết luận.
+
 **Đang nghĩ gì:** G6 lần chạy đầu turn 2 **đỏ một lần**: `Puts:199 Idle:0` — client đã nhận xong
 response mà proxy chưa `put` (put nằm sau `Flush`). Đó là race giữa test và proxy, không phải bug pool;
 sửa test bằng `waitStats`. Nhưng nó nhắc một điều thật: "response đã về client" và "connection upstream
@@ -227,6 +265,7 @@ sửa test bằng `waitStats`. Nhưng nó nhắc một điều thật: "response
 | Tôi tưởng là | Thực tế là | Lệnh + output đã lật tẩy | Đã sửa thế nào |
 |---|---|---|---|
 | G1: pool ở RTT 0 cho 2.0-2.5x, tiết kiệm 250-350 µs ≈ 8-12 RTT | **5.34x, 958 µs, 22.8 RTT** (in-process); 2.88x / 988 µs (upstream ngoài) | `make poollab` → `bench/p5-poollab-rtt0.txt`: `chi phí một net.Dial (p50/20) = 834µs`, `tiết kiệm = 958µs` | Không sửa code. Sửa cách đăng ký: hằng "dial ≈ 300 µs" là số lúc máy rỗi (phase 3); phase 0 lần đầu đã đo 861 µs. Lần sau đăng ký **theo số đo tại chỗ cùng ngày** (`poollab` giờ in chi phí dial trước khi đo) |
+| G2: ở RTT 20 ms pool tiết kiệm đúng 1.0 RTT (0.9-1.1), tỉ số 1.4-1.6x | **0.87 RTT, 1.37x** — mọi mẫu qua proxy cộng thêm 5-7 ms ngoài mô hình 3 RTT / 2 RTT, mẫu thẳng thì không | `make poollab-rtt` → `bench/p5-poollab-rtt20.txt`: off 65.943 / on 48.08 / thẳng 20.974 ms, ping 20.448 ms | Không sửa code; hướng và bậc đúng. Mô hình phải có hạng tử "mỗi hop tiến trình + chi phí đánh thức" — ở máy ồn nó là ms, không phải µs. Nợ: chạy lại lúc máy rỗi |
 | G4 nhánh 4: tắt probe, POST có body vào connection chết ⇒ **50/50** lỗi 502 | **25/50** xen kẽ 200/502: 502 ⇒ connection bị bỏ ⇒ pool rỗng ⇒ request kế dial mới ⇒ 200 ⇒ put ⇒ FIN ⇒ 502 | `TestIdleClosedUpstream/noprobe-POST-body-502` lần 1: `25/50 đúng (muốn 502 "")`; output `req 1: 200 "4", req 3: 200 "4", …` | Test đòi đúng chuỗi `5252…`, `dropDirty = 25`, `retries = 0`, 502 giữ connection client. Bài học: kỳ vọng phải mô phỏng **cả hành vi đúng của phòng tuyến** (bỏ connection lỗi), không chỉ lỗi |
 | Phản chứng G3 với tag `nodefense` chung sẽ đỏ vì connection bẩn | Đỏ, nhưng vì **io.Copy thô** (head của B kẹt trong bufio tới deadline ⇒ EOF) và vì **probe MSG_PEEK** thấy byte thừa của A trước cả kiểm sạch | `go test -run TestDirtyConnNotPooled -tags nodefense`: `B đọc head: unexpected EOF`; stats `DeadOnProbe` | Tách tag `nodefensepool`; test G3 chạy `Pool.Probe=false`. Chạy lại: `B: status 502 … connection bẩn về pool` — đỏ đúng phòng tuyến. Trả một phần P4-4 |
 | Upstream giả của `TestRawCopyTrap` (một request rồi giữ connection 5 s) vẫn dùng được | Với pool, request 2 đi đúng vào connection đó ⇒ 504 sau 2 s. "Giữ connection mà không phục vụ" không phải HTTP server | `go test ./... -race`: `--- FAIL: TestRawCopyTrap … request 2 không được trả lời trong 500 ms` ở build **thường** | Fixture phục vụ vòng lặp keep-alive, không tự đóng. Bẫy #2 vẫn đỏ với `-tags nodefense` (3.00 s) |
@@ -244,7 +283,7 @@ Tất cả: 2026-09-04, commit `f46d851` (+ sửa test waitStats), máy `bench/e
 | # | Đăng ký | Thực tế | Đúng/Sai | Ghi chú |
 |---|---|---|---|---|
 | G1 | RTT 0: 2.0-2.5x; 250-350 µs; 8-12 RTT | **5.34x; 958 µs; 22.8 RTT** (srtt 42 µs). Upstream ngoài: 2.88x; 988 µs. Dụng cụ phase 3: 657 µs | ❌ **Sai** | Hằng "dial 300 µs" sai ngày; dial đo tại chỗ 746-834 µs. Khoản tuyệt đối bền, tỉ số không |
-| G2 | RTT 20 ms: 1.4-1.6x; 19-21 ms; 1.0 RTT | _chờ `make poollab-rtt` (sudo)_ | ⏳ | `bench/p5-poollab-rtt20.txt` |
+| G2 | RTT 20 ms: 1.4-1.6x; 19-21 ms; 0.9-1.1 RTT | **1.37x; 17.86 ms; 0.87 RTT** (ping 20.45 ms); dial = 1.0 RTT | ⚠️ **Sai sát biên** cả ba, cùng hướng thấp | Mẫu qua proxy +5-7 ms ngoài mô hình (máy ồn, chưa chứng minh). Hướng đúng: tỉ số tụt 4x, tiết kiệm tăng 19x |
 | G3 | N/N xanh; ≥ 90 % đỏ khi tắt kiểm sạch | **20/20** xanh; **20/20** đỏ (`-tags nodefensepool`, probe tắt) | ✅ | Đỏ dưới dạng 502 cho B — parser mình từ chối rác; proxy io.Copy thô sẽ rò thật |
 | G4 | probe: 50/50 GET, 50/50 POST; tắt probe: GET 50/50 retries=50; POST 502 50/50 | 50/50, 50/50 (DeadOnProbe 50); 50/50 retries **50**; POST **25/50** xen kẽ | ⚠️ **3/4 đúng, 1 sai** | Nhánh 4 sai vì hành vi đúng (bỏ connection lỗi) làm mẫu xen kẽ |
 | G5 | idle == 4; goroutine Δ ≤ 2 | idle **4**, dropFull 104, dials 108 ≤ 16+104; goroutine 4 → 6 | ✅ | pool không có goroutine riêng |
@@ -259,6 +298,16 @@ Tất cả: 2026-09-04, commit `f46d851` (+ sửa test waitStats), máy `bench/e
 | `poollab` upstream ngoài | 189 µs | 1.515 ms | 526 µs | 2.88x | **988 µs** | 337 µs |
 | `proxylab` (phase 3), hai lần chạy | 205 / 453 µs | 1.624 ms | 967 µs | ~1.7x | **657 µs** | 514 µs |
 | phase 3 tham chiếu (máy rỗi) | 139 µs | 473 µs | — | — | (dial ≈ 333 µs) | — |
+
+**RTT 20 ms** (`bench/p5-poollab-rtt20.txt`, n=200, ping 20.45 ms): thẳng 20.97 ms · off 65.94 ms · on
+48.08 ms · off/on **1.37x** · **off − on = 17.86 ms = 0.87 RTT** · dial = 20.76 ms = 1.0 RTT.
+
+| | RTT 0 (loopback) | RTT 20 ms (netem) | Đọc |
+|---|---|---|---|
+| tỉ số off/on | **5.34x** | **1.37x** | tụt 4x khi mạng chậm hơn |
+| tiết kiệm/request | **0.96 ms** | **17.9 ms** | tăng 19x |
+| một dial = ? RTT | 20 RTT | 1.0 RTT | loopback: dial là dựng socket; mạng: dial là RTT |
+| ROADMAP đã viết | ~1.1x | >15x | ngược cả hai; phase 0 đã lật, phase 5 xác nhận |
 
 ## Invariant + lệnh kiểm chứng
 
