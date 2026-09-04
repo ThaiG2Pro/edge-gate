@@ -90,6 +90,11 @@ func (c *chunkedReader) beginChunk() error {
 		if err != nil {
 			return err
 		}
+		if rejectForbiddenTrailer {
+			if err := checkTrailer(tr); err != nil {
+				return err
+			}
+		}
 		if len(tr) > 0 {
 			c.Trailer = tr
 		}
@@ -170,4 +175,26 @@ func (cw *ChunkedWriter) Write(p []byte) (int, error) {
 func (cw *ChunkedWriter) Close() error {
 	_, err := io.WriteString(cw.w, "0\r\n\r\n")
 	return err
+}
+
+// forbiddenTrailer: RFC 9110 §6.5.1 — field điều khiển framing, routing,
+// request modifier, authentication, hay content-coding KHÔNG được xuất hiện
+// trong trailer. Trailer đến SAU khi hai bên đã đồng ý ranh giới; cho
+// Content-Length / Transfer-Encoding vào đó là phá ranh giới lần nữa (D8).
+var forbiddenTrailer = map[string]bool{
+	"Transfer-Encoding": true, "Content-Length": true, "Host": true,
+	"Trailer": true, "Connection": true, "Te": true, "Upgrade": true, "Keep-Alive": true,
+	"Content-Encoding": true, "Content-Type": true, "Content-Range": true,
+	"Authorization": true, "Cookie": true, "Set-Cookie": true, "Cache-Control": true,
+	"Expect": true, "Max-Forwards": true, "Range": true, "Www-Authenticate": true,
+	"Proxy-Authenticate": true, "Proxy-Authorization": true,
+}
+
+func checkTrailer(tr Header) error {
+	for name := range tr {
+		if forbiddenTrailer[name] {
+			return ErrBadTrailer
+		}
+	}
+	return nil
 }

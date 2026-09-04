@@ -11,10 +11,12 @@ package proxy
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +38,13 @@ type Config struct {
 	// NoDelay: SetNoDelay(true) trên mọi socket. Mặc định true. Chỉ đặt false
 	// để đo G4 (Nagle + delayed ACK = +40 ms hằng số, phase 0 G3).
 	NoDelay *bool
+
+	// TrustedProxies (phase 4 D9): CIDR của các peer được tin về header
+	// forwarding. Peer trong list ⇒ X-Forwarded-For của nó được GIỮ và append
+	// IP peer. Peer ngoài list ⇒ XFF/Forwarded của nó bị bỏ, XFF := peer,
+	// X-Real-IP := peer. Rỗng = không tin ai (mặc định an toàn).
+	TrustedProxies []string
+	trusted        []*net.IPNet
 
 	Logf func(format string, args ...any)
 }
@@ -60,6 +69,34 @@ func (c *Config) withDefaults() {
 	if c.Logf == nil {
 		c.Logf = log.Printf
 	}
+	c.trusted = c.trusted[:0]
+	for _, cidr := range c.TrustedProxies {
+		if !strings.Contains(cidr, "/") {
+			if strings.Contains(cidr, ":") {
+				cidr += "/128"
+			} else {
+				cidr += "/32"
+			}
+		}
+		_, n, err := net.ParseCIDR(cidr)
+		if err != nil {
+			// Cấu hình tin cậy sai là lỗi khởi động, không phải thứ để "bỏ qua
+			// rồi chạy tiếp": bỏ qua lặng lẽ = tin ít hơn người vận hành nghĩ,
+			// hoặc tệ hơn, họ tưởng đã tin mà thật ra không.
+			panic(fmt.Sprintf("proxy: trusted_proxies %q: %v", cidr, err))
+		}
+		c.trusted = append(c.trusted, n)
+	}
+}
+
+// isTrusted: peer có nằm trong TrustedProxies không.
+func (c *Config) isTrusted(ip net.IP) bool {
+	for _, n := range c.trusted {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Server: goroutine-per-connection. Đóng được sạch: Close() dừng Accept,

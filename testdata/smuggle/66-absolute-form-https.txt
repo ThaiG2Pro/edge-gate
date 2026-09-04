@@ -1,0 +1,8 @@
+# name: absolute-form scheme https tới cổng plaintext
+# expect: 400
+# source: D5
+# why: Không có TLS ở đây; 'https://' là yêu cầu mơ hồ
+---
+GET https://h/x HTTP/1.1\r\n
+Host: h\r\n
+\r\n

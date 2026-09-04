@@ -1,0 +1,10 @@
+# name: Response header value có NUL
+# expect: 400
+# kind: response
+# source: RFC 9110 §5.5; D10
+# why: Header injection từ upstream: proxy ghi lại nguyên văn là nối vector sang client
+---
+HTTP/1.1 200 OK\r\n
+Set-Cookie: a\x00b\r\n
+Content-Length: 0\r\n
+\r\n

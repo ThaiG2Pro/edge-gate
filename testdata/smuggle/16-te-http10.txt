@@ -1,0 +1,11 @@
+# name: TE trên HTTP/1.0
+# expect: 400
+# source: RFC 9112 §6.1: 'A server MUST NOT send TE in response to HTTP/1.0'; client 1.0 không có chunked
+# why: HTTP/1.0 không định nghĩa chunked; backend 1.0 đọc CL/EOF, proxy đọc chunked ⇒ lệch
+---
+POST / HTTP/1.0\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0\r\n
+\r\n

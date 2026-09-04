@@ -1,0 +1,12 @@
+# name: TE: xchunked
+# expect: 400
+# source: PortSwigger TE.TE
+# why: Backend nhận 'xchunked' như chunked (substring) thì đọc chunked; kèm CL nên D1 bắt trước ⇒ 400 (đăng ký 501, sửa turn 1 như ca 10)
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: xchunked\r\n
+Content-Length: 5\r\n
+\r\n
+0\r\n
+\r\n

@@ -1,0 +1,7 @@
+# name: absolute-form không có Host header
+# expect: 400
+# source: RFC 9112 §3.2: Host bắt buộc với HTTP/1.1 kể cả absolute-form; Go điền Host từ URL
+# why: Strict hơn Go: thiếu Host là thiếu; hướng lệch vô hại
+---
+GET http://h/x HTTP/1.1\r\n
+\r\n

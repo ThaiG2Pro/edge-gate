@@ -1,0 +1,8 @@
+# name: Host: 'a b'
+# expect: 400
+# source: RFC 9112 §3.2 Host = uri-host [':' port]; D4
+# why: SP không thuộc uri-host; backend cắt ở SP, proxy khác giữ nguyên ⇒ hai vhost
+---
+GET / HTTP/1.1\r\n
+Host: a b\r\n
+\r\n

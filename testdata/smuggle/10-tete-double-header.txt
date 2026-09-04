@@ -1,0 +1,13 @@
+# name: TE.TE: hai dòng Transfer-Encoding
+# expect: 400
+# source: PortSwigger TE.TE obfuscation
+# why: Có cả CL nên D1 (CL+TE ⇒ 400) bắt TRƯỚC kiểm TE (501); bỏ CL đi thì thành 501 như ca 11. Turn 1: đăng ký 501, chạy lần đầu ra 400 — thứ tự phòng tuyến quyết định status, ghi lại
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+Transfer-Encoding: identity\r\n
+Content-Length: 5\r\n
+\r\n
+0\r\n
+\r\n

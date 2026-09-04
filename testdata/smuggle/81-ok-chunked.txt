@@ -1,0 +1,19 @@
+# name: OK: chunked 2 chunk + ext
+# expect: ok
+# body: wikipedia
+# rest: NEXT
+# target: /up
+# host: h
+# source: RFC 9112 §7.1
+---
+POST /up HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+4;x=y\r\n
+wiki\r\n
+5\r\n
+pedia\r\n
+0\r\n
+\r\n
+NEXT

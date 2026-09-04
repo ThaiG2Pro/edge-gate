@@ -1,0 +1,12 @@
+# name: 'Transfer-Encoding : chunked' (SP trước ':')
+# expect: 400
+# source: PortSwigger TE.TE; RFC 9112 §5.1 'No whitespace is allowed between the field name and colon'
+# why: Tên field không phải token. Backend trim tên sẽ thấy TE; proxy không trim thì thấy header lạ + CL
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding : chunked\r\n
+Content-Length: 5\r\n
+\r\n
+0\r\n
+\r\n

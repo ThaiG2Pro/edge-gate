@@ -1,0 +1,11 @@
+# name: Response hai CL khác nhau
+# expect: 400
+# kind: response
+# source: RFC 9110 §8.6; D10
+# why: Response splitting qua CL: client đọc 5, proxy đọc 6
+---
+HTTP/1.1 200 OK\r\n
+Content-Length: 5\r\n
+Content-Length: 6\r\n
+\r\n
+hello!

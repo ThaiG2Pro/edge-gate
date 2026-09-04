@@ -1,0 +1,17 @@
+# name: OK: TE 'Chunked' (không phân biệt hoa/thường) + trailer hợp lệ
+# expect: ok
+# body: abc
+# rest: 
+# target: /
+# host: h
+# source: RFC 9112 §7; RFC 9110 §6.5
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: Chunked\r\n
+\r\n
+3\r\n
+abc\r\n
+0\r\n
+X-Sum: 9\r\n
+\r\n

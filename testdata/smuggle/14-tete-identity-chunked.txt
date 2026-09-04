@@ -1,0 +1,11 @@
+# name: TE: identity, chunked
+# expect: 501
+# source: RFC 9112 §6.1 (chunked phải là cuối; identity đã bỏ từ RFC 7230)
+# why: Hợp cú pháp danh sách nhưng không phải đúng một token chunked ⇒ không forward được an toàn
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: identity, chunked\r\n
+\r\n
+0\r\n
+\r\n

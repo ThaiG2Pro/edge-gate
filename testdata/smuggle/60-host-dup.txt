@@ -1,0 +1,9 @@
+# name: Hai dòng Host
+# expect: 400
+# source: RFC 9112 §3.2: 'more than one Host ... MUST respond 400'
+# why: Hai virtual host ⇒ không đoán
+---
+GET / HTTP/1.1\r\n
+Host: a\r\n
+Host: b\r\n
+\r\n

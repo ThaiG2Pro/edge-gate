@@ -1,0 +1,11 @@
+# name: OK: Host [::1]:8080
+# expect: ok
+# body: 
+# rest: 
+# target: /
+# host: [::1]:8080
+# source: RFC 3986 §3.2.2 IP-literal
+---
+GET / HTTP/1.1\r\n
+Host: [::1]:8080\r\n
+\r\n

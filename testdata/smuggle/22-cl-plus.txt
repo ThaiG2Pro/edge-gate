@@ -1,0 +1,10 @@
+# name: CL: +5
+# expect: 400
+# source: RFC 9110 §8.6: 1*DIGIT
+# why: strtol/ParseInt nhận '+5' = 5; parser strict thấy sai ⇒ hai cách hiểu
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: +5\r\n
+\r\n
+hello

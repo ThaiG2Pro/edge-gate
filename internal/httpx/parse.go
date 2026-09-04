@@ -33,7 +33,12 @@ func readLine(br *bufio.Reader, max int) ([]byte, error) {
 				return nil, ErrLineTooLong
 			}
 			if len(line) < 2 || line[len(line)-2] != '\r' {
-				return nil, ErrBareLF
+				if strictLineEnding {
+					return nil, ErrBareLF
+				}
+				// nodefense: proxy khoan dung nhận LF trần — đúng cách backend
+				// lenient đọc, và là một nửa của cặp strict/lenient gây smuggling.
+				return line[:len(line)-1], nil
 			}
 			line = line[:len(line)-2]
 			if bytes.IndexByte(line, '\r') >= 0 {
@@ -166,6 +171,9 @@ func readHeaders(br *bufio.Reader, lim Limits) (Header, int, error) {
 			return nil, total, badRequest("dòng header thiếu ':'")
 		}
 		name := line[:i]
+		if !strictHeaderName {
+			name = trimOWS(name) // nodefense: "Transfer-Encoding : chunked" thành TE thật
+		}
 		if !isToken(name) {
 			// bao gồm cả "Transfer-Encoding : chunked" (space trước ':') —
 			// đúng vector TE.TE phase 4.
@@ -199,4 +207,26 @@ func shouldClose(proto string, h Header) bool {
 		return !hasConnectionToken(h, "keep-alive")
 	}
 	return hasConnectionToken(h, "close")
+}
+
+// checkConnectionTokens (D7): mọi tên trong `Connection:` phải là token, và
+// không được là Host / Content-Length — RFC 9110 §7.6.1 cấm liệt kê chúng.
+// Nếu cho qua, StripHopByHop sẽ xoá Host theo lệnh client rồi proxy tự sinh
+// lại: client điều khiển được Host mà upstream nhìn thấy.
+func checkConnectionTokens(h Header) error {
+	for _, v := range h.Values("Connection") {
+		for _, tok := range bytes.Split([]byte(v), []byte{','}) {
+			tok = trimOWS(tok)
+			if len(tok) == 0 {
+				continue
+			}
+			if !isToken(tok) {
+				return badRequest("Connection: token không hợp lệ %q", tok)
+			}
+			if bytes.EqualFold(tok, []byte("Host")) || bytes.EqualFold(tok, []byte("Content-Length")) {
+				return ErrBadConnectionToken
+			}
+		}
+	}
+	return nil
 }

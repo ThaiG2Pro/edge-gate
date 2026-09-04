@@ -166,7 +166,9 @@ func TestHEADAnd204HaveNoBody(t *testing.T) {
 // Hop-by-hop bị strip, header do Connection liệt kê động cũng bị strip, XFF
 // được nối, Host giữ nguyên (D2).
 func TestHopByHopAndXFF(t *testing.T) {
-	p := startProxy(t, startFixture(t), nil)
+	// Peer 127.0.0.1 nằm trong TrustedProxies ⇒ XFF client gửi được giữ và
+	// append (G6 nửa "tin"). Nửa "không tin" ở TestXFFUntrustedReplaced.
+	p := startProxy(t, startFixture(t), func(c *Config) { c.TrustedProxies = []string{"127.0.0.0/8"} })
 	req, _ := http.NewRequest("GET", "http://"+p+"/headers", nil)
 	req.Host = "vhost.example"
 	req.Header.Set("X-Forwarded-For", "10.0.0.1")

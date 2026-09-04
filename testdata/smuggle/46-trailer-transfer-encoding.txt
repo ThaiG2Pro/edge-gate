@@ -1,0 +1,12 @@
+# name: Trailer mang Transfer-Encoding
+# expect: body-400
+# source: RFC 9110 §6.5.1 (D8)
+# why: Như 45
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0\r\n
+Transfer-Encoding: chunked\r\n
+\r\n

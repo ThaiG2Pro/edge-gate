@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/thaivro/edgegate/internal/httpx"
@@ -31,11 +32,13 @@ func (s *Server) roundTrip(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req *
 	if req.Chunked {
 		up.Header.Set("Transfer-Encoding", "chunked")
 	}
-	appendXFF(up.Header, c.RemoteAddr()) // D5: append, chưa trust (phase 4)
-	// D2: Host nguyên văn (P-arch-1 mở) — TRỪ khi client HTTP/1.0 không gửi
-	// Host: ta nâng request lên HTTP/1.1 nên upstream đòi Host (net/http trả
-	// 400 "missing required Host header" — lộ ở TestHTTP10ClientGetsEOFBody).
-	// Điền bằng authority ta đang dial, giống nginx `proxy_set_header Host`.
+	s.forwardedHeaders(up.Header, c.RemoteAddr()) // phase 4 D9: XFF có ranh giới tin cậy
+	// Phase 4 D4 (đóng P-arch-1): Host GIỮ NGUYÊN (nginx `$host`) — reverse
+	// proxy đứng trước virtual host, đổi Host là phá routing của upstream.
+	// httpx.ReadRequest đã (a) kiểm cú pháp Host, (b) viết absolute-form về
+	// origin-form và đặt Host := authority (D5). Chỉ còn một trường hợp buộc
+	// sinh Host: client HTTP/1.0 không gửi — ta nâng request lên HTTP/1.1 nên
+	// upstream đòi Host (net/http trả 400 "missing required Host header").
 	if !up.Header.Has("Host") {
 		up.Header.Set("Host", s.cfg.Upstream)
 	}
@@ -229,21 +232,32 @@ func (s *Server) drain(c net.Conn, req *httpx.Request) bool {
 	return err == nil
 }
 
-// appendXFF nối IP client vào X-Forwarded-For. Chưa có trust list (phase 4):
-// giá trị client gửi được giữ nguyên rồi nối thêm — đúng dạng, chưa đáng tin.
-func appendXFF(h httpx.Header, addr net.Addr) {
-	ip := addr.String()
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
+// forwardedHeaders (D9) viết X-Forwarded-For / X-Real-IP / Forwarded theo
+// ranh giới tin cậy:
+//
+//   - peer TIN (trong TrustedProxies): XFF client gửi là của một proxy ta tin
+//     ⇒ giữ và APPEND IP peer. X-Real-IP / Forwarded giữ nguyên.
+//   - peer KHÔNG tin: mọi thứ nó nói về "client thật" là dữ liệu không tin
+//     được ⇒ XFF := peer (THAY, không append), X-Real-IP := peer, xoá Forwarded.
+//
+// Không có ranh giới này, rate limiter phase 7 đếm theo IP trong XFF bị bypass
+// bằng một header giả — "append, không overwrite" mới là nửa bài.
+func (s *Server) forwardedHeaders(h httpx.Header, addr net.Addr) {
+	ipStr := addr.String()
+	if host, _, err := net.SplitHostPort(ipStr); err == nil {
+		ipStr = host
 	}
-	vals := h.Values("X-Forwarded-For")
-	xff := ip
-	if len(vals) > 0 {
-		prev := vals[0]
-		for _, v := range vals[1:] {
-			prev += ", " + v
+	ip := net.ParseIP(ipStr)
+	if ip != nil && s.cfg.isTrusted(ip) {
+		vals := h.Values("X-Forwarded-For")
+		xff := ipStr
+		if len(vals) > 0 {
+			xff = strings.Join(vals, ", ") + ", " + ipStr
 		}
-		xff = prev + ", " + ip
+		h.Set("X-Forwarded-For", xff)
+		return
 	}
-	h.Set("X-Forwarded-For", xff)
+	h.Set("X-Forwarded-For", ipStr)
+	h.Set("X-Real-Ip", ipStr)
+	h.Del("Forwarded")
 }

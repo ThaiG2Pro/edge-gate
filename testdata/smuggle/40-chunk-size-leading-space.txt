@@ -1,0 +1,14 @@
+# name: chunk-size ' 5'
+# expect: body-400
+# source: RFC 9112 §7.1: chunk-size = 1*HEXDIG; diff-fuzz phase 2
+# why: net/http từ chối; backend trim thì đọc 5. Head hợp lệ, body lỗi ⇒ proxy 400 và đóng
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+ 5\r\n
+hello\r\n
+0\r\n
+\r\n
+NEXT

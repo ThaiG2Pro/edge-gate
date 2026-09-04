@@ -1,0 +1,13 @@
+# name: chunk-size '5 '
+# expect: body-400
+# source: diff-fuzz phase 2 tìm ra: Go nhận, mình từ chối
+# why: Chọn strict hơn cả oracle: whitespace ở chunk-size là chỗ hai parser đã lệch thật
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+5 \r\n
+hello\r\n
+0\r\n
+\r\n

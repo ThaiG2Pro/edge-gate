@@ -1,0 +1,12 @@
+# name: Tên header có NUL: 'Transfer-Encoding\x00'
+# expect: 400
+# source: RFC 9110 §5.6.2 tchar
+# why: Backend C nào dùng strcmp sẽ thấy 'Transfer-Encoding'; proxy thấy tên lạ
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding\x00: chunked\r\n
+Content-Length: 5\r\n
+\r\n
+0\r\n
+\r\n

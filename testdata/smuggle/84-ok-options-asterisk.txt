@@ -1,0 +1,11 @@
+# name: OK: OPTIONS *
+# expect: ok
+# body: 
+# rest: 
+# target: *
+# host: h
+# source: RFC 9112 §3.2.4
+---
+OPTIONS * HTTP/1.1\r\n
+Host: h\r\n
+\r\n

@@ -49,6 +49,22 @@ var (
 	ErrVersion = &ProtoError{Status: 505, Reason: "unsupported HTTP version"}
 	// ErrBadChunk: chunk-size không phải hex, tràn, hoặc chunk data không kết thúc CRLF.
 	ErrBadChunk = &ProtoError{Status: 400, Reason: "bad chunk"}
+	// ErrAmbiguousFraming: Content-Length và Transfer-Encoding cùng có (D1 phase 4).
+	// RFC 9112 §6.1 cho phép bỏ CL; ta từ chối, vì bỏ CL chính là CL.TE.
+	ErrAmbiguousFraming = &ProtoError{Status: 400, Reason: "Content-Length and Transfer-Encoding both present"}
+	// ErrBadHost: Host sai cú pháp uri-host[:port], hoặc mâu thuẫn với authority
+	// trong absolute-form request-target (D4/D5 phase 4).
+	ErrBadHost = &ProtoError{Status: 400, Reason: "bad Host"}
+	// ErrBadTarget: request-target sai dạng (scheme không phải http, "*" không
+	// đi với OPTIONS, authority-form không đi với CONNECT…) (D5 phase 4).
+	ErrBadTarget = &ProtoError{Status: 400, Reason: "bad request-target"}
+	// ErrBadConnectionToken: Connection: liệt kê field không được là hop-by-hop
+	// (Host, Content-Length) (D7 phase 4).
+	ErrBadConnectionToken = &ProtoError{Status: 400, Reason: "Connection lists a non-hop-by-hop field"}
+	// ErrBadTrailer: trailer mang framing/routing field (D8 phase 4, RFC 9110 §6.5.1).
+	ErrBadTrailer = &ProtoError{Status: 400, Reason: "forbidden field in trailer"}
+	// ErrConnectNotSupported: CONNECT không tunnel (D6 phase 4).
+	ErrConnectNotSupported = &ProtoError{Status: 501, Reason: "CONNECT not supported"}
 	// ErrHeaderInjection: tên/giá trị header chứa CR, LF hoặc NUL khi serialize.
 	ErrHeaderInjection = errors.New("httpx: header chứa CR/LF/NUL")
 )

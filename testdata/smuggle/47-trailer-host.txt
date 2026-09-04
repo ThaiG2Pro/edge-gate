@@ -1,0 +1,12 @@
+# name: Trailer mang Host
+# expect: body-400
+# source: RFC 9110 §6.5.1: routing field (D8)
+# why: Backend gộp trailer vào header sẽ đổi Host sau khi proxy đã route
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0\r\n
+Host: evil\r\n
+\r\n

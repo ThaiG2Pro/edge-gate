@@ -1,0 +1,11 @@
+# name: Response HTTP/1.0 + TE
+# expect: 400
+# kind: response
+# source: RFC 9112 §6.1
+# why: 1.0 không có chunked; client 1.0 đọc tới EOF
+---
+HTTP/1.0 200 OK\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0\r\n
+\r\n

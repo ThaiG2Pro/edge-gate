@@ -1,0 +1,11 @@
+# name: TE: chunked, identity
+# expect: 501
+# source: RFC 9112 §6.1 §6.3: chunked không phải mã cuối ⇒ đọc tới EOF
+# why: Nếu nhận: RFC bảo body tới EOF; backend lenient đọc chunked ⇒ lệch
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked, identity\r\n
+\r\n
+0\r\n
+\r\n

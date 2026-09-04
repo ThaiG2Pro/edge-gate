@@ -1,0 +1,8 @@
+# name: CONNECT h:443
+# expect: 501
+# source: RFC 9110 §9.3.6; D6
+# why: Không tunnel; forward CONNECT sang origin là mở tunnel qua backend
+---
+CONNECT h:443 HTTP/1.1\r\n
+Host: h:443\r\n
+\r\n

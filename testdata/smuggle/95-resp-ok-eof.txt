@@ -1,0 +1,10 @@
+# name: OK: response không CL/TE ⇒ tới EOF
+# expect: ok
+# kind: response
+# body: abc
+# rest: 
+# source: RFC 9112 §6.3 bước 8
+---
+HTTP/1.1 200 OK\r\n
+\r\n
+abc

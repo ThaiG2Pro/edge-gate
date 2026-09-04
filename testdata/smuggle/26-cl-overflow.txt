@@ -1,0 +1,10 @@
+# name: CL: 99999999999999999999 (20 chữ số)
+# expect: 400
+# source: RFC 9110 §8.6; tràn int64
+# why: Tràn về âm hoặc bị cắt; mỗi backend một kiểu
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 99999999999999999999\r\n
+\r\n
+hello

@@ -1,0 +1,9 @@
+# name: Connection: 'X Y' (không phải token)
+# expect: 400
+# source: RFC 9110 §7.6.1: list of token
+# why: Tên có SP không thể là field name; bên tách theo SP và bên tách theo ',' xoá hai bộ khác nhau
+---
+GET / HTTP/1.1\r\n
+Host: h\r\n
+Connection: X Y\r\n
+\r\n

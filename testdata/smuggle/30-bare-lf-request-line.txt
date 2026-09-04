@@ -1,0 +1,10 @@
+# name: Bare LF sau request line
+# expect: 400
+# source: RFC 9112 §2.2: recipient MAY recognize LF; D3 chọn strict
+# why: Proxy strict + backend lenient (hoặc ngược lại) là nguồn smuggling; ta strict và ghi rõ
+---
+POST / HTTP/1.1\n
+Host: h\r\n
+Content-Length: 5\r\n
+\r\n
+hello

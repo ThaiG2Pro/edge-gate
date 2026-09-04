@@ -1,0 +1,13 @@
+# name: CL.TE cơ bản: CL=6, TE=chunked
+# expect: 400
+# source: PortSwigger 'HTTP request smuggling, basic CL.TE'; RFC 9112 §6.1, §6.3
+# why: Front-end đọc 6 byte '0\r\n\r\nG', back-end đọc chunked tới 0 và để 'G' thành đầu request kế. Hai ranh giới ⇒ từ chối (D1)
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 6\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0\r\n
+\r\n
+G

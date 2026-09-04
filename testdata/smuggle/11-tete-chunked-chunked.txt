@@ -1,0 +1,11 @@
+# name: TE: chunked, chunked
+# expect: 501
+# source: PortSwigger TE.TE
+# why: Không phải 'đúng một token chunked'. Proxy khoan dung coi là chunked, backend có thể coi là lỗi hoặc identity
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked, chunked\r\n
+\r\n
+0\r\n
+\r\n

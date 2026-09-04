@@ -1,0 +1,8 @@
+# name: Host: 'h/evil'
+# expect: 400
+# source: RFC 3986 §3.2 (D4)
+# why: '/' không thuộc authority; ghép vào URL ở backend thành đường dẫn khác
+---
+GET / HTTP/1.1\r\n
+Host: h/evil\r\n
+\r\n

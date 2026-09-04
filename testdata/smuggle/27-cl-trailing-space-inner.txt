@@ -1,0 +1,10 @@
+# name: CL: '5 6' (SP giữa)
+# expect: 400
+# source: RFC 9110 §8.6
+# why: sscanf đọc 5 và dừng; parser strict từ chối
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 5 6\r\n
+\r\n
+hello

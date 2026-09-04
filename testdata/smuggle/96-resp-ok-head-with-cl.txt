@@ -1,0 +1,12 @@
+# name: OK: response cho HEAD có CL ⇒ không body
+# expect: ok
+# kind: response
+# method: HEAD
+# body: 
+# rest: NEXT
+# source: RFC 9112 §6.3 bước 1
+---
+HTTP/1.1 200 OK\r\n
+Content-Length: 5\r\n
+\r\n
+NEXT

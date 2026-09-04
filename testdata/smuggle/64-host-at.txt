@@ -1,0 +1,8 @@
+# name: Host: 'user@h'
+# expect: 400
+# source: RFC 9112 §3.2: Host không mang userinfo (D4)
+# why: '@' làm parser URL ở backend đọc host khác
+---
+GET / HTTP/1.1\r\n
+Host: user@h\r\n
+\r\n

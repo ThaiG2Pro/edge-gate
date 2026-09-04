@@ -1,0 +1,11 @@
+# name: Hai CL khác nhau (5, 6)
+# expect: 400
+# source: RFC 9110 §8.6; PortSwigger CL.CL
+# why: Bên lấy dòng đầu và bên lấy dòng cuối thấy hai ranh giới
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 5\r\n
+Content-Length: 6\r\n
+\r\n
+hello!

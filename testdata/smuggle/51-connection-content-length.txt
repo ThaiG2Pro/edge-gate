@@ -1,0 +1,11 @@
+# name: Connection: Content-Length
+# expect: 400
+# source: RFC 9110 §7.6.1 (D7)
+# why: Xoá CL khi forward ⇒ upstream đọc body tới EOF/0 trong khi proxy đã đọc 5 byte
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Connection: Content-Length, close\r\n
+Content-Length: 5\r\n
+\r\n
+hello

@@ -1,0 +1,7 @@
+# name: HTTP/1.1 không Host
+# expect: 400
+# source: RFC 9112 §3.2
+# why: Bắt buộc
+---
+GET / HTTP/1.1\r\n
+\r\n

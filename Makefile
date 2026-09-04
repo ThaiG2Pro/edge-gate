@@ -196,14 +196,20 @@ proxylab-nodefense:
 # ---------------------------------------------------------------------------
 # Phase 4: smuggling. Bài phản chứng BẮT BUỘC ĐỎ.
 # ---------------------------------------------------------------------------
+# Bộ testdata/smuggle/*.txt qua HAI tầng: parser (httpx: status, body, phần dư
+# = ranh giới) và proxy thật (proxy: status + đóng + không trả lời byte pipelined).
+# TestSmugglingOracle in bảng "mình strict hơn net/http ở đâu" (G2 phase 4).
 smugglelab:
-	go test ./internal/httpx/ -run TestSmuggling -v -count=1
+	go test ./internal/httpx/ -run 'TestSmuggling' -v -count=1
+	go test ./internal/proxy/ -run 'TestSmugglingE2E|TestXFF|TestAbsoluteForm' -v -count=1
 
-# Tắt phòng tuyến -> bộ test PHẢI fail. Nếu vẫn xanh thì bộ test không chứng
-# minh gì cả. `make smugglelab-nodefense` XANH là một thất bại.
+# Tắt 7 phòng tuyến (internal/httpx/defense_nodefense.go) -> bộ test PHẢI fail.
+# Nếu vẫn xanh thì bộ test không chứng minh gì cả. XANH ở đây là một thất bại.
 smugglelab-nodefense:
 	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
-	! go test ./internal/httpx/ -run TestSmuggling -count=1 -tags nodefense
+	! go test ./internal/httpx/ -run 'TestSmuggling$$' -count=1 -tags nodefense
+	@echo "== và e2e cũng phải đỏ =="
+	! go test ./internal/proxy/ -run TestSmugglingE2E -count=1 -tags nodefense
 
 # ---------------------------------------------------------------------------
 # Phase 5: connection pool. Hai con số, và chúng rất khác nhau.

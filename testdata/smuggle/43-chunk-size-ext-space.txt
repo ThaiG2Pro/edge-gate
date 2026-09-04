@@ -1,0 +1,13 @@
+# name: chunk-size '5 ;a=b' (BWS trước ';')
+# expect: body-400
+# source: RFC 9112 §7.1.1 cho BWS; phase 2 chọn từ chối
+# why: BWS là chỗ RFC 'khoan dung có điều kiện'; hai parser dễ khác nhau
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+5 ;a=b\r\n
+hello\r\n
+0\r\n
+\r\n

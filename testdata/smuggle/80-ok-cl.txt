@@ -1,0 +1,13 @@
+# name: OK: CL=5
+# expect: ok
+# body: hello
+# rest: NEXT
+# target: /
+# host: h
+# source: RFC 9112 §6.3
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 5\r\n
+\r\n
+helloNEXT

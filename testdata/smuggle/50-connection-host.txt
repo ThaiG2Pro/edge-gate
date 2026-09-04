@@ -1,0 +1,9 @@
+# name: Connection: Host
+# expect: 400
+# source: RFC 9110 §7.6.1 (D7)
+# why: StripHopByHop xoá Host theo lệnh client, proxy sinh lại Host=upstream ⇒ client điều khiển virtual host
+---
+GET / HTTP/1.1\r\n
+Host: h\r\n
+Connection: Host\r\n
+\r\n

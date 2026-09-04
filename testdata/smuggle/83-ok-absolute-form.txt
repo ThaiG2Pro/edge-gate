@@ -1,0 +1,12 @@
+# name: OK: absolute-form khớp Host ⇒ viết lại origin-form
+# expect: ok
+# body: 
+# rest: NEXT
+# target: /x?q=1
+# host: h:8080
+# source: RFC 9112 §3.2.2 (D5)
+---
+GET http://h:8080/x?q=1 HTTP/1.1\r\n
+Host: h:8080\r\n
+\r\n
+NEXT

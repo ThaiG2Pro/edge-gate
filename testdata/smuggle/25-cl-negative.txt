@@ -1,0 +1,10 @@
+# name: CL: -1
+# expect: 400
+# source: RFC 9110 §8.6
+# why: ParseInt nhận -1; đọc -1 byte là 'tới EOF' ở vài backend
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: -1\r\n
+\r\n
+hello

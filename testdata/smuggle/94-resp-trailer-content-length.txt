@@ -1,0 +1,14 @@
+# name: Response trailer mang Content-Length
+# expect: body-400
+# kind: response
+# source: RFC 9110 §6.5.1 (D8)
+# why: Proxy đã gửi head cho client; lỗi giữa body ⇒ chỉ được đóng
+---
+HTTP/1.1 200 OK\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+3\r\n
+abc\r\n
+0\r\n
+Content-Length: 3\r\n
+\r\n

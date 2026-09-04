@@ -1,0 +1,13 @@
+# name: TE qua obs-fold
+# expect: 400
+# source: RFC 9112 §5.2: proxy MUST reject hoặc replace obs-fold
+# why: 'Transfer-Encoding:\r\n chunked' — backend hỗ trợ obs-fold thấy chunked, proxy không thấy TE
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding:\r\n
+ chunked\r\n
+Content-Length: 5\r\n
+\r\n
+0\r\n
+\r\n

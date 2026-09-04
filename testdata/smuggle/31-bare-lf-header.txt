@@ -1,0 +1,10 @@
+# name: Bare LF ở một dòng header
+# expect: 400
+# source: RFC 9112 §2.2
+# why: 'Host: h\nContent-Length: 5' — backend lenient thấy 2 header, proxy strict thấy 1 header value chứa LF
+---
+POST / HTTP/1.1\r\n
+Host: h\n
+Content-Length: 5\r\n
+\r\n
+hello

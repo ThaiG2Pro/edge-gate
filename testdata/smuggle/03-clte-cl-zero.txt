@@ -1,0 +1,14 @@
+# name: CL=0 + TE=chunked
+# expect: 400
+# source: RFC 9112 §6.3 bước 3
+# why: CL=0 trông vô hại nhưng vẫn là hai ranh giới; backend ưu tiên CL sẽ coi '5\r\nhello' là request kế
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 0\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+5\r\n
+hello\r\n
+0\r\n
+\r\n

@@ -1,0 +1,11 @@
+# name: TE: chunked + VT (0x0b) trong value
+# expect: 400
+# source: PortSwigger TE.TE; RFC 9110 §5.5 field-value không CTL
+# why: CTL trong value: backend strip CTL sẽ thấy 'chunked', proxy strict không ⇒ lệch
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\x0b\r\n
+\r\n
+0\r\n
+\r\n

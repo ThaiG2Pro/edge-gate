@@ -51,19 +51,24 @@ func TestReadRequestBodyFraming(t *testing.T) {
 	}{
 		{"CL", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 5\r\n\r\nhelloNEXT", "hello", "NEXT", 5, false},
 		{"CL 0", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\n\r\nNEXT", "", "NEXT", 0, false},
-		{"CL trùng giống nhau (D5)", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\nokNEXT", "ok", "NEXT", 2, false},
+		{"CL trùng giống nhau ⇒ từ chối (phase 4 D2; phase 2 D5 từng nhận)", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\nokNEXT", "", "", 0, false},
 		{"CL danh sách phẩy giống nhau", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 2, 2\r\n\r\nokNEXT", "", "", 0, false}, // "2, 2": phần tử " 2" có space ⇒ từ chối — kiểm ở TestContentLengthStrict
 		{"chunked", "POST / HTTP/1.1\r\nHost: h\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nwiki\r\n5\r\npedia\r\n0\r\n\r\nNEXT", "wikipedia", "NEXT", -1, true},
 		{"chunked hoa", "POST / HTTP/1.1\r\nHost: h\r\nTransfer-Encoding: Chunked\r\n\r\n0\r\n\r\nNEXT", "", "NEXT", -1, true},
 		{"chunked ext + trailer", "POST / HTTP/1.1\r\nHost: h\r\nTransfer-Encoding: chunked\r\n\r\n3;ext=1\r\nabc\r\n0\r\nX-Sum: 9\r\n\r\nNEXT", "abc", "NEXT", -1, true},
-		{"CL+TE ⇒ chunked, CL xoá (D4)", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 100\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nz\r\n0\r\n\r\nNEXT", "z", "NEXT", -1, true},
+		{"CL+TE ⇒ từ chối (phase 4 D1; phase 2 D4 từng bỏ CL)", "POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 100\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nz\r\n0\r\n\r\nNEXT", "", "", 0, false},
 		{"1.0 không CL ⇒ 0", "POST / HTTP/1.0\r\n\r\nNEXT", "", "NEXT", 0, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if c.name == "CL danh sách phẩy giống nhau" {
+			switch {
+			case strings.HasPrefix(c.name, "CL danh sách phẩy"), strings.HasPrefix(c.name, "CL trùng giống nhau"):
 				_, err := ReadRequest(rd(c.in), DefaultLimits())
 				mustProto(t, err, ErrBadContentLength)
+				return
+			case strings.HasPrefix(c.name, "CL+TE"):
+				_, err := ReadRequest(rd(c.in), DefaultLimits())
+				mustProto(t, err, ErrAmbiguousFraming)
 				return
 			}
 			br := rd(c.in)

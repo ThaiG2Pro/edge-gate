@@ -1,0 +1,14 @@
+# name: Response CL=5 + TE=chunked (response splitting)
+# expect: 400
+# kind: response
+# method: GET
+# source: RFC 9112 §6.1; D10
+# why: Upstream có thể là proxy khoan dung hoặc bị chiếm; hai ranh giới ⇒ proxy 502, đóng
+---
+HTTP/1.1 200 OK\r\n
+Content-Length: 5\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0\r\n
+\r\n
+HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nEVL

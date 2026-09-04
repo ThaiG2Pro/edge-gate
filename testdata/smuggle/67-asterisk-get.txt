@@ -1,0 +1,8 @@
+# name: GET * (asterisk-form không phải OPTIONS)
+# expect: 400
+# source: RFC 9112 §3.2.4: asterisk-form chỉ cho OPTIONS
+# why: '*' ghép vào URL backend thành đường dẫn '*' hoặc lỗi
+---
+GET * HTTP/1.1\r\n
+Host: h\r\n
+\r\n

@@ -1,0 +1,13 @@
+# name: chunk data không kết thúc CRLF
+# expect: body-400
+# source: RFC 9112 §7.1
+# why: '5\r\nhelloXX' — sau 5 byte phải là CRLF; backend bỏ qua sẽ lệch 2 byte
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+5\r\n
+helloXX
+0\r\n
+\r\n

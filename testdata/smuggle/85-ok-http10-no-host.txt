@@ -1,0 +1,11 @@
+# name: OK: HTTP/1.0 không Host, không CL ⇒ body rỗng
+# expect: ok
+# body: 
+# rest: NEXT
+# target: /
+# host: 
+# source: RFC 9112 §6.3 bước 7: request không CL/TE ⇒ 0
+---
+GET / HTTP/1.0\r\n
+\r\n
+NEXT

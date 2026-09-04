@@ -1,0 +1,13 @@
+# name: chunk-size '0x5'
+# expect: body-400
+# source: RFC 9112 §7.1
+# why: '0x5' hợp lệ với strtol base 16 ở vài backend; proxy đọc 0 ⇒ kết thúc body sớm
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+0x5\r\n
+hello\r\n
+0\r\n
+\r\n

@@ -1,4 +1,5 @@
-// edgegate: reverse proxy L7 từ socket trần. Phase 3: một backend, không pool.
+// edgegate: reverse proxy L7 từ socket trần. Phase 3-4: một backend, không pool,
+// phòng tuyến smuggling + XFF trust.
 package main
 
 import (
@@ -19,6 +20,9 @@ type fileConfig struct {
 	DialTimeoutMs           int    `json:"dial_timeout_ms"`
 	UpstreamHeaderTimeoutMs int    `json:"upstream_header_timeout_ms"`
 	UpstreamBodyTimeoutMs   int    `json:"upstream_body_timeout_ms"`
+	// TrustedProxies: CIDR của các proxy đứng trước mà ta tin X-Forwarded-For
+	// (phase 4 D9). Rỗng = không tin ai: XFF luôn là IP peer.
+	TrustedProxies []string `json:"trusted_proxies"`
 }
 
 func main() {
@@ -51,6 +55,7 @@ func main() {
 		UpstreamHeaderTimeout: time.Duration(fc.UpstreamHeaderTimeoutMs) * time.Millisecond,
 		UpstreamBodyTimeout:   time.Duration(fc.UpstreamBodyTimeoutMs) * time.Millisecond,
 		NoDelay:               nodelay,
+		TrustedProxies:        fc.TrustedProxies,
 	})
 
 	sig := make(chan os.Signal, 1)
@@ -61,7 +66,7 @@ func main() {
 		srv.Close()
 	}()
 
-	log.Printf("edgegate: %s → %s (nodelay=%v)", fc.Listen, fc.Upstream, *nodelay)
+	log.Printf("edgegate: %s → %s (nodelay=%v, trusted_proxies=%v)", fc.Listen, fc.Upstream, *nodelay, fc.TrustedProxies)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

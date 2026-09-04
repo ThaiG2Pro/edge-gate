@@ -1,0 +1,14 @@
+# name: Trailer mang Content-Length
+# expect: body-400
+# source: RFC 9110 §6.5.1: không framing field trong trailer (D8)
+# why: Trailer đến sau ranh giới đã đồng ý; CL ở đó là ranh giới thứ hai
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Transfer-Encoding: chunked\r\n
+\r\n
+5\r\n
+hello\r\n
+0\r\n
+Content-Length: 10\r\n
+\r\n

@@ -1,0 +1,10 @@
+# name: CL: 0x5
+# expect: 400
+# source: RFC 9110 §8.6
+# why: strtol base 0 nhận hex; backend đọc 5, proxy khác đọc 0
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 0x5\r\n
+\r\n
+hello

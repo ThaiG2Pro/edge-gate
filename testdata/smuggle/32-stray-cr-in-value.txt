@@ -1,0 +1,9 @@
+# name: CR lạc trong value
+# expect: 400
+# source: RFC 9112 §2.2: 'A sender MUST NOT generate a bare CR'
+# why: 'X: a\rb' — backend coi CR là kết thúc dòng sẽ thấy header 'b'
+---
+GET / HTTP/1.1\r\n
+Host: h\r\n
+X-A: a\rb\r\n
+\r\n

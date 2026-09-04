@@ -1,0 +1,11 @@
+# name: Hai CL giống nhau (5, 5)
+# expect: 400
+# source: RFC 9110 §8.6 cho phép; D2 phase 4 từ chối
+# why: Go nhận; mình từ chối vì hai dòng giống nhau là dấu có ai đã chèn header. Hướng lệch vô hại
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 5\r\n
+Content-Length: 5\r\n
+\r\n
+hello
