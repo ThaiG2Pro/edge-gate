@@ -71,15 +71,46 @@ taskset -c 3,4,5 vegeta attack -rate=5000 -duration=30s -targets=t.txt | vegeta 
 Đã ghim core vẫn chưa đủ: cần so `rps` đạt được với `rate` yêu cầu. Lệch > 2% nghĩa là
 generator không theo nổi ⇒ **số latency vô nghĩa**, không phải "proxy chậm".
 
-### ⏳ P-arch-1 · Chưa quyết: `Host` header giữ hay đổi khi forward
+### 🔧 P4-1 · Ba lần duyệt `Connection:` và hai trong ba cấp phát
 
-Hai lựa chọn hợp lệ (`proxy_set_header Host $host` vs `$proxy_host` của nginx), hệ quả khác
-nhau về virtual hosting ở upstream. Phải quyết **có ý thức** ở phase 4 và ghi vào diary, không
-để nó là tình cờ của lần viết code đầu tiên.
+`hasConnectionToken` (`bytes.Split([]byte(v))`), `StripHopByHop` (`strings.Split`), `checkConnectionTokens`
+(`strings.Cut`, không alloc) — cùng một header duyệt ba lần. Gộp thành một lần duyệt trả về
+(tokens, close, keepAlive, bad). Test trước: `BenchmarkReadRequest` phải giảm allocs/op dưới 26.
 
-*Cập nhật phase 3:* đã có một trường hợp **buộc** sinh Host — client HTTP/1.0 không gửi `Host`,
-proxy nâng lên HTTP/1.1 nên `net/http` upstream trả 400 "missing required Host header". Hiện
-`forward.go` điền `Host = cfg.Upstream` **chỉ khi thiếu**; còn lại forward nguyên văn (D2).
+```bash
+go test ./internal/httpx -run '^$' -bench 'ReadRequest$' -benchmem -count 6
+```
+
+### 📏 P4-2 · G4 đo trên WSL2 không phân giải được 5 %
+
+ns/op ± 10-37 % (`bench/p4-bench-readrequest.txt`); chỉ allocs/op và CPU share tin được. Trả cùng
+P-env-2/P3-5 trên Linux thuần: `taskset`, `-count 20`, benchstat hai commit `b3e08f0` vs `989b060`.
+
+### ⏳ P4-3 · `Forwarded` / `X-Forwarded-Proto/Host/Port` chưa sinh, `X-Real-IP` từ peer tin chưa kiểm
+
+`forwardedHeaders` chỉ lo XFF + X-Real-IP. Khi có TLS (phase 8) `X-Forwarded-Proto` mới có nghĩa; khi
+có rate limit (phase 7) cần hàm "IP client thật" = phần tử phải nhất của XFF **không** nằm trong
+`trusted_proxies`. Peer tin gửi `X-Real-IP: not-an-ip` hiện được forward nguyên văn.
+
+### 🔧 P4-4 · Tag `nodefense` chung cho phase 1/3/4
+
+`make smugglelab-nodefense` e2e lật 21 ca, trong đó `95-resp-ok-eof` đỏ vì `rawCopyResponse=true`
+(phase 3) chứ không vì phòng tuyến phase 4. Tách `nodefense4` hoặc ghi chú trong target.
+
+```bash
+go test ./internal/proxy -run 'TestSmugglingE2E/95' -tags nodefense -v   # đỏ vì bẫy #2, không vì phase 4
+```
+
+### 🔧 P4-5 · Ca còn thiếu trong `testdata/smuggle`
+
+`Expect: 100-continue` qua proxy (proxy phải trả 100 hay forward?), chunk-ext dài quá `MaxLineBytes`
+(⇒ 431 giữa body), `GET` có `Content-Length: 5` + body qua proxy (forward hay từ chối?), header bomb
+qua proxy thật (431 + close), request-line có SP thừa cuối. Mỗi ca một file, `expect` đăng ký trước.
+
+### 📏 P4-6 · Oracle thứ hai cho `TestSmugglingOracle`
+
+Chỉ so với Go. "Hướng an toàn" mới đúng với backend Go. Dựng nginx và h2o (docker) nhận cùng 61 payload
+qua `nc`, ghi status, so ba cột. Đặc biệt các ca 21 (CL trùng), 30/31 (bare LF), 50 (`Connection: Host`).
 
 ### 🔧 P3-1 · Trailer chunked từ upstream bị bỏ (D4 phase 3)
 
@@ -119,12 +150,20 @@ taskset -c 0,1 ./bin/upstream -addr :8081 & taskset -c 2,3 ./bin/edgegate -confi
 for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | grep 'G2 p50'; done
 ```
 
-### 🔧 P2-3 · D4 (CL+TE ⇒ chunked, xoá CL) phải thành từ chối ở phase 4
-
-Kèm phản chứng `make smugglelab-nodefense` đỏ. Test hiện tại
-`TestReadRequestBodyFraming/"CL+TE ⇒ chunked, CL xoá (D4)"` sẽ phải đổi kỳ vọng.
-
 ## Đã trả
+
+### ✅ P2-3 · CL+TE ⇒ từ chối — trả 2026-09-04 (phase 4 D1)
+
+`body.go:framing`: có TE mà cũng có CL ⇒ `ErrAmbiguousFraming` (400), không bỏ CL nữa. Phản chứng
+`rejectCLWithTE=false` (nodefense) ưu tiên CL ⇒ ca 01/02/03/10/12/90 đỏ (`bench/p4-smugglelab-nodefense.txt`).
+Test cũ `TestReadRequestBodyFraming/"CL+TE…"` đổi kỳ vọng. Diff-fuzz 7.75 M exec sau đổi: 0 lệch.
+
+### ✅ P-arch-1 · `Host` giữ hay đổi — trả 2026-09-04 (phase 4 D4/D5/D6/D7)
+
+**Giữ nguyên** (nginx `$host`). Điều kiện để "giữ" an toàn: Host chỉ có một nguồn — absolute-form
+⇒ authority thắng và viết về origin-form, lệch ⇒ 400 (`normalizeTarget`); `Connection: Host` ⇒ 400
+(`checkConnectionTokens`); CONNECT ⇒ 501; cú pháp `validHost`. Ngoại lệ sinh Host: client HTTP/1.0
+không gửi (từ phase 3). Bằng chứng `TestAbsoluteFormRewritten`, ca 60-71, 83-86.
 
 ### ✅ P2-2 · 204/304 kèm TE: strip hay giữ? — trả 2026-09-04 (phase 3)
 
@@ -202,6 +241,8 @@ Bằng chứng: `go test ./internal/httpx -count=20 -race` ok (`bench/p2-race20.
 
 | ID | Trả ở phase | Bằng lệnh nào |
 |---|---|---|
+| **P2-3** | 4 | `ErrAmbiguousFraming` khi CL+TE; nodefense ưu tiên CL ⇒ 6 ca đỏ; diff-fuzz 300 s 0 lệch |
+| **P-arch-1** | 4 | Host giữ nguyên; `normalizeTarget` + `checkConnectionTokens` bảo đảm một nguồn authority; `TestAbsoluteFormRewritten` |
 | **P2-2** | 3 | `TestHEADAnd204HaveNoBody`: HEAD/204 qua proxy không mang `Transfer-Encoding`; hệ quả của `StripHopByHop` + chỉ đặt lại TE khi proxy tự chunked |
 | **P1-6** | 1 | `cmd/needzerolab` tái hiện **xác định**: heap sạch `make(4 GiB)` = 7ms / RSS 7 MB; sau **64 MB rác bẩn + GC** = **7.138s / RSS 4.27 GB**; sau `FreeOSMemory` = 3ms. Cơ chế: span đè lên trang free-còn-bẩn ⇒ runtime zero CẢ span ⇒ ~1M page fault (sys 7.7s, user 0.3s). Không liên quan `-race` (không race cũng 7.73s, 2/8). Dự đoán "lần chậm RSS 4 GB" trúng 8/8. Fix test: `FreeOSMemory()` trước `make` ⇒ 8/8 nhanh; gỡ skip-dưới-race; `make test` -race 2.35s ×3 |
 | **P1-3** | 1 | `TestPayloadOverUint32` skip khi int 32-bit, khi `vm.overcommit_memory=2`, ~~và dưới `-race`~~ (skip race đã gỡ khi P1-6 chỉ ra `-race` không liên quan); `make test-huge` chạy riêng |

@@ -92,3 +92,10 @@
 - 12:45 điền phase4.md: Reproduce, Nhật ký, Giả thuyết sai (8 dòng), Số đo G1-G7. Chấm: G1 nửa
   đầu đúng / nửa sau sai (38 %), G2 sai (46 %), G3 đúng, G4 sai (6.5 %), G5 G6 G7 đúng ⇒ **3/7 sai**.
   Commit turn 2.
+
+## §3 Turn 3 — 2026-09-04 13:33
+
+- 13:33 điền Invariant (8 dòng), Rút ra (6 câu + 3 giả thuyết sai + vận hành), Nợ P4-1..P4-6;
+  `docs/debts.md`: mở P4-1..6, đóng P2-3 + P-arch-1 (chuyển sang Đã trả + bảng); README hàng 4,
+  ROADMAP hàng 4 ✅. Header: thực tế ~2.5 giờ, kết thúc 13:45.
+- 13:45 commit turn 3, rồi commit ghi hash.

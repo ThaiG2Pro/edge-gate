@@ -1,9 +1,9 @@
 # Phase 4 — RFC compliance & request smuggling
 
-- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** _______
-- **Bắt đầu:** 2026-09-04 11:11 · **Kết thúc:** _______
-- **Trạng thái:** 🔨 turn 2 xong 12:45 — **3/7 giả thuyết sai** (G1 nửa sau 38 % vs ≥ 40 %, G2 46 % vs 60-75 %, G4 6.5 % vs < 5 %), cộng 3 lỗi vận hành (`pkill -f` lần hai, `&&`+`&`, hook `rtk` tóm tắt). 57 test xanh `-race`, 61/61 ca parser, 54/54 e2e, phản chứng đỏ 20/52, diff-fuzz 7.75 M exec 0 lệch. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (commit nền `b3e08f0`)
+- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~2.5 giờ (11:11 → 13:45, ba turn)
+- **Bắt đầu:** 2026-09-04 11:11 · **Kết thúc:** 2026-09-04 13:45
+- **Trạng thái:** ✅ xong 2026-09-04 13:45 — **3/7 giả thuyết sai** (G1 nửa sau 38 % vs ≥ 40 %, G2 46 % vs 60-75 %, G4 6.5 % vs < 5 %), cộng 3 lỗi vận hành (`pkill -f` lần hai, `&&`+`&`, hook `rtk` tóm tắt). 57 test xanh `-race`, 61/61 ca parser, 54/54 e2e, phản chứng đỏ 20/52, diff-fuzz 7.75 M exec 0 lệch. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
+- **Commit:** _______ (turn 1 `dc3a824`, turn 2 `989b060`, turn 3 _______; commit nền `b3e08f0`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase4-log.md`](phase4-log.md). File này là bản biên tập.
 >
@@ -167,7 +167,16 @@ một hàm, `taskset -c 2`, WSL2, cùng máy phase 0-3). Nguồn: `bench/p4-*.tx
 
 ## Invariant + lệnh kiểm chứng
 
-_(turn 3)_
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **Bất biến số 1**: proxy và upstream đồng ý ranh giới mỗi request — mọi head mà hai framing có thể đọc khác nhau đều bị **từ chối**, không đoán | `body.go:framing` (CL+TE ⇒ `ErrAmbiguousFraming`; TE phải đúng một token), `body.go:parseContentLength` (một dòng, chữ số thuần), `parse.go:readLine` (CRLF), `parse.go:readHeaders` (tên là token tới sát `:`, không obs-fold, không CTL) | `make smugglelab` (61 ca: status, body, **phần dư**) + `TestSmugglingOracle` (0 ca mình nhận mà Go từ chối) + diff-fuzz | 61/61; 0 hướng nguy hiểm; 7.75 M exec 0 lệch |
+| **Phòng tuyến có răng**: tắt phòng tuyến ⇒ bộ test đỏ | `httpx/defense.go` ↔ `defense_nodefense.go` (7 hằng, tag `nodefense`) | `make smugglelab-nodefense` PHẢI đỏ | đỏ cả hai package, 20/52 ca lật ở parser, 21 ở e2e |
+| **Từ chối ⇒ đóng, không đọc tiếp** (D11): byte pipelined sau payload bẩn không bao giờ được trả lời | `proxy.go:replyReadError` luôn `keep=false` rồi `serveConn` return; `forward.go` lỗi body ⇒ 400/408 `keep=false` | `TestSmugglingE2E`: payload + `GET /hello` pipelined ⇒ đúng 1 response rồi EOF; binary thật qua `nc` | 47/47; `nc` thấy 1 response 400 |
+| **"Gửi tới ai" chỉ có một cách hiểu** (D4/D5/D6/D7): Host đúng cú pháp; absolute-form ⇒ origin-form, authority thắng, lệch Host ⇒ 400; `*` chỉ OPTIONS; CONNECT ⇒ 501; `Connection:` không được xoá Host/CL | `request.go:normalizeTarget`, `request.go:validHost`, `parse.go:checkConnectionTokens` | ca 60-71, 83-86, `TestAbsoluteFormRewritten` | `http://vhost.example/headers` ⇒ upstream thấy `Host: vhost.example` + `/headers`; lệch ⇒ 400 close |
+| **Trailer không phá ranh giới đã đồng ý** (D8) | `chunked.go:checkTrailer` (RFC 9110 §6.5.1) gọi trong `beginChunk` khi size 0 | ca 45-47 (request), 94 (response) | request: body lỗi 400; response: 200 rồi đóng giữa body, không 502 thứ hai |
+| **Không tin upstream hơn client** (D10): response đi qua cùng parser | `response.go:ReadResponse` dùng cùng `readHeaders`/`framing`; `forward.go` lỗi head ⇒ 502 | ca 90-96 qua `rawUpstream` | 4 head bẩn ⇒ 502, 0 byte `EVL`/`hello` lọt |
+| **Ranh giới tin cậy của XFF** (D9): peer ngoài `trusted_proxies` không nói được gì về "client thật" | `forward.go:forwardedHeaders`, `proxy.go:Config.isTrusted` (CIDR, sai ⇒ panic khởi động) | `TestXFFUntrustedReplaced`, `TestHopByHopAndXFF` (127.0.0.0/8), `TestBadTrustedProxiesPanics`, `nc` binary thật | 0 lần `1.2.3.4` lọt; tin ⇒ `10.0.0.1, 127.0.0.1`; `not-a-cidr` ⇒ panic |
+| **Kiểm tra thêm không đổi hồ sơ cấp phát** | `parse.go:checkConnectionTokens` (`strings.Cut`), `request.go:normalizeTarget(req, h, hosts)` | `BenchmarkReadRequest -benchmem` hai commit | 26 allocs/op, 864 B/op ở cả nền và HEAD; CPU share 6.5 % |
 
 ## Đọc gì
 
@@ -180,8 +189,68 @@ _(turn 3)_
 
 ## Rút ra
 
-_(turn 3)_
+**Trả lời 6 câu hỏi đầu file.**
+
+1. *Vì sao "CL + TE ⇒ ưu tiên TE" đúng RFC mà vẫn là lỗ hổng.* RFC 9112 §6.1 viết cho **một** bên
+   nhận. Smuggling không nằm ở một bên; nó nằm ở **hai** bên đọc cùng một chuỗi byte. Nếu proxy ưu
+   tiên TE và backend ưu tiên CL (hoặc không hiểu TE viết lạ), phần đuôi mà proxy coi là "hết body"
+   backend coi là "request kế tiếp" — request đó mang credential của connection người khác nếu có
+   pool (phase 5). Ranh giới bị phá ở phía **backend**, nhưng lỗi là của proxy, vì proxy là bên đã
+   *chọn* một cách hiểu trong khi thấy rõ có hai. Bằng chứng ca 01: Go **nhận** nó (body="" dư="G")
+   — backend Go hành xử đúng RFC, và chính vì thế proxy đứng trước Go phải chặn thay nó.
+2. *Phản chứng nào chứng minh test có răng.* Bảy hằng trong `defense_nodefense.go`, mỗi hằng mô
+   phỏng đúng một kiểu khoan dung thật (ưu tiên CL, substring "chunked", trim tên header, nhận LF,
+   lấy CL đầu, ParseInt, nhận trailer bẩn). Tắt ⇒ 20/52 ca lật. Nếu tắt mà vẫn xanh thì hoặc bộ ca
+   không chạm phòng tuyến, hoặc phòng tuyến là no-op (bài G4 phase 3). Con số 38 % còn nói một điều
+   khác: 32 ca còn lại đỏ nhờ **phase 2**, không nhờ phase 4 — bộ ca đo cả hàng rào cũ.
+3. *Go đồng ý bao nhiêu, và vì sao chỉ một hướng nguy hiểm.* 24/52. Ở 28 ca còn lại Go nhận mà
+   mình từ chối. Hướng này vô hại vì request **không tới** backend — không có "hai cách hiểu" khi
+   chỉ một bên đọc. Hướng ngược (mình nhận, Go từ chối) mới nguy hiểm: proxy forward một thứ backend
+   sẽ đọc khác, hoặc trả 400 và đóng trong khi proxy tin connection còn sạch. Đo: 0 ca, và diff-fuzz
+   7.75 M input không tìm được. Bài học đắt hơn con số: **backend Go khoan dung đúng chỗ RFC cho
+   phép** — bare LF, CL trùng, trailer mang CL, `Connection: Host`, response CL+TE. Mỗi chỗ đó là
+   việc của proxy.
+4. *XFF tin được gì.* Không gì cả, trừ khi peer là proxy **mình** cấu hình. Append-không-overwrite
+   chỉ là nửa bài: nó giữ chuỗi đúng dạng nhưng vẫn để client viết phần đầu chuỗi. Ranh giới là
+   `trusted_proxies`: peer trong list ⇒ append (nó đã làm việc của mình ở hop trước); ngoài list ⇒
+   **thay** bằng IP peer và đặt `X-Real-IP`. Không có ranh giới này, rate limiter phase 7 đếm theo
+   XFF sẽ bị bypass bằng một header giả — G6 đo 0/N lọt là số cần giữ tới phase 7.
+5. *Host giữ hay đổi.* **Giữ** (D4): reverse proxy đứng trước virtual host, đổi Host là đổi người
+   trả lời. Nhưng "giữ" chỉ an toàn khi Host chỉ có **một** nguồn: absolute-form mang authority thứ
+   hai ⇒ viết về origin-form và authority thắng, lệch ⇒ 400; `Connection: Host` là cách thứ ba để
+   client điều khiển Host mà proxy gửi ⇒ 400; CONNECT là authority-form ⇒ 501. Ngoại lệ duy nhất
+   sinh Host là client HTTP/1.0 không gửi — ghi từ phase 3. P-arch-1 đóng có ý thức, không tình cờ.
+6. *Kiểm response khác gì kiểm request.* Cùng parser, khác hệ quả khi lỗi: lỗi ở **head** ⇒ còn trả
+   được 502 (client chưa nhận gì); lỗi **giữa body** (trailer bẩn) ⇒ chỉ được đóng, vì đã có một
+   response đi rồi (bất biến "một response cho một request" phase 3). Không hoang tưởng vì upstream
+   có thể là một proxy khoan dung khác, hoặc một app ghi header từ input người dùng (ca 92: NUL
+   trong Set-Cookie) — response splitting là smuggling theo chiều về.
+
+**Về ba giả thuyết sai.** G1/G2 sai vì đoán **tỉ lệ** khi chưa hiểu phân bố: bộ ca là do mình viết,
+nên tỉ lệ đo ra phản ánh mình chọn ca gì nhiều hơn phản ánh proxy hay Go. Lần sau đăng ký theo
+**danh sách ca** ("Go sẽ nhận 01, 02, 30…"), không theo phần trăm. G4 sai theo cách có ích hơn:
+5 % là hiệu ứng nhỏ hơn nhiễu của ns/op trên WSL2 (± 10-37 %), benchstat cho `+25 % p=0.001` mà vẫn
+sai vì đuôi phân bố; allocs/op (± 0 %) và CPU share theo pprof mới phân giải được. Chọn thước trước
+khi chọn số.
+
+**Về vận hành.** `pkill -f` tự sát lần hai dù phase 3 đã ghi; `&&` với `&`; hook tóm tắt output.
+Ba lỗi cùng một gốc: tin một lệnh làm đúng điều mình nghĩ mà không nhìn kết quả thô. Đây cũng là
+gốc của smuggling.
 
 ## Nợ kỹ thuật
 
-_(turn 3)_
+Chi tiết + lệnh trả trong `docs/debts.md`.
+
+- [ ] **P4-1** 🔧 — `hasConnectionToken` / `StripHopByHop` (phase 2) vẫn `bytes.Split`/`strings.Split`
+  cấp phát; `checkConnectionTokens` 5 % CPU share. Gộp ba lần duyệt `Connection:` thành một.
+- [ ] **P4-2** 📏 — G4 đo trên WSL2 không phân giải 5 %; đo lại trên Linux thuần cùng P-env-2/P3-5.
+- [ ] **P4-3** ⏳ — `Forwarded` (RFC 7239), `X-Forwarded-Proto/Host/Port` chưa sinh; `X-Real-IP` từ peer
+  tin cậy chưa kiểm là IP. Cần khi phase 7 (rate limit) và phase 8 (TLS: Proto mới có nghĩa).
+- [ ] **P4-4** 🔧 — Tag `nodefense` dùng chung với phase 1/3 ⇒ e2e lật thêm ca `95-resp-ok-eof` vì bẫy #2
+  phase 3 bật cùng lúc. Tách tag theo phase, hoặc ghi rõ trong Makefile.
+- [ ] **P4-5** 🔧 — Bộ ca chưa có: `Expect: 100-continue`, chunk-ext dài quá `MaxLineBytes`, `Content-Length`
+  trên GET có body qua proxy, header bomb e2e, `HTTP/1.1` với SP thừa cuối request-line.
+- [ ] **P4-6** 📏 — Oracle thứ hai (nginx/h2o qua docker) cho `TestSmugglingOracle`: một backend
+  không đủ để nói "hướng an toàn".
+- [x] **P2-3** — đóng: CL+TE ⇒ `ErrAmbiguousFraming` 400, phản chứng đỏ (ca 01-03, 10, 12, 90).
+- [x] **P-arch-1** — đóng: Host giữ nguyên (D4) + một nguồn authority (D5/D6/D7).
