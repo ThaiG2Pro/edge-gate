@@ -6,11 +6,13 @@ package fixture
 import (
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -137,6 +139,61 @@ func ListenAndServe(addr string) (string, func(), error) {
 		return "", nil, err
 	}
 	srv := &http.Server{Handler: Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go srv.Serve(ln)
+	return ln.Addr().String(), func() { srv.Close() }, nil
+}
+
+// Sim bọc Handler() thành một backend "lệch" cho phase 6: ngủ Delay trước
+// mỗi response và trả 503 NGAY (không ngủ) với xác suất ErrRate. Cả hai đổi
+// được lúc chạy (atomic) để `cmd/lblab -flap` biến một node nhanh thành chậm
+// giữa bài. Chỉ dùng qua ListenAndServeSim — cmd/lblab không đụng net/http.
+type Sim struct {
+	Name        string
+	delayNs     atomic.Int64
+	errPermille atomic.Int64
+	served      atomic.Int64
+	errors      atomic.Int64
+	h           http.Handler
+}
+
+func NewSim(name string, delay time.Duration, errRate float64) *Sim {
+	s := &Sim{Name: name, h: Handler()}
+	s.SetDelay(delay)
+	s.SetErrRate(errRate)
+	return s
+}
+
+func (s *Sim) SetDelay(d time.Duration) { s.delayNs.Store(int64(d)) }
+func (s *Sim) SetErrRate(r float64)     { s.errPermille.Store(int64(r * 1000)) }
+func (s *Sim) Delay() time.Duration     { return time.Duration(s.delayNs.Load()) }
+
+// Served, Errors: đếm phía backend — đối chiếu với picks phía balancer.
+func (s *Sim) Served() int64 { return s.served.Load() }
+func (s *Sim) Errors() int64 { return s.errors.Load() }
+
+func (s *Sim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.served.Add(1)
+	if p := s.errPermille.Load(); p > 0 && rand.Int64N(1000) < p {
+		s.errors.Add(1)
+		// Lỗi NHANH: đây là điểm mù của least-conn (inflight thấp ≠ khoẻ).
+		w.Header().Set("X-Sim", s.Name)
+		http.Error(w, "sim: 503 giả lập", http.StatusServiceUnavailable)
+		return
+	}
+	if d := s.Delay(); d > 0 {
+		time.Sleep(d)
+	}
+	w.Header().Set("X-Sim", s.Name)
+	s.h.ServeHTTP(w, r)
+}
+
+// ListenAndServeSim: như ListenAndServe nhưng phục vụ sim.
+func ListenAndServeSim(addr string, sim *Sim) (string, func(), error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return "", nil, err
+	}
+	srv := &http.Server{Handler: sim, ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(ln)
 	return ln.Addr().String(), func() { srv.Close() }, nil
 }

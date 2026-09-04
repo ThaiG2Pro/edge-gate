@@ -18,7 +18,11 @@ type PoolConfig struct {
 	// có một host). Mặc định 64. Đầy ⇒ đóng con GIÀ NHẤT (đáy stack), không
 	// phải con vừa dùng (D9).
 	MaxIdle int
-	// MaxIdleTime: connection rỗi quá tuổi này bị đóng lúc lấy ra. Mặc định 60 s.
+	// MaxIdleTime: connection rỗi quá tuổi này bị đóng lúc lấy ra (và quét ở
+	// đáy stack lúc put — P5-2). Mặc định 30 s (P5-5): PHẢI ngắn hơn idle
+	// timeout của upstream (nginx keepalive_timeout upstream 60 s, Go
+	// http.Server IdleTimeout thường 60-120 s) để pool là bên đóng trước —
+	// bên đóng trước không bao giờ thấy FIN bất ngờ; probe/retry chỉ còn là lưới đỡ.
 	MaxIdleTime time.Duration
 	// Probe: trước khi dùng lại, recv(MSG_PEEK|MSG_DONTWAIT) để bắt FIN/RST
 	// upstream đã gửi khi connection rỗi (D3). Mặc định true. Đặt false CHỈ để
@@ -31,7 +35,7 @@ func (p *PoolConfig) withDefaults() {
 		p.MaxIdle = 64
 	}
 	if p.MaxIdleTime == 0 {
-		p.MaxIdleTime = 60 * time.Second
+		p.MaxIdleTime = 30 * time.Second
 	}
 	if p.Probe == nil {
 		t := true
@@ -57,6 +61,7 @@ type PoolStats struct {
 // connection, không theo request: byte thừa (nếu có) nằm trong br, và đó
 // chính là thứ D2 phải kiểm trước khi put.
 type pooledConn struct {
+	p  *pool // pool sở hữu — phase 6 có nhiều pool, release phải về đúng pool
 	c  net.Conn
 	in *countReader // đếm byte response đã tới — quyết retry (D4: 0 byte)
 	br *bufio.Reader
@@ -136,7 +141,7 @@ func (p *pool) dialNew() (*pooledConn, error) {
 	}
 	p.dials.Add(1)
 	in := &countReader{r: c}
-	return &pooledConn{c: c, in: in, br: bufio.NewReaderSize(in, 8<<10), bw: bufio.NewWriterSize(c, 8<<10), uses: 1}, nil
+	return &pooledConn{p: p, c: c, in: in, br: bufio.NewReaderSize(in, 8<<10), bw: bufio.NewWriterSize(c, 8<<10), uses: 1}, nil
 }
 
 func (p *pool) pop() *pooledConn {
@@ -162,12 +167,29 @@ func (p *pool) put(pc *pooledConn) {
 	// D8: deadline của lần dùng trước còn treo ⇒ request kế tiếp lỗi
 	// timeout ma. Xoá trước khi ai khác cầm.
 	pc.c.SetDeadline(time.Time{})
-	pc.idleSince = time.Now()
+	now := time.Now()
+	pc.idleSince = now
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
 		pc.close()
 		return
+	}
+	// P5-2: quét từ ĐÁY bỏ mọi con quá tuổi. LIFO ⇒ đáy già nhất, gặp con đầu
+	// còn hạn là dừng. get chỉ nhìn đỉnh nên con chết ở đáy sống mãi nếu không
+	// có bước này (5 idle quá tuổi + 1 request ⇒ 4 con chết nằm lại tới lần đầy).
+	var expired []*pooledConn
+	k := 0
+	for k < len(p.idle) && now.Sub(p.idle[k].idleSince) > p.cfg.MaxIdleTime {
+		k++
+	}
+	if k > 0 {
+		expired = append(expired, p.idle[:k]...)
+		n := copy(p.idle, p.idle[k:])
+		for i := n; i < len(p.idle); i++ {
+			p.idle[i] = nil
+		}
+		p.idle = p.idle[:n]
 	}
 	var evict *pooledConn
 	if len(p.idle) >= p.cfg.MaxIdle {
@@ -184,6 +206,10 @@ func (p *pool) put(pc *pooledConn) {
 	if evict != nil {
 		p.dropFull.Add(1)
 		evict.close()
+	}
+	for _, e := range expired {
+		p.dropExpired.Add(1)
+		e.close()
 	}
 }
 

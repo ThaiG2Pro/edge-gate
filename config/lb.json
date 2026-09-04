@@ -1,0 +1,17 @@
+{
+  "listen": ":8080",
+  "upstreams": ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083", "127.0.0.1:8084"],
+  "dial_timeout_ms": 2000,
+  "upstream_header_timeout_ms": 5000,
+  "upstream_body_timeout_ms": 30000,
+  "trusted_proxies": [],
+  "pool": { "disabled": false, "max_idle": 64, "max_idle_time_ms": 30000 },
+  "lb": {
+    "algo": "p2c",
+    "tau_ms": 1000,
+    "hash_header": "",
+    "vnodes": 150,
+    "health": { "disabled": false, "interval_ms": 2000, "timeout_ms": 1000, "path": "/hello", "fall": 3, "rise": 2 },
+    "outlier": { "disabled": false, "consecutive_5xx": 5, "base_eject_ms": 30000, "max_eject_ms": 300000, "max_eject_percent": 50 }
+  }
+}

@@ -6,7 +6,7 @@
 	proxylab proxybench upstream \
 	smugglelab smugglelab-nodefense \
 	poollab poollab-rtt poollab-nodefense \
-	lblab lblab-skew \
+	lblab lblab-skew lblab-flap lblab-nodefense \
 	chaoslab slowlab ratelab \
 	tlslab \
 	perflab bench-vs-nginx epolllab \
@@ -233,11 +233,21 @@ poollab-nodefense:
 # Phase 6: load balancing
 # ---------------------------------------------------------------------------
 lblab:
-	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -n 100000
+	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -n 20000
 
-# Backend CỐ Ý lệch: 1 node chậm 10x, 1 node trả 5xx 30%. Đây mới là bài thật.
+# G1/G2/G4: b0 chậm 10x, b1 trả 503 nhanh 30 %. Chạy hai lần: outlier tắt (least-conn dồn vào node
+# lỗi nhanh lộ rõ) rồi mặc định. Cột share là phần tải mỗi backend nhận; đừng chỉ đọc p99.
 lblab-skew:
-	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 100000
+	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000 -outlier=false
+	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000
+
+# G3 — chỗ P2C thua: b2 đổi nhanh→chậm 10x ở giữa bài; p2c-slow (tau 30 s) phản ứng chậm hơn least-conn.
+lblab-flap:
+	go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000
+
+# Phản chứng G6: EWMA decay theo số request thay vì thời gian ⇒ node hồi phục không bao giờ được chọn lại.
+lblab-nodefense:
+	! go test ./internal/lb/ -run 'TestP2CRecovers' -count=1 -tags nodefenselb
 
 # ---------------------------------------------------------------------------
 # Phase 7: resiliency

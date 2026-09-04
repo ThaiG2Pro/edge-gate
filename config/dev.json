@@ -8,6 +8,6 @@
   "pool": {
     "disabled": false,
     "max_idle": 64,
-    "max_idle_time_ms": 60000
+    "max_idle_time_ms": 30000
   }
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/thaivro/edgegate/internal/lb"
 )
 
 // roundTrip forward MỘT request đã parse xong head sang upstream và trả
@@ -35,43 +36,83 @@ func (s *Server) roundTrip(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req *
 	if req.Chunked {
 		up.Header.Set("Transfer-Encoding", "chunked")
 	}
-	s.forwardedHeaders(up.Header, c.RemoteAddr()) // phase 4 D9: XFF có ranh giới tin cậy
+	clientIP := s.forwardedHeaders(up.Header, c.RemoteAddr()) // phase 4 D9: XFF có ranh giới tin cậy
 	// Phase 4 D4 (đóng P-arch-1): Host GIỮ NGUYÊN (nginx `$host`) — reverse
 	// proxy đứng trước virtual host, đổi Host là phá routing của upstream.
 	// httpx.ReadRequest đã (a) kiểm cú pháp Host, (b) viết absolute-form về
 	// origin-form và đặt Host := authority (D5). Chỉ còn một trường hợp buộc
 	// sinh Host: client HTTP/1.0 không gửi — ta nâng request lên HTTP/1.1 nên
 	// upstream đòi Host (net/http trả 400 "missing required Host header").
-	if !up.Header.Has("Host") {
-		up.Header.Set("Host", s.cfg.Upstream)
+	// Phase 6: Host sinh ra là addr của backend ĐƯỢC CHỌN, đặt trong vòng lặp.
+	noHost := !up.Header.Has("Host")
+
+	// Khoá cho consistent hash (D5): header LB.HashHeader nếu có, không thì IP
+	// client SAU ranh giới tin cậy — XFF chưa tin là để attacker chọn backend.
+	key := clientIP
+	if h := s.cfg.LB.HashHeader; h != "" {
+		if v := req.Header.Get(h); v != "" {
+			key = v
+		}
 	}
 
-	// --- 2. Connection upstream: pool hoặc dial (phase 5) ---------------------
+	// --- 2. Chọn backend (phase 6) + connection upstream: pool hoặc dial ------
+	// attempt đếm số lần exchange trên CÙNG backend (D4 phase 5: retry một lần,
+	// lần hai dialNew). repicked: đã đổi backend một lần vì dial lỗi (D9).
+	var be *lb.Backend
+	var p *pool
+	var start time.Time
+	repicked := false
 	for attempt := 0; ; attempt++ {
+		if attempt == 0 {
+			be = s.lb.Pick(key)
+			if be == nil {
+				// D8: không còn backend nào dùng được ⇒ 503 (không phải 502),
+				// chưa đụng body ⇒ drain, giữ client.
+				s.cfg.Logf("proxy: không còn backend nào available (%d upstream)", len(s.cfg.Upstreams))
+				keep := s.drain(c, req) && !req.Close
+				s.writeError(c, bw, 503, "không còn backend nào sống", keep)
+				return keep
+			}
+			start = time.Now()
+			p = s.poolFor(be.Addr)
+			if noHost {
+				up.Header.Set("Host", be.Addr)
+			}
+		}
 		var pc *pooledConn
 		var err error
 		if attempt == 0 {
-			pc, err = s.pool.get()
+			pc, err = p.get()
 		} else {
-			pc, err = s.pool.dialNew() // D4: lần hai luôn dial mới
+			pc, err = p.dialNew() // D4: lần hai luôn dial mới
 		}
 		if err != nil {
-			s.cfg.Logf("proxy: dial %s: %v", s.cfg.Upstream, err)
+			s.cfg.Logf("proxy: dial %s: %v", be.Addr, err)
+			s.lb.Done(be, time.Since(start), true)
+			if !repicked && attempt == 0 {
+				// D9: dial lỗi = chưa gửi byte nào ⇒ chọn backend khác đúng một
+				// lần, bất kể request có body (khác D4: body vẫn còn nguyên trong br).
+				repicked = true
+				attempt = -1
+				continue
+			}
 			// D6 phase 3: chưa đụng body ⇒ drain rồi 502, connection client giữ được.
 			keep := s.drain(c, req) && !req.Close
 			s.writeError(c, bw, 502, "không dial được upstream", keep)
 			return keep
 		}
-		keep, retry := s.exchange(c, bw, req, up, pc)
+		keep, retry, upFail := s.exchange(c, bw, req, up, pc)
 		if !retry {
+			s.lb.Done(be, time.Since(start), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
 			return keep
 		}
-		// D4 (a)(b)(c) đã thoả trong exchange. Chỉ một lần.
+		// D4 (a)(b)(c) đã thoả trong exchange. Chỉ một lần, cùng backend.
 		if attempt == 0 {
-			s.pool.retries.Add(1)
-			s.cfg.Logf("proxy: upstream đóng connection rỗi trước khi nhận request, retry một lần")
+			p.retries.Add(1)
+			s.cfg.Logf("proxy: %s đóng connection rỗi trước khi nhận request, retry một lần", be.Addr)
 			continue
 		}
+		s.lb.Done(be, time.Since(start), true)
 		keep = !req.Close // body rỗng (điều kiện (c)) ⇒ br sạch, client giữ được
 		s.writeError(c, bw, 502, "upstream đóng khi đang nhận request (đã retry)", keep)
 		return keep
@@ -85,23 +126,25 @@ func canRetry(pc *pooledConn, req *httpx.Request) bool {
 	return pc.reused && req.ContentLength == 0 && !req.Chunked
 }
 
-// exchange: bước 3-5 trên MỘT connection upstream pc. Trả (keep, retry):
+// exchange: bước 3-5 trên MỘT connection upstream pc. Trả (keep, retry, upFail):
 // retry=true ⇔ chưa ghi gì cho client và D4 cho phép thử lại; khi đó caller
-// quyết. Mọi đường ra đều qua release: pc về pool chỉ khi clean (D2), còn lại
-// đóng.
-func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, pc *pooledConn) (keep, retry bool) {
+// quyết. upFail=true ⇔ lỗi thuộc về UPSTREAM (transport hoặc 5xx) — nuôi
+// outlier ejection (phase 6 D7); client bỏ đi giữa body KHÔNG tính cho upstream.
+// Mọi đường ra đều qua release: pc về pool chỉ khi clean (D2), còn lại đóng.
+func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, pc *pooledConn) (keep, retry, upFail bool) {
 	lim := s.cfg.Limits
 	uc, ubr, ubw := pc.c, pc.br, pc.bw
 	pc.in.n = 0
 	clean, headOK := false, false
+	pool := pc.p
 	defer func() {
 		if !poolCheckClean && headOK {
 			clean = true // nodefense: về pool ngay khi có head — bẫy phase 5
 		}
 		if clean {
-			s.pool.put(pc)
+			pool.put(pc)
 		} else {
-			s.pool.discard(pc)
+			pool.discard(pc)
 		}
 	}()
 
@@ -130,15 +173,15 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 			status, detail = 408, "quá BodyTimeout khi đọc body"
 		}
 		s.writeError(c, bw, status, detail, false)
-		return false, false
+		return false, false, false
 	case writeErr != nil:
 		if canRetry(pc, req) {
-			return false, true // D4: ghi lỗi ⇒ chắc chắn 0 byte response
+			return false, true, false // D4: ghi lỗi ⇒ chắc chắn 0 byte response
 		}
 		s.cfg.Logf("proxy: ghi sang upstream: %v", writeErr)
 		keep := drained && !req.Close
 		s.writeError(c, bw, 502, "upstream đóng khi đang nhận request", keep)
-		return keep, false
+		return keep, false, true
 	}
 
 	// --- 4. Head response từ upstream ---------------------------------------
@@ -152,7 +195,7 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 			// 0 byte = upstream sống nhưng chậm, có thể đang xử lý ⇒ không
 			// idempotent nữa ⇒ 504, không retry).
 			if pc.in.n == 0 && !isTimeout(err) && canRetry(pc, req) {
-				return false, true
+				return false, true, false
 			}
 			status, detail := 502, "upstream trả response không hợp lệ hoặc đóng sớm"
 			if isTimeout(err) {
@@ -161,7 +204,7 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 			s.cfg.Logf("proxy: đọc response: %v", err)
 			keep := drained && !req.Close
 			s.writeError(c, bw, status, detail, keep)
-			return keep, false
+			return keep, false, true
 		}
 		if resp.Status/100 != 1 {
 			break
@@ -170,10 +213,12 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		// thức: không tunnel, trả 502 (chưa gửi gì cho client) và đóng.
 		if resp.Status == 101 {
 			s.writeError(c, bw, 502, "upstream đòi Upgrade (101), chưa hỗ trợ", false)
-			return false, false
+			return false, false, false
 		}
 	}
 	headOK = true
+	// D7 phase 6: node "sống nhưng trả 5xx" — mỗi 5xx là một lỗi cho outlier.
+	upFail = resp.Status >= 500
 
 	// --- 5. Head + body về client -------------------------------------------
 	out := &httpx.Response{Proto: "HTTP/1.1", Status: resp.Status, Reason: resp.Reason, Header: resp.Header.Clone()}
@@ -214,10 +259,11 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 	c.SetWriteDeadline(time.Now().Add(lim.BodyTimeout))
 	uc.SetReadDeadline(time.Now().Add(s.cfg.UpstreamBodyTimeout))
 	if err := out.WriteHead(bw); err != nil {
-		return false, false
+		return false, false, upFail
 	}
 	// Từ đây head đã đi: mọi lỗi đều phải đóng, không có "response thứ hai".
 	bodyDone := mode == modeNone // NoBody: không có gì để đọc ⇒ đã "hết"
+	upBodyErr := false           // lỗi body do UPSTREAM (rerr), không do client (werr)
 	if rawCopyResponse {
 		// Bẫy #2 (chỉ khi -tags nodefense): chép tới khi upstream đóng. Với
 		// upstream keep-alive thì treo tới deadline. Xem TestRawCopyTrap.
@@ -233,6 +279,7 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		bodyDone = bodyDone || (rerr == nil && werr == nil) // resp.Body đã trả io.EOF
 		if rerr != nil {
 			err = rerr
+			upBodyErr = true
 		} else {
 			err = werr
 		}
@@ -241,17 +288,17 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		// Upstream hỏng giữa body (rerr) HAY client bỏ đi giữa body (werr): cả
 		// hai đều để lại byte chưa đọc trên connection upstream ⇒ bẩn (D2 e).
 		s.cfg.Logf("proxy: body response: %v", err)
-		return false, false
+		return false, false, upFail || upBodyErr
 	}
 	if err := bw.Flush(); err != nil {
-		return false, false
+		return false, false, upFail
 	}
 	// D4 phase 3: trailer của resp bị bỏ (resp.Trailer()). Nợ P3-1.
 
 	// D2: SẠCH ⇔ body đã EOF (b) ∧ không byte thừa (c) ∧ upstream không đòi
 	// đóng / không phải body-tới-EOF (d) ∧ không lỗi (e, đã return ở trên).
 	clean = bodyDone && ubr.Buffered() == 0 && !resp.Close
-	return !closeClient, false
+	return !closeClient, false, upFail
 }
 
 // copyBody chép src (đã framing đúng ranh giới) vào dst, Flush sau mỗi lần
@@ -314,7 +361,10 @@ func (s *Server) drain(c net.Conn, req *httpx.Request) bool {
 //
 // Không có ranh giới này, rate limiter phase 7 đếm theo IP trong XFF bị bypass
 // bằng một header giả — "append, không overwrite" mới là nửa bài.
-func (s *Server) forwardedHeaders(h httpx.Header, addr net.Addr) {
+//
+// Trả về IP client "thật" theo ranh giới đó: peer tin ⇒ phần tử ĐẦU của XFF
+// (nếu có), không thì peer. Phase 6 dùng làm khoá consistent hash (D5).
+func (s *Server) forwardedHeaders(h httpx.Header, addr net.Addr) (clientIP string) {
 	ipStr := addr.String()
 	if host, _, err := net.SplitHostPort(ipStr); err == nil {
 		ipStr = host
@@ -323,13 +373,18 @@ func (s *Server) forwardedHeaders(h httpx.Header, addr net.Addr) {
 	if ip != nil && s.cfg.isTrusted(ip) {
 		vals := h.Values("X-Forwarded-For")
 		xff := ipStr
+		clientIP = ipStr
 		if len(vals) > 0 {
 			xff = strings.Join(vals, ", ") + ", " + ipStr
+			if first, _, _ := strings.Cut(vals[0], ","); strings.TrimSpace(first) != "" {
+				clientIP = strings.TrimSpace(first)
+			}
 		}
 		h.Set("X-Forwarded-For", xff)
-		return
+		return clientIP
 	}
 	h.Set("X-Forwarded-For", ipStr)
 	h.Set("X-Real-Ip", ipStr)
 	h.Del("Forwarded")
+	return ipStr
 }
