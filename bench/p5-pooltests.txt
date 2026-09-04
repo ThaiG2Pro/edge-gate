@@ -1,0 +1,35 @@
+$ go test ./internal/proxy -run 'TestPool|TestDirtyConnNotPooled|TestIdleClosedUpstream|TestNoGoroutineLeak|TestRawCopyTrap' -count=1 -race -v   # 2026-09-04 16:07:55 sau sửa waitStats; load 7.87 7.25 5.06 trên 6 core
+=== RUN   TestPoolReuseMixed
+    pool_test.go:85: G6 sau 200 request 6 kiểu framing: {Dials:1 Reuses:199 Puts:200 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+    pool_test.go:98: G6 sau 10 GET /eof: {Dials:10 Reuses:200 Puts:200 Retries:0 DropDirty:10 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+--- PASS: TestPoolReuseMixed (0.29s)
+=== RUN   TestDirtyConnNotPooled
+    pool_test.go:151: sau khi A bỏ đi: {Dials:1 Reuses:0 Puts:0 Retries:0 DropDirty:1 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+    pool_test.go:168: G3: B thấy 200 hello; {Dials:2 Reuses:0 Puts:1 Retries:0 DropDirty:1 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+--- PASS: TestDirtyConnNotPooled (0.03s)
+=== RUN   TestIdleClosedUpstream
+=== RUN   TestIdleClosedUpstream/probe-GET
+    pool_test.go:208: 50/50; {Dials:51 Reuses:0 Puts:51 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:50 Idle:1}
+=== RUN   TestIdleClosedUpstream/probe-POST-body
+    pool_test.go:208: 50/50; {Dials:51 Reuses:0 Puts:50 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:50 Idle:0}
+=== RUN   TestIdleClosedUpstream/noprobe-GET-retry
+    pool_test.go:208: 50/50; {Dials:51 Reuses:50 Puts:51 Retries:50 DropDirty:50 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+=== RUN   TestIdleClosedUpstream/noprobe-POST-body-502
+    pool_test.go:254: 25 × 502 xen kẽ 25 × 200; {Dials:26 Reuses:25 Puts:26 Retries:0 DropDirty:25 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+--- PASS: TestIdleClosedUpstream (1.04s)
+=== RUN   TestPoolMaxIdle
+    pool_test.go:300: G5: {Dials:83 Reuses:717 Puts:800 Retries:0 DropDirty:0 DropFull:79 DropExpired:0 DeadOnProbe:0 Idle:4}
+--- PASS: TestPoolMaxIdle (0.25s)
+=== RUN   TestPoolDisabled
+--- PASS: TestPoolDisabled (0.04s)
+=== RUN   TestPoolMaxIdleTime
+--- PASS: TestPoolMaxIdleTime (0.07s)
+=== RUN   TestPoolClosedWithServer
+--- PASS: TestPoolClosedWithServer (0.00s)
+=== RUN   TestRawCopyTrap
+--- PASS: TestRawCopyTrap (0.00s)
+=== RUN   TestNoGoroutineLeak
+    proxy_test.go:415: G6: goroutine trước 4, sau 5 (chờ 21ms)
+--- PASS: TestNoGoroutineLeak (0.47s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	3.248s

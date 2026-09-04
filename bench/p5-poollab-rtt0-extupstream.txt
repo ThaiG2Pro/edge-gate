@@ -1,0 +1,23 @@
+$ go run ./cmd/poollab -upstream 127.0.0.1:18081 -n 2000   # upstream NGOÀI tiến trình (bin/upstream), 16:04:56
+upstream 127.0.0.1:18081 · target /hello · n=2000 · conns=1 · closed-loop, cùng máy
+RTT = 550µs (srtt kernel, ss -tin, rttvar 0.492 ms) · ping = 77µs (ping avg, 5 gói) · chi phí một net.Dial (p50/20) = 746µs
+  một net.Dial = 1.4 RTT — phần vượt 1 RTT là dựng socket/accept/goroutine, không phải mạng (phase 0 G2)
+
+== baseline ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, keep-alive                     2000     189µs     612µs   3.747ms     732ms     0
+  [qua proxy, pool-off (dial mỗi request)] Δ TIME_WAIT: phía proxy (dport=18081) +2020 · phía upstream (sport=18081) +0
+  [qua proxy, pool-on] Δ TIME_WAIT: phía proxy (dport=18081) +0 · phía upstream (sport=18081) +0
+
+== qua proxy, GET /hello, closed-loop, n=2000, conns=1 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, pool-off (dial mỗi request)         2000   1.515ms   5.791ms  13.727ms     5.19s     0
+qua proxy, pool-on                             2000     526µs   2.206ms   11.67ms    2.222s     0
+  pool-off stats: {Dials:2020 Reuses:0 Puts:0 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+  pool-on  stats: {Dials:1 Reuses:2019 Puts:2020 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+
+  G1/G2 tỉ số        p50 off / p50 on   = 2.88x
+  G1/G2 tiết kiệm     p50 off − p50 on   = 988µs / request
+  G1/G2 theo RTT      tiết kiệm / RTT     = 1.80 RTT / request
+  overhead còn lại    p50 on − p50 thẳng = 337µs (= parse 2 chiều + goroutine, KHÔNG còn dial)
+  wall off / wall on = 2.34x

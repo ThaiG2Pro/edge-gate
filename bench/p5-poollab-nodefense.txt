@@ -1,0 +1,6 @@
+$ go test ./internal/proxy -run TestDirtyConnNotPooled -count=20 -race   # có kiểm sạch, phải xanh 20/20
+ok  	github.com/thaivro/edgegate/internal/proxy	1.674s
+
+$ go test ./internal/proxy -run TestDirtyConnNotPooled -count=20 -tags nodefensepool -v   # PHẢI đỏ; đếm --- FAIL
+     20 --- FAIL: TestDirtyConnNotPooled (0.03s)
+     20     pool_test.go:160: B: status 502 body "502 Bad Gateway: upstream trả response không hợp lệ hoặc đóng sớm\n" — connection bẩn về pool

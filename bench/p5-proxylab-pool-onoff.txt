@@ -1,0 +1,19 @@
+# proxylab (dụng cụ phase 3) đo bin/edgegate -pool=false rồi -pool=true, upstream bin/upstream :18081, 2026-09-04 16:05:41, commit f46d851
+$ ./bin/proxylab -mode overhead -proxy 127.0.0.1:18080 -upstream 127.0.0.1:18081 -n 2000 -label pool=false
+
+== G2: overhead L7, GET /hello, closed-loop, cùng máy, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, 1 conn keep-alive              2000     205µs     839µs    5.06ms     927ms     0
+qua proxy, 1 conn keep-alive (D1: dial mới)     2000   1.624ms   4.146ms  11.119ms    4.652s     0
+  G2 p50 proxy / p50 thẳng = 7.92x (kỳ vọng 3-5x)
+  G2 p99 proxy / p99 thẳng = 2.20x (kỳ vọng —)
+  chênh tuyệt đối p50: 1.419ms (= parse 2 chiều + Dial upstream mới + goroutine)
+$ ./bin/proxylab -mode overhead ... -label pool=true
+
+== G2: overhead L7, GET /hello, closed-loop, cùng máy, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, 1 conn keep-alive              2000     453µs     917µs   3.717ms    1.137s     0
+qua proxy, 1 conn keep-alive (D1: dial mới)     2000     967µs   2.539ms   8.045ms    2.733s     0
+  G2 p50 proxy / p50 thẳng = 2.13x (kỳ vọng 3-5x)
+  G2 p99 proxy / p99 thẳng = 2.16x (kỳ vọng —)
+  chênh tuyệt đối p50: 514µs (= parse 2 chiều + Dial upstream mới + goroutine)

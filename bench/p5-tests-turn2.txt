@@ -1,0 +1,7 @@
+$ go test ./... -count=1 -race   # 2026-09-04 16:06:41 f46d851
+ok  	github.com/thaivro/edgegate/internal/frame	2.293s
+ok  	github.com/thaivro/edgegate/internal/httpx	1.422s
+ok  	github.com/thaivro/edgegate/internal/proxy	6.151s
+
+$ go test ./internal/proxy -count=1 -race -v | grep -c '^--- PASS'
+25

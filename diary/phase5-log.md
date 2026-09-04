@@ -86,3 +86,26 @@
 - Chưa đo G1/G2/G7 chính thức, chưa có `bench/p5-*` — việc của turn 2. Lưu ý cho turn 2: p50
   pool-off 1.15-1.23 ms **cao hơn hẳn** 473 µs phase 3 (cùng loopback) — cần hiểu trước khi chấm G1
   (in-process ba vai? `ss` exec chen giữa? GC?).
+
+## §2 Turn 2 — 2026-09-04 16:00
+
+- 16:00 `sudo -n true` ⇒ "a password is required": `make poollab-rtt` (netem) phải do người dùng gõ
+  `! make poollab-rtt`. Làm mọi thứ không cần sudo trước.
+- 16:01 `make poollab` (n=2000) → `bench/p5-poollab-rtt0.txt`: 5.34x, 958 µs, 22.8 RTT. **G1 sai cả ba
+  cột.** Dial đo tại chỗ 834 µs, không phải 300 µs. TIME_WAIT Δ +1964 proxy / +0 upstream; pool-on +0.
+- 16:03 nghi số pool-off 1.18 ms (phase 3: 473 µs). Kiểm chéo: (a) upstream ngoài tiến trình
+  (`bin/upstream :18081`): 2.88x / 988 µs; (b) `bin/proxylab -mode overhead` đo `bin/edgegate
+  -pool=false` rồi `-pool=true`: 1.624 → 0.967 ms nhưng p50 thẳng nhảy 205 → 453 µs giữa hai lần.
+  `uptime`: load 9.21 trên 6 core, `python` lạ 400 % CPU. ⇒ máy ồn, không phải bench sai. Cột bền:
+  off − on = 958 / 988 / 657 µs.
+- 16:04 srtt kernel = 550 µs với rttvar 0.49 ms ở hai tiến trình (42 µs in-process): ACK hoãn cõng
+  response ⇒ srtt gồm thời gian xử lý. Ba nguồn RTT đều bẩn ở loopback; giữ cả ba cột, chấm "theo
+  RTT" ở RTT 20 ms.
+- 16:06 test G3-G6 `-race -v`: **TestPoolReuseMixed đỏ một lần** (`Puts:199 Idle:0`) — client nhận
+  response trước khi proxy put. Race test-vs-proxy, sửa `waitStats` ở 5 chỗ đọc stats. `-count=5
+  -race` xanh. Regenerate `bench/p5-pooltests.txt` (9 PASS).
+- 16:07 G3 `-count=20`: xanh 20/20; `-tags nodefensepool` đỏ **20/20**, cùng một thông điệp
+  `B: status 502 … connection bẩn về pool` → `bench/p5-poollab-nodefense.txt`.
+- 16:08 `go test ./... -race` ok ×3 package, proxy 25 PASS → `bench/p5-tests-turn2.txt`.
+- 16:12 ghi phase5.md: Nhật ký (3 mục), Giả thuyết sai (7 hàng), Số đo (G2 để ⏳). Commit turn 2.
+  Còn: `make poollab-rtt` (người dùng chạy) → điền G2, rồi turn 3.

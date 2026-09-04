@@ -76,7 +76,9 @@ func TestPoolReuseMixed(t *testing.T) {
 			t.Fatalf("req %d (%s): status %d body %q, muốn %q", i, strings.SplitN(st.raw, "\r\n", 2)[0], resp.Status, b, st.want)
 		}
 	}
-	st := s.PoolStats()
+	// Client nhận xong response TRƯỚC khi proxy put (put nằm sau Flush) ⇒ đọc
+	// stats ngay là race với chính proxy: lần chạy turn 2 thấy Puts:199 Idle:0.
+	st := waitStats(t, s, "put cuối", func(st PoolStats) bool { return st.Puts == n })
 	if st.Dials != 1 || st.Reuses != n-1 || st.Idle != 1 || st.DropDirty != 0 {
 		t.Fatalf("G6 nửa đầu: muốn dials=1 reuses=%d idle=1 dropDirty=0, có %+v", n-1, st)
 	}
@@ -88,7 +90,7 @@ func TestPoolReuseMixed(t *testing.T) {
 			t.Fatalf("/eof %d: %d chunked=%v %q", i, resp.Status, resp.Chunked, b)
 		}
 	}
-	st = s.PoolStats()
+	st = waitStats(t, s, "eof released", func(st PoolStats) bool { return st.DropDirty == 10 })
 	// Lần /eof đầu lấy connection rỗi (reuse) rồi bỏ; 9 lần sau pool rỗng ⇒ dial.
 	if st.Dials != 1+9 || st.DropDirty != 10 || st.Idle != 0 {
 		t.Fatalf("G6 nửa sau: muốn dials=10 dropDirty=10 idle=0, có %+v", st)
@@ -291,7 +293,7 @@ func TestPoolMaxIdle(t *testing.T) {
 	for err := range errs {
 		t.Fatal(err)
 	}
-	st := s.PoolStats()
+	st := waitStats(t, s, "800 put", func(st PoolStats) bool { return st.Puts == clients*per })
 	if st.Idle != 4 || st.DropFull == 0 || st.Dials > clients+st.DropFull || st.DropDirty != 0 {
 		t.Fatalf("G5: muốn idle=4, dropFull>0, dials ≤ 16+dropFull, dropDirty=0: %+v", st)
 	}
@@ -307,7 +309,7 @@ func TestPoolDisabled(t *testing.T) {
 			t.Fatal(resp.Status)
 		}
 	}
-	if st := s.PoolStats(); st.Dials != 20 || st.Reuses != 0 || st.Idle != 0 {
+	if st := waitStats(t, s, "20 dial", func(st PoolStats) bool { return st.Dials == 20 }); st.Dials != 20 || st.Reuses != 0 || st.Idle != 0 {
 		t.Fatalf("%+v", st)
 	}
 }
@@ -329,7 +331,7 @@ func TestPoolClosedWithServer(t *testing.T) {
 	s, p := startProxyS(t, startFixture(t), nil)
 	rc := dialRaw(t, p)
 	rc.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
-	if st := s.PoolStats(); st.Idle != 1 {
+	if st := waitStats(t, s, "put", func(st PoolStats) bool { return st.Idle == 1 }); st.Idle != 1 {
 		t.Fatalf("trước Close: %+v", st)
 	}
 	s.Close()
