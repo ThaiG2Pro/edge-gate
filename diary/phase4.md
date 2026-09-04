@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~2.5 giờ (11:11 → 13:45, ba turn)
 - **Bắt đầu:** 2026-09-04 11:11 · **Kết thúc:** 2026-09-04 13:45
 - **Trạng thái:** ✅ xong 2026-09-04 13:45 — **3/7 giả thuyết sai** (G1 nửa sau 38 % vs ≥ 40 %, G2 46 % vs 60-75 %, G4 6.5 % vs < 5 %), cộng 3 lỗi vận hành (`pkill -f` lần hai, `&&`+`&`, hook `rtk` tóm tắt). 57 test xanh `-race`, 61/61 ca parser, 54/54 e2e, phản chứng đỏ 20/52, diff-fuzz 7.75 M exec 0 lệch. Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (turn 1 `dc3a824`, turn 2 `989b060`, turn 3 _______; commit nền `b3e08f0`)
+- **Commit:** `8334b12` (turn 1 `dc3a824`, turn 2 `989b060`, turn 3 `8334b12`; commit nền `b3e08f0`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase4-log.md`](phase4-log.md). File này là bản biên tập.
 >
