@@ -6,6 +6,7 @@ package fixture
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -125,4 +126,17 @@ func Pattern(n int) []byte {
 		b[i] = 'a' + byte(i%26)
 	}
 	return b
+}
+
+// ListenAndServe chạy Handler() trên addr trong goroutine, trả địa chỉ thật
+// (addr có thể là ":0") và hàm dừng. Để `cmd/poollab` dựng upstream in-process
+// mà KHÔNG import net/http — net/http chỉ sống trong package này.
+func ListenAndServe(addr string) (string, func(), error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return "", nil, err
+	}
+	srv := &http.Server{Handler: Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go srv.Serve(ln)
+	return ln.Addr().String(), func() { srv.Close() }, nil
 }

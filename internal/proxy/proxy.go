@@ -1,6 +1,6 @@
-// Package proxy là vertical slice của phase 3: accept → ReadRequest → Dial
-// upstream → forward → ReadResponse → serialize về client. Chỉ dùng net;
-// không net/http. Một backend, không pool (D1), không LB, không TLS.
+// Package proxy là vertical slice của phase 3: accept → ReadRequest → lấy
+// connection upstream (pool, phase 5) → forward → ReadResponse → serialize về
+// client. Chỉ dùng net; không net/http. Một backend, không LB, không TLS.
 //
 // Vai trò của package này so với httpx: httpx nhận *bufio.Reader và không
 // biết gì về deadline. Ở đây cầm net.Conn, nên I3 (mọi connection có
@@ -46,6 +46,10 @@ type Config struct {
 	TrustedProxies []string
 	trusted        []*net.IPNet
 
+	// Pool (phase 5): connection pool tới upstream. Zero value = bật, MaxIdle
+	// 64, MaxIdleTime 60 s, probe bật. Pool.Disabled = hành vi phase 3-4.
+	Pool PoolConfig
+
 	Logf func(format string, args ...any)
 }
 
@@ -69,6 +73,7 @@ func (c *Config) withDefaults() {
 	if c.Logf == nil {
 		c.Logf = log.Printf
 	}
+	c.Pool.withDefaults()
 	c.trusted = c.trusted[:0]
 	for _, cidr := range c.TrustedProxies {
 		if !strings.Contains(cidr, "/") {
@@ -109,12 +114,26 @@ type Server struct {
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
 	wg    sync.WaitGroup
+
+	pool *pool // phase 5: connection upstream dùng chung giữa mọi client
 }
 
 func New(cfg Config) *Server {
 	cfg.withDefaults()
-	return &Server{cfg: cfg, conns: map[net.Conn]struct{}{}}
+	s := &Server{cfg: cfg, conns: map[net.Conn]struct{}{}}
+	s.pool = newPool(cfg.Pool, func() (net.Conn, error) {
+		c, err := net.DialTimeout("tcp", s.cfg.Upstream, s.cfg.DialTimeout)
+		if err == nil {
+			s.setNoDelay(c)
+		}
+		return c, err
+	})
+	return s
 }
+
+// PoolStats: ảnh chụp bộ đếm pool (D6). `cmd/poollab` và test dùng để chứng
+// minh pool có chạy, không chỉ có flag.
+func (s *Server) PoolStats() PoolStats { return s.pool.stats() }
 
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.cfg.Listen)
@@ -180,6 +199,9 @@ func (s *Server) Close() error {
 	}
 	s.mu.Unlock()
 	s.wg.Wait()
+	// Handler đã thoát hết ⇒ không ai đang cầm connection upstream; đóng idle.
+	// put sau thời điểm này (nếu có) cũng đóng vì pool.closed (D8).
+	s.pool.closeAll()
 	return err
 }
 

@@ -2,9 +2,8 @@
 
 package proxy
 
-// Bản tắt phòng tuyến, CHỈ để chứng minh bộ test đỏ đúng chỗ:
-//
-//	make proxylab-nodefense   # phải ĐỎ ở TestDrainOnUpstreamDown và TestRawCopyTrap
+// Tắt hai phòng tuyến phase 3: bẫy #3 (drain) và bẫy #2 (io.Copy thô).
+// `make proxylab-nodefense` PHẢI đỏ.
 const (
 	drainOnUpstreamError = false
 	rawCopyResponse      = true

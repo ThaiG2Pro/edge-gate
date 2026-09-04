@@ -5,7 +5,7 @@
 	httplab fuzz-http difffuzz difffuzz-chunk \
 	proxylab proxybench upstream \
 	smugglelab smugglelab-nodefense \
-	poollab poollab-rtt \
+	poollab poollab-rtt poollab-nodefense \
 	lblab lblab-skew \
 	chaoslab slowlab ratelab \
 	tlslab \
@@ -212,16 +212,22 @@ smugglelab-nodefense:
 	! go test ./internal/proxy/ -run TestSmugglingE2E -count=1 -tags nodefense
 
 # ---------------------------------------------------------------------------
-# Phase 5: connection pool. Hai con số, và chúng rất khác nhau.
+# Phase 5: connection pool. Hai con số, và chúng rất khác nhau — báo cáo bằng
+# ms và RTT TIẾT KIỆM / REQUEST, không phải tỉ số (phase 0 G2/G3).
+# cmd/poollab chạy in-process: upstream fixture + proxy (pool off rồi on) + client raw.
 # ---------------------------------------------------------------------------
 poollab:
-	go run ./cmd/poollab -pool=false -n 2000
-	go run ./cmd/poollab -pool=true  -n 2000
+	go run ./cmd/poollab -pool both -n 2000
 
 poollab-rtt: rtt-up
-	-go run ./cmd/poollab -pool=false -n 200
-	-go run ./cmd/poollab -pool=true  -n 200
+	-go run ./cmd/poollab -pool both -n 200
 	$(MAKE) rtt-down
+
+# Tắt kiểm "sạch" (poolCheckClean=false): connection còn đuôi body của client A
+# về pool, client B đọc được nó. Lệnh này PHẢI đỏ.
+poollab-nodefense:
+	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
+	! go test ./internal/proxy/ -run 'TestDirtyConnNotPooled' -count=1 -tags nodefensepool
 
 # ---------------------------------------------------------------------------
 # Phase 6: load balancing

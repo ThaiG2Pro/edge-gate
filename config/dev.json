@@ -4,5 +4,10 @@
   "dial_timeout_ms": 2000,
   "upstream_header_timeout_ms": 5000,
   "upstream_body_timeout_ms": 30000,
-  "trusted_proxies": []
+  "trusted_proxies": [],
+  "pool": {
+    "disabled": false,
+    "max_idle": 64,
+    "max_idle_time_ms": 60000
+  }
 }

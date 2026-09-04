@@ -20,6 +20,13 @@ import (
 // startProxy chạy proxy trên :0 trỏ tới upstream, trả địa chỉ proxy.
 func startProxy(t *testing.T, upstream string, mut func(*Config)) string {
 	t.Helper()
+	_, addr := startProxyS(t, upstream, mut)
+	return addr
+}
+
+// startProxyS: như startProxy, trả cả *Server (phase 5: đọc PoolStats).
+func startProxyS(t *testing.T, upstream string, mut func(*Config)) (*Server, string) {
+	t.Helper()
 	lim := httpx.DefaultLimits()
 	lim.HeaderTimeout, lim.BodyTimeout, lim.IdleTimeout = 2*time.Second, 2*time.Second, 2*time.Second
 	cfg := Config{Listen: "127.0.0.1:0", Upstream: upstream, Limits: lim,
@@ -35,7 +42,7 @@ func startProxy(t *testing.T, upstream string, mut func(*Config)) string {
 	}
 	go s.Serve(ln)
 	t.Cleanup(func() { s.Close() })
-	return ln.Addr().String()
+	return s, ln.Addr().String()
 }
 
 func startFixture(t *testing.T) string {
@@ -297,10 +304,16 @@ func TestDrainOnUpstreamDown(t *testing.T) {
 	}
 }
 
-// G1 / bẫy #2: upstream RAW bỏ qua Connection: close, trả CL rồi GIỮ connection.
-// Với framing đúng, proxy trả xong ngay và nhận request 2. Với -tags nodefense
-// (io.Copy thô) proxy kẹt chờ EOF từ upstream tới UpstreamBodyTimeout ⇒ request
-// 2 không được đọc trong 500 ms ⇒ đỏ.
+// G1 / bẫy #2: upstream RAW keep-alive cứng đầu — trả CL rồi GIỮ connection,
+// và phục vụ tiếp request kế trên cùng connection. Với framing đúng, proxy trả
+// xong ngay và nhận request 2. Với -tags nodefense (io.Copy thô) proxy kẹt chờ
+// EOF từ upstream tới UpstreamBodyTimeout ⇒ request 2 không được đọc trong
+// 500 ms ⇒ đỏ.
+//
+// Phase 5 sửa fixture: bản phase 3 chỉ phục vụ MỘT request rồi ngủ 5 s — được
+// vì proxy dial mới mỗi request. Có pool, request 2 đi đúng vào connection đó
+// và chờ một upstream không bao giờ đọc ⇒ 504. Đó không phải HTTP server:
+// giữ connection thì phải phục vụ request kế.
 func TestRawCopyTrap(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -314,15 +327,15 @@ func TestRawCopyTrap(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
+				defer c.Close()
 				br := bufio.NewReader(c)
-				if _, err := httpx.ReadRequest(br, httpx.DefaultLimits()); err != nil {
-					c.Close()
-					return
+				for {
+					if _, err := httpx.ReadRequest(br, httpx.DefaultLimits()); err != nil {
+						return // client (proxy) đóng — chỉ khi đó mới đóng
+					}
+					// KHÔNG đóng sau response: keep-alive cứng đầu, chờ request kế.
+					io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
 				}
-				io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
-				// KHÔNG đóng: giả upstream keep-alive cứng đầu.
-				time.Sleep(5 * time.Second)
-				c.Close()
 			}(c)
 		}
 	}()
