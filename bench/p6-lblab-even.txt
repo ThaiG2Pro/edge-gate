@@ -1,0 +1,13 @@
+ 17:43:07 up  8:30,  1 user,  load average: 8.86, 4.12, 2.28
+lblab: n=20000 conns=32 base=2ms skew="" flap=false tau=1s tau-slow=30s outlier=true health=true sessions=1000
+  b0 127.0.0.1:46403 delay=2ms err=?
+  b1 127.0.0.1:37583 delay=2ms err=?
+  b2 127.0.0.1:33631 delay=2ms err=?
+  b3 127.0.0.1:40801 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          4.78ms   7.57ms  11.52ms  62.72ms  0.00%   6284  25.0/25.0/25.0/25.0         0/0 0
+leastconn   4.36ms   7.24ms  12.77ms  34.09ms  0.00%   6721  24.9/25.1/24.9/25.0         0/0 0
+p2c          3.8ms   6.64ms  10.29ms  22.87ms  0.00%   7440  23.5/24.5/31.7/20.3         0/0 0
+chash       3.36ms   5.65ms   8.12ms  13.26ms  0.00%   8487  26.9/26.1/21.7/25.3         0/0 0

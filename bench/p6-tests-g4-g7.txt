@@ -1,0 +1,75 @@
+$ go test ./internal/lb -run TestConsistentHash -count=1 -v
+=== RUN   TestConsistentHashRehash
+    lb_test.go:148: 4→5 node, 100000 key: ring 150 vnode đổi chủ 21.6 % (lý thuyết 20), hash%N đổi 80.1 % (lý thuyết 80); tải 4 node [23089 24575 25355 26981] (max/min 1.17)
+    lb_test.go:169: 1 vnode: tải [21577 15524 53431 9468] (max/min 5.64)
+--- PASS: TestConsistentHashRehash (0.04s)
+=== RUN   TestConsistentHashSkipsUnavailable
+--- PASS: TestConsistentHashSkipsUnavailable (0.00s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/lb	0.042s
+$ go test ./internal/proxy -run TestLBDeadBackend -count=1 -v
+=== RUN   TestLBDeadBackend
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    forward.go:90: proxy: dial 127.0.0.1:41109: dial tcp 127.0.0.1:41109: connect: connection refused
+    health.go:103: lb: 127.0.0.1:41109 unhealthy (fall=2)
+--- PASS: TestLBDeadBackend (0.12s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	0.124s
+$ go test ./internal/lb -run TestP2CRecovers -count=1 -v
+=== RUN   TestP2CRecovers
+    lb_test.go:116: A được chọn lại 45/200 lần trong 2 s (tau 100 ms)
+--- PASS: TestP2CRecovers (2.12s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/lb	2.121s
+$ make lblab-nodefense
+! go test ./internal/lb/ -run 'TestP2CRecovers' -count=1 -tags nodefenselb
+--- FAIL: TestP2CRecovers (2.11s)
+    lb_test.go:116: A được chọn lại 0/200 lần trong 2 s (tau 100 ms)
+    lb_test.go:118: A không hồi phục: 0/200 — EWMA không decay theo thời gian
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/lb	2.111s
+FAIL
+exit=0
+$ go test ./internal/proxy -run 'TestLBPoolPerHost|TestPoolExpiredAtBottom|TestMaxIdleTimeShorter' -count=1 -v
+=== RUN   TestLBPoolPerHost
+--- PASS: TestLBPoolPerHost (0.06s)
+=== RUN   TestPoolExpiredAtBottom
+--- PASS: TestPoolExpiredAtBottom (0.41s)
+=== RUN   TestMaxIdleTimeShorterThanUpstream
+    lb_test.go:307: 50 ms: {Dials:20 Reuses:0 Puts:20 Retries:0 DropDirty:0 DropFull:0 DropExpired:19 DeadOnProbe:0 Idle:1}
+        60 s: {Dials:20 Reuses:0 Puts:20 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:19 Idle:1}
+--- PASS: TestMaxIdleTimeShorterThanUpstream (5.75s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	6.230s
+
+$ go test ./internal/proxy -run TestLBKillRevive -count=1 -v   # 3 lần
+=== RUN   TestLBKillRevive
+    lb_test.go:407: kill→unhealthy 501ms (fall 3 × 200 ms); b3 picks lúc kill 52, lúc unhealthy 163 (fails 111), 300 ms sau 163
+    lb_test.go:409: revive→healthy 301ms (rise 2), healthy→pick đầu 1ms; client: map[200:969]
+--- PASS: TestLBKillRevive (1.41s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	1.416s
+=== RUN   TestLBKillRevive
+    lb_test.go:407: kill→unhealthy 502ms (fall 3 × 200 ms); b3 picks lúc kill 53, lúc unhealthy 166 (fails 113), 300 ms sau 166
+    lb_test.go:409: revive→healthy 299ms (rise 2), healthy→pick đầu 1ms; client: map[200:971]
+--- PASS: TestLBKillRevive (1.42s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	1.425s
+=== RUN   TestLBKillRevive
+    lb_test.go:407: kill→unhealthy 501ms (fall 3 × 200 ms); b3 picks lúc kill 52, lúc unhealthy 166 (fails 114), 300 ms sau 166
+    lb_test.go:409: revive→healthy 302ms (rise 2), healthy→pick đầu 5ms; client: map[200:990]
+--- PASS: TestLBKillRevive (1.41s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	1.419s

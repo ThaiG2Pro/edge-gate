@@ -46,6 +46,8 @@ type result struct {
 	lats, first, second    []time.Duration
 	n, err5xx, ioErr       int
 	share                  []float64
+	share2                 []float64       // phần tải nửa sau (sau mốc flap) — p99 không tách được thuật toán khi b2 còn > 1 % tải
+	ewmaMid, ewmaEnd       []time.Duration // EWMA mỗi backend lúc flap và lúc hết bài
 	ejections, ejectRefuse int64
 	wall                   time.Duration
 }
@@ -57,6 +59,7 @@ func main() {
 	base := flag.Duration("base", 2*time.Millisecond, "service time nền của mỗi backend")
 	skew := flag.String("skew", "", "lệch tải, vd: slow=10x,err=30% (b0 chậm 10x, b1 trả 503 nhanh 30 %)")
 	flap := flag.Bool("flap", false, "giữa bài b2 (đang nhanh) đổi thành chậm 10x — chỗ P2C tau dài thua")
+	recov := flag.Bool("recover", false, "với -flap: chiều ngược — b2 chậm 10x từ đầu, hồi phục ở n/2 (EWMA cũ giữ b2 bị né)")
 	tau := flag.Duration("tau", time.Second, "tau EWMA của p2c")
 	tauSlow := flag.Duration("tau-slow", 30*time.Second, "tau của p2c-slow")
 	outlier := flag.Bool("outlier", true, "passive outlier ejection (5 lỗi liên tiếp, eject 2 s)")
@@ -95,8 +98,8 @@ func main() {
 		slowX = 10
 	}
 
-	fmt.Printf("lblab: n=%d conns=%d base=%s skew=%q flap=%v tau=%s tau-slow=%s outlier=%v health=%v sessions=%d\n",
-		*n, *conns, *base, *skew, *flap, *tau, *tauSlow, *outlier, *health, *sessions)
+	fmt.Printf("lblab: n=%d conns=%d base=%s skew=%q flap=%v recover=%v tau=%s tau-slow=%s outlier=%v health=%v sessions=%d\n",
+		*n, *conns, *base, *skew, *flap, *recov, *tau, *tauSlow, *outlier, *health, *sessions)
 	for i, s := range sims {
 		fmt.Printf("  b%d %s delay=%s err=%s\n", i, ups[i], s.Delay(), errOf(s))
 	}
@@ -105,7 +108,11 @@ func main() {
 	var rows []*result
 	for _, algo := range strings.Split(*algos, ",") {
 		algo = strings.TrimSpace(algo)
-		sims[2].SetDelay(*base) // hoàn flap của lần trước
+		b2Before, b2After := *base, *base*time.Duration(slowX)
+		if *recov {
+			b2Before, b2After = b2After, b2Before
+		}
+		sims[2].SetDelay(b2Before) // hoàn flap của lần trước
 		cfg := lb.Config{Algo: algo, Tau: *tau, HashHeader: "X-Session",
 			Health:  lb.HealthConfig{Disabled: !*health, Interval: 200 * time.Millisecond, Timeout: 500 * time.Millisecond},
 			Outlier: lb.OutlierConfig{Disabled: !*outlier, Consecutive: 5, BaseEject: 2 * time.Second, MaxEject: 10 * time.Second},
@@ -119,17 +126,26 @@ func main() {
 			fatal(err)
 		}
 		go srv.Serve(ln)
-		r := run(algo, ln.Addr().String(), *n, *conns, *sessions, *flap, func() { sims[2].SetDelay(*base * time.Duration(slowX)) })
+		var mid lb.Stats // chụp đúng lúc flap; đọc sau wg.Wait trong run ⇒ không race
+		r := run(algo, ln.Addr().String(), *n, *conns, *sessions, *flap, func() {
+			mid = srv.LBStats()
+			sims[2].SetDelay(b2After)
+		})
 		st := srv.LBStats()
-		for _, b := range st.Backends {
+		for i, b := range st.Backends {
 			r.share = append(r.share, float64(b.Picks)/float64(*n)*100)
 			r.ejections += b.Ejections
+			if *flap {
+				r.share2 = append(r.share2, float64(b.Picks-mid.Backends[i].Picks)/float64(*n-*n/2)*100)
+				r.ewmaMid = append(r.ewmaMid, mid.Backends[i].EWMA)
+				r.ewmaEnd = append(r.ewmaEnd, b.EWMA)
+			}
 		}
 		r.ejectRefuse = st.EjectRefused
 		srv.Close()
 		rows = append(rows, r)
 	}
-	printTable(rows, *flap)
+	printTable(rows, *flap, *recov)
 }
 
 func errOf(s *fixture.Sim) string {
@@ -235,7 +251,7 @@ func pct(ds []time.Duration, p float64) time.Duration {
 	return s[i]
 }
 
-func printTable(rows []*result, flap bool) {
+func printTable(rows []*result, flap, recov bool) {
 	fmt.Println()
 	fmt.Printf("%-9s %8s %8s %8s %8s %6s %6s  %-27s %s\n", "algo", "p50", "p90", "p99", "max", "5xx%", "rps", "share b0/b1/b2/b3 (%)", "eject/refused ioErr")
 	for _, r := range rows {
@@ -250,9 +266,18 @@ func printTable(rows []*result, flap bool) {
 	}
 	if flap {
 		fmt.Println()
-		fmt.Printf("%-9s %14s %14s %14s %14s   (b2 đổi nhanh→chậm 10x ở request n/2)\n", "algo", "p50 nửa đầu", "p99 nửa đầu", "p50 nửa sau", "p99 nửa sau")
+		dir := "nhanh→chậm 10x"
+		if recov {
+			dir = "chậm 10x→nhanh"
+		}
+		fmt.Printf("%-9s %12s %12s %12s %12s %12s  %-24s %s   (b2 đổi "+dir+" ở request n/2)\n", "algo", "p50 nửa đầu", "p99 nửa đầu", "p50 nửa sau", "p90 nửa sau", "p99 nửa sau", "share nửa sau b0/b1/b2/b3", "EWMA b2 lúc flap→cuối")
 		for _, r := range rows {
-			fmt.Printf("%-9s %14s %14s %14s %14s\n", r.algo, rd(pct(r.first, .5)), rd(pct(r.first, .99)), rd(pct(r.second, .5)), rd(pct(r.second, .99)))
+			sh := make([]string, len(r.share2))
+			for i, v := range r.share2 {
+				sh[i] = fmt.Sprintf("%.1f", v)
+			}
+			fmt.Printf("%-9s %12s %12s %12s %12s %12s  %-24s %s→%s\n", r.algo, rd(pct(r.first, .5)), rd(pct(r.first, .99)),
+				rd(pct(r.second, .5)), rd(pct(r.second, .9)), rd(pct(r.second, .99)), strings.Join(sh, "/"), rd(r.ewmaMid[2]), rd(r.ewmaEnd[2]))
 		}
 	}
 }

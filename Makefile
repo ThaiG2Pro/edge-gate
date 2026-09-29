@@ -6,7 +6,7 @@
 	proxylab proxybench upstream \
 	smugglelab smugglelab-nodefense \
 	poollab poollab-rtt poollab-nodefense \
-	lblab lblab-skew lblab-flap lblab-nodefense \
+	lblab lblab-skew lblab-flap lblab-recover lblab-nodefense \
 	chaoslab slowlab ratelab \
 	tlslab \
 	perflab bench-vs-nginx epolllab \
@@ -242,8 +242,15 @@ lblab-skew:
 	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000
 
 # G3 — chỗ P2C thua: b2 đổi nhanh→chậm 10x ở giữa bài; p2c-slow (tau 30 s) phản ứng chậm hơn least-conn.
+# Turn 2: p99 không tách được thuật toán khi b2 còn > 1 % tải ⇒ đọc cột "share nửa sau". conns 4 để
+# inflight ít thông tin, EWMA có tiếng nói. -recover (b2 chậm→nhanh) mới là chỗ P2C tau dài thua thật.
 lblab-flap:
 	go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000
+	go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 4
+
+lblab-recover:
+	go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -n 20000
+	go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -n 20000 -conns 4
 
 # Phản chứng G6: EWMA decay theo số request thay vì thời gian ⇒ node hồi phục không bao giờ được chọn lại.
 lblab-nodefense:

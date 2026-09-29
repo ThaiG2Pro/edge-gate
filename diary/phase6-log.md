@@ -86,3 +86,32 @@ crc32       vnode=150   load=[26021 20068 23278 30633] max/min=1.53
 - (7) `cmd/lblab`, `config/lb.json`, khối `lb` trong `cmd/edgegate`, Makefile `lblab*`.
   Smoke n=2000 chạy được (không đọc số — đó là việc turn 2). `make lblab-nodefense` đỏ đúng dòng
   ("A không hồi phục: 0/200"). `go test ./... -race` xanh. Không package data-path nào import `net/http`.
+
+## §2 Turn 2 — 2026-09-29 17:41 → 17:58
+
+> Mốc đọc từ `date`/`uptime` trong đầu các file `bench/p6-*.txt`. Output đầy đủ nằm ở đó, không chép lại hết.
+
+- 17:41 `go test ./... -race` xanh ở `d21bdb2`, load 0.60. Build `bin/lblab`.
+- 17:43 `bench/p6-lblab-even.txt` (load 8.86 — dư âm của `-race`). 4 thuật toán ≈ nhau; P2C chia
+  lệch 20.3-31.7 % trên 4 node giống nhau ⇒ nợ P6-2.
+- 17:43 `bench/p6-lblab-skew.txt`. Chấm G1 ngay: share LC b0 4.3 % đúng, **p99 không đổi** (22.01 vs
+  21.47). Mất vài phút mới thấy: p99 = 1 % chậm nhất; node chậm còn > 1 % tải là nó quyết định p99.
+  P2C 0.6 % ⇒ 6.44 ms. G2 vế 2 lật: outlier bật b1 còn 0.8 %. Tính lại kỳ vọng số request tới chuỗi 5
+  lỗi: 586 ⇒ 0.17 s ở 3 400 rps.
+- 17:44 `bench/p6-lblab-flap.txt`: p99 nửa sau 21.14 / 21.47 / 21.46 — **bench mù**, cùng bệnh G1.
+  Sửa `cmd/lblab`: chụp `LBStats()` trong `onFlap` (đọc sau `wg.Wait` ⇒ không race), in share nửa sau
+  + p90 nửa sau + EWMA b2 lúc flap→cuối.
+- 17:45 `bench/p6-lblab-flap2.txt` conns 32 và 4. p2c-slow ≈ LC, không thua. Nghi: điểm có thừa số
+  `(inflight+1)` ⇒ node xấu đi bị phạt ngay qua inflight, EWMA cũ không quan trọng. Suy ra chiều ngược
+  (node **tốt lên**) mới là chỗ EWMA cũ không có gì bù ⇒ thêm cờ `-recover`.
+- 17:47-17:50 `bench/p6-lblab-flap-rep.txt`: 3 lần × conns 32/4, số ổn định (bảng ở `phase6.md`).
+- 17:50-17:52 `bench/p6-lblab-recover.txt`: p2c-slow b2 **0.0 %** nửa sau (conns 4, 2/2 lần); LC 25.0 %.
+  p99 không lộ vì 3 node còn lại dư capacity.
+- 17:52 `bench/p6-lblab-skew-rep.txt`: lặp skew 2 lần nữa + `-n 100000` outlier bật (3 eject, b1 0.7 %).
+- 17:53 `bench/p6-tests-g4-g7.txt`: G4/G6/G7 xanh, `make lblab-nodefense` đỏ đúng dòng. Đọc
+  `TestLBDeadBackend`: nó không phải kịch bản G5 (chết từ đầu, 50 ms/fall 2). Viết `TestLBKillRevive`
+  (kill giữa bài, pool đang giữ connection, revive cùng port). 3/3 xanh: 500-503 ms / 298-300 ms, 0 lỗi
+  client, **111-120 dial lỗi** — "+1 dial lỗi" trong G5 sai.
+- 17:55 `go vet ./... && go test ./... -count=1 -race` xanh. `grep '"net/http"'` trên `internal/lb`,
+  `internal/proxy/*.go` (trừ test), `cmd/lblab`: rỗng.
+- Makefile: `lblab-flap` thêm dòng `-conns 4`; target mới `lblab-recover`.

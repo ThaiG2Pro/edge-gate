@@ -1,0 +1,33 @@
+Tue Sep 29 17:47:21 +07 2026
+ 17:47:21 up  8:34,  1 user,  load average: 1.81, 2.94, 2.24
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 32   # lần 1
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn       3.45ms       7.51ms       3.03ms       4.64ms      21.52ms  31.8/31.8/4.8/31.7       11.54ms→18.08ms
+p2c              3.2ms       7.34ms       3.39ms       5.94ms      21.47ms  32.6/31.1/2.2/34.1       3.06ms→16.48ms
+p2c-slow        4.13ms      10.77ms       3.28ms       6.01ms      22.48ms  33.7/31.9/6.1/28.4       3.4ms→4.24ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 4   # lần 1
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn       2.79ms       4.08ms       2.82ms       3.68ms      21.26ms  31.9/31.8/4.4/31.9       2.8ms→20.73ms
+p2c             2.76ms       3.94ms       2.76ms       3.29ms       4.15ms  35.4/30.7/0.3/33.7       2.73ms→10.31ms
+p2c-slow        2.76ms       4.04ms       2.78ms       3.42ms      21.07ms  32.0/36.7/4.0/27.2       3.73ms→8.07ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 32   # lần 2
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn       3.27ms       8.24ms          3ms        4.6ms      21.48ms  31.8/31.7/4.8/31.7       13.17ms→18.53ms
+p2c             3.59ms        9.3ms        3.9ms       7.11ms      21.73ms  32.2/31.7/2.4/33.8       4.06ms→17.62ms
+p2c-slow        4.11ms      11.22ms        3.5ms       7.76ms      23.41ms  36.2/31.6/8.2/24.0       4.25ms→5.17ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 4   # lần 2
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn       3.08ms       5.68ms       2.85ms       3.66ms      21.29ms  31.8/31.9/4.5/31.8       3ms→20.7ms
+p2c             2.76ms       4.03ms       2.75ms       3.28ms       4.17ms  33.9/31.4/0.3/34.4       2.78ms→14.57ms
+p2c-slow        2.83ms       4.87ms        2.8ms       3.51ms      21.14ms  32.3/27.9/4.0/35.8       2.89ms→7.5ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 32   # lần 3
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn       5.11ms      16.95ms       4.67ms       9.64ms       25.5ms  31.2/31.0/6.8/31.1       4.79ms→20.97ms
+p2c             4.88ms      13.61ms       5.01ms      10.27ms      24.18ms  33.9/30.2/3.1/32.8       5.14ms→20.56ms
+p2c-slow        3.59ms      10.49ms       2.94ms       4.71ms      21.37ms  33.9/29.2/5.5/31.5       5.72ms→6.35ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000 -conns 4   # lần 3
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn       2.78ms       4.14ms       2.77ms       3.44ms      21.17ms  31.9/31.9/4.3/31.9       2.86ms→20.68ms
+p2c             2.77ms       4.08ms       2.78ms       3.41ms        4.6ms  36.7/29.6/0.3/33.4       2.77ms→20.88ms
+p2c-slow        3.24ms      13.26ms        3.1ms       4.39ms      21.68ms  36.4/32.1/4.4/27.1       4.4ms→9.22ms
+ 17:50:12 up  8:37,  1 user,  load average: 3.92, 3.15, 2.42

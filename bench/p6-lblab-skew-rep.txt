@@ -1,0 +1,19 @@
+Tue Sep 29 17:52:31 +07 2026
+ 17:52:31 up  8:40,  1 user,  load average: 1.33, 2.34, 2.21
+$ ./bin/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000 -outlier=false   # lần 2
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          2.97ms   20.8ms   21.8ms  52.65ms  7.49%   4453  25.0/25.0/25.0/25.0         0/0 0
+leastconn   2.76ms   4.21ms  21.18ms  23.89ms 11.67%   9269  4.1/39.3/28.3/28.3          0/0 0
+p2c         2.68ms   3.84ms   5.89ms   27.6ms 13.98%  11765  0.6/47.1/24.1/28.2          0/0 0
+chash       2.95ms  20.77ms  21.69ms  24.49ms  7.58%   4493  25.0/25.3/22.6/27.1         0/0 0
+$ ./bin/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000 -outlier=false   # lần 3
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr           2.9ms  20.76ms  21.97ms  71.78ms  7.56%   4451  25.0/25.0/25.0/25.0         0/0 0
+leastconn   2.85ms   4.57ms  21.43ms  24.76ms 11.97%   8898  4.3/39.1/28.3/28.3          0/0 0
+p2c         2.69ms   4.31ms   6.48ms  25.51ms 11.88%  10981  0.6/39.6/29.6/30.2          0/0 0
+chash       2.91ms  20.72ms  21.68ms  25.37ms  7.56%   4557  24.5/25.4/23.5/26.5         0/0 0
+$ ./bin/lblab -algos rr,leastconn -skew slow=10x,err=30% -n 100000   # G2 dài: outlier bật
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr           3.1ms  20.91ms  21.84ms  69.61ms  1.65%   3783  31.5/5.5/31.5/31.5          4/0 0
+leastconn   3.01ms   5.32ms  21.78ms  34.95ms  0.19%   7270  7.0/0.7/46.2/46.2           3/0 0
+ 17:53:37 up  8:41,  1 user,  load average: 2.13, 2.31, 2.21

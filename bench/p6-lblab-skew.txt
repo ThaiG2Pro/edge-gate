@@ -1,0 +1,30 @@
+Tue Sep 29 17:43:45 +07 2026
+ 17:43:45 up  8:31,  1 user,  load average: 5.31, 3.83, 2.26
+$ ./bin/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000 -outlier=false
+lblab: n=20000 conns=32 base=2ms skew="slow=10x,err=30%" flap=false tau=1s tau-slow=30s outlier=false health=true sessions=1000
+  b0 127.0.0.1:40963 delay=20ms err=?
+  b1 127.0.0.1:44807 delay=2ms err=?
+  b2 127.0.0.1:43757 delay=2ms err=?
+  b3 127.0.0.1:35715 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          2.94ms  20.76ms  22.01ms  70.34ms  7.88%   4429  25.0/25.0/25.0/25.0         0/0 0
+leastconn   2.83ms   4.62ms  21.47ms  26.13ms 11.32%   8735  4.3/38.5/28.6/28.6          0/0 0
+p2c         2.64ms   4.18ms   6.44ms  24.44ms 11.33%  11161  0.6/39.1/29.4/31.0          0/0 0
+chash       2.88ms  20.68ms  21.61ms  25.37ms  8.26%   4692  23.6/27.3/22.8/26.3         0/0 0
+
+ 17:43:58 up  8:31,  1 user,  load average: 4.94, 3.80, 2.27
+$ ./bin/lblab -algos rr,leastconn,p2c,chash -skew slow=10x,err=30% -n 20000
+lblab: n=20000 conns=32 base=2ms skew="slow=10x,err=30%" flap=false tau=1s tau-slow=30s outlier=true health=true sessions=1000
+  b0 127.0.0.1:42983 delay=20ms err=?
+  b1 127.0.0.1:32885 delay=2ms err=?
+  b2 127.0.0.1:38493 delay=2ms err=?
+  b3 127.0.0.1:33581 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          2.96ms   20.9ms  22.92ms  62.45ms  4.83%   4075  27.9/16.2/27.9/27.9         1/0 0
+leastconn   2.96ms   4.49ms  21.52ms  24.84ms  0.24%   7572  6.7/0.8/46.2/46.2           2/0 0
+p2c         3.06ms   4.72ms  20.31ms  26.24ms  0.07%   9163  1.2/0.1/46.6/52.1           2/0 0
+chash       3.19ms  21.07ms  22.72ms  37.53ms  0.42%   3659  32.0/1.2/34.6/32.1          2/0 0

@@ -1,0 +1,19 @@
+Tue Sep 29 17:44:35 +07 2026
+ 17:44:35 up  8:32,  1 user,  load average: 3.65, 3.63, 2.28
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -n 20000
+lblab: n=20000 conns=32 base=2ms skew="" flap=true tau=1s tau-slow=30s outlier=true health=true sessions=1000
+  b0 127.0.0.1:38015 delay=2ms err=?
+  b1 127.0.0.1:40983 delay=2ms err=?
+  b2 127.0.0.1:46463 delay=2ms err=?
+  b3 127.0.0.1:35821 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+leastconn   3.07ms   4.49ms  20.81ms  36.14ms  0.00%   8632  28.4/28.4/14.8/28.4         0/0 0
+p2c         3.39ms   6.05ms  20.45ms  26.58ms  0.00%   7929  23.5/31.1/14.8/30.5         0/0 0
+p2c-slow    3.16ms   5.16ms  20.63ms  29.26ms  0.00%   8547  30.4/28.9/8.6/32.1          0/0 0
+
+algo         p50 nửa đầu    p99 nửa đầu    p50 nửa sau    p99 nửa sau   (b2 đổi nhanh→chậm 10x ở request n/2)
+leastconn         3.21ms         7.63ms         2.94ms        21.14ms
+p2c               3.12ms         9.65ms         3.69ms        21.47ms
+p2c-slow          3.18ms         7.04ms         3.15ms        21.46ms

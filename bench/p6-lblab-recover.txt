@@ -1,0 +1,43 @@
+Tue Sep 29 17:50:25 +07 2026
+ 17:50:25 up  8:38,  1 user,  load average: 3.05, 3.00, 2.38
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -recover -n 20000 -conns 32   # lần 1
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+leastconn    3.2ms   4.85ms  21.32ms   62.9ms  0.00%   8181  28.3/28.4/15.0/28.3         0/0 0
+p2c         2.99ms   4.43ms   5.97ms  25.36ms  0.00%   9789  36.1/29.6/3.4/30.9          0/0 0
+p2c-slow     3.1ms   4.78ms   6.93ms  26.77ms  0.00%   9347  31.8/33.7/2.0/32.5          0/0 0
+
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi chậm 10x→nhanh ở request n/2)
+leastconn       3.11ms      22.44ms       3.27ms       4.75ms       6.14ms  25.0/25.0/24.9/25.0      22.88ms→9.8ms
+p2c             3.02ms       8.63ms       2.95ms       4.55ms       5.69ms  33.6/29.6/5.9/30.9       21.06ms→9.77ms
+p2c-slow        3.05ms       9.12ms       3.16ms       4.87ms       6.62ms  31.7/33.2/3.1/32.0       20.93ms→20.33ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -recover -n 20000 -conns 4   # lần 1
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+leastconn   2.79ms   3.42ms  20.91ms  23.99ms  0.00%   1227  28.4/28.4/14.7/28.4         0/0 0
+p2c         3.01ms   4.16ms   7.37ms  25.15ms  0.00%   1222  31.6/26.9/8.9/32.5          0/0 0
+p2c-slow    2.87ms   3.45ms   4.23ms  21.61ms  0.00%   1361  33.3/29.4/0.0/37.3          0/0 0
+
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi chậm 10x→nhanh ở request n/2)
+leastconn       2.83ms      21.27ms       2.76ms       3.31ms       4.13ms  25.1/25.0/25.0/24.9      20.5ms→2.79ms
+p2c             2.81ms       4.42ms       3.33ms       4.79ms       8.26ms  28.8/24.0/17.8/29.4      13.81ms→3.01ms
+p2c-slow        2.91ms       4.07ms       2.82ms       3.45ms       4.43ms  33.4/29.3/0.0/37.3       16.81ms→14.22ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -recover -n 20000 -conns 32   # lần 2
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+leastconn   3.37ms   5.22ms  21.22ms  64.86ms  0.00%   7918  28.3/28.3/14.9/28.5         0/0 0
+p2c         3.71ms   6.38ms   9.87ms  28.11ms  0.00%   7587  31.5/30.2/4.6/33.7          0/0 0
+p2c-slow    3.36ms   5.59ms   9.34ms  33.29ms  0.00%   8344  32.1/26.2/3.8/37.9          0/0 0
+
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi chậm 10x→nhanh ở request n/2)
+leastconn        3.1ms      22.02ms       3.72ms       5.41ms       7.07ms  25.1/24.9/24.9/25.1      20.92ms→8.6ms
+p2c              3.6ms      15.33ms       3.84ms       6.47ms       8.95ms  30.7/29.4/8.2/31.8       21.77ms→8.67ms
+p2c-slow        3.54ms      20.79ms       3.22ms       5.01ms       7.23ms  31.3/25.3/6.1/37.3       21.03ms→20.41ms
+$ ./bin/lblab -algos leastconn,p2c,p2c-slow -flap -recover -n 20000 -conns 4   # lần 2
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+leastconn   2.78ms   3.38ms  20.84ms  31.87ms  0.00%   1236  28.5/28.4/14.6/28.4         0/0 0
+p2c         2.76ms   3.32ms   4.14ms  22.08ms  0.00%   1407  29.7/29.7/8.3/32.3          0/0 0
+p2c-slow    2.79ms   3.35ms   4.24ms  22.97ms  0.00%   1392  33.3/29.2/0.0/37.5          0/0 0
+
+algo       p50 nửa đầu  p99 nửa đầu  p50 nửa sau  p90 nửa sau  p99 nửa sau  share nửa sau b0/b1/b2/b3 EWMA b2 lúc flap→cuối   (b2 đổi chậm 10x→nhanh ở request n/2)
+leastconn       2.78ms      21.21ms       2.78ms       3.33ms       4.12ms  25.0/25.0/24.9/25.0      20.35ms→2.8ms
+p2c             2.77ms       4.15ms       2.76ms       3.32ms       4.14ms  26.8/25.9/16.5/30.8      12.17ms→2.76ms
+p2c-slow         2.8ms       4.39ms       2.78ms       3.33ms       4.04ms  33.9/29.1/0.0/37.0       16.46ms→12.98ms
+ 17:52:12 up  8:39,  1 user,  load average: 1.50, 2.44, 2.24
