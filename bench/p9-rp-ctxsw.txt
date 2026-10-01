@@ -1,0 +1,4 @@
+edgegate                 closed-loop 64 conn 4.002s: 71174 response, 17785 rps, lỗi 0 · ctxsw tự nguyện 10499 = .14/req
+rp                       closed-loop 64 conn 4.008s: 29055 response, 7249 rps, lỗi 0 · ctxsw tự nguyện 19858 = .68/req
+edgegate                 closed-loop 64 conn 4.003s: 110661 response, 27642 rps, lỗi 0 · ctxsw tự nguyện 6130 = .05/req
+rp                       closed-loop 64 conn 4.008s: 29093 response, 7259 rps, lỗi 0 · ctxsw tự nguyện 20254 = .69/req

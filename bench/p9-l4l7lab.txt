@@ -1,0 +1,17 @@
+Thu Oct  1 14:39:02 +07 2026
+ 14:39:02 up  5:14,  1 user,  load average: 3.07, 2.44, 2.18
+direct           100 × 10 MiB trong 354ms · 2826 MiB/s
+l4splice         100 × 10 MiB trong 375ms · 2665 MiB/s · CPU proxy 0.30 s = 0.31 s/GiB · pipe fd tối đa 6
+l4copy           100 × 10 MiB trong 882ms · 1133 MiB/s · CPU proxy 0.82 s = 0.84 s/GiB · pipe fd tối đa 0
+edgegate         100 × 10 MiB trong 822ms · 1217 MiB/s · CPU proxy 0.76 s = 0.78 s/GiB · pipe fd tối đa 0
+edgegate-splice  100 × 10 MiB trong 372ms · 2692 MiB/s · CPU proxy 0.30 s = 0.31 s/GiB · pipe fd tối đa 2
+direct           100 × 10 MiB trong 316ms · 3168 MiB/s
+l4splice         100 × 10 MiB trong 346ms · 2894 MiB/s · CPU proxy 0.28 s = 0.29 s/GiB · pipe fd tối đa 6
+l4copy           100 × 10 MiB trong 729ms · 1372 MiB/s · CPU proxy 0.67 s = 0.69 s/GiB · pipe fd tối đa 0
+edgegate         100 × 10 MiB trong 698ms · 1433 MiB/s · CPU proxy 0.66 s = 0.68 s/GiB · pipe fd tối đa 0
+edgegate-splice  100 × 10 MiB trong 375ms · 2669 MiB/s · CPU proxy 0.32 s = 0.33 s/GiB · pipe fd tối đa 2
+direct           100 × 10 MiB trong 321ms · 3118 MiB/s
+l4splice         100 × 10 MiB trong 383ms · 2611 MiB/s · CPU proxy 0.31 s = 0.32 s/GiB · pipe fd tối đa 6
+l4copy           100 × 10 MiB trong 706ms · 1416 MiB/s · CPU proxy 0.65 s = 0.67 s/GiB · pipe fd tối đa 0
+edgegate         100 × 10 MiB trong 675ms · 1482 MiB/s · CPU proxy 0.63 s = 0.65 s/GiB · pipe fd tối đa 0
+edgegate-splice  100 × 10 MiB trong 379ms · 2636 MiB/s · CPU proxy 0.31 s = 0.32 s/GiB · pipe fd tối đa 2

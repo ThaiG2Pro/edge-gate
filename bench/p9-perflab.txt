@@ -1,0 +1,44 @@
+Thu Oct  1 14:33:38 +07 2026
+ 14:33:38 up  5:08,  1 user,  load average: 1.52, 1.79, 1.96
+== lượt 1 tags=nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   22317	    110908 ns/op	   9.23 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   26401	     94153 ns/op	  10.88 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    2899	    783232 ns/op	1338.78 MB/s	   68135 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3355	    755530 ns/op	1387.87 MB/s	   68134 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    3186	    758235 ns/op	1382.92 MB/s	   68134 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    3072	    750447 ns/op	1397.27 MB/s	   68134 B/op	      47 allocs/op
+== lượt 1 tags=mặc định
+BenchmarkProxyKeepAlive/body=1024-4         	   52701	     48090 ns/op	  21.29 MB/s	    1590 B/op	      43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   48189	     41958 ns/op	  24.41 MB/s	    1593 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3723	    697556 ns/op	1503.21 MB/s	    1637 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3222	    725742 ns/op	1444.83 MB/s	    1637 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    5374	    419578 ns/op	2499.12 MB/s	    1661 B/op	      45 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    5752	    390476 ns/op	2685.38 MB/s	    1678 B/op	      45 allocs/op
+== lượt 2 tags=nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   29713	     95002 ns/op	  10.78 MB/s	   68128 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   30942	    164715 ns/op	   6.22 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    1570	   1456517 ns/op	 719.92 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    2011	   1131672 ns/op	 926.57 MB/s	   68138 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    2240	   1011313 ns/op	1036.85 MB/s	   68137 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    2353	   1014521 ns/op	1033.57 MB/s	   68129 B/op	      47 allocs/op
+== lượt 2 tags=mặc định
+BenchmarkProxyKeepAlive/body=1024-4         	   53047	     50342 ns/op	  20.34 MB/s	    1589 B/op	      43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   65792	     34362 ns/op	  29.80 MB/s	    1594 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3688	    638711 ns/op	1641.71 MB/s	    1629 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3849	   1031928 ns/op	1016.13 MB/s	    1630 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    5743	    541719 ns/op	1935.65 MB/s	    1660 B/op	      45 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    2623	    768200 ns/op	1364.98 MB/s	    1708 B/op	      45 allocs/op
+== lượt 3 tags=nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   27117	     88404 ns/op	  11.58 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   27912	    101930 ns/op	  10.05 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    2810	    945608 ns/op	1108.89 MB/s	   68135 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3242	    721982 ns/op	1452.36 MB/s	   68134 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    3504	    671061 ns/op	1562.56 MB/s	   68134 B/op	      47 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    3379	    693570 ns/op	1511.85 MB/s	   68129 B/op	      47 allocs/op
+== lượt 3 tags=mặc định
+BenchmarkProxyKeepAlive/body=1024-4         	   69279	     36058 ns/op	  28.40 MB/s	    1589 B/op	      43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   64743	     38466 ns/op	  26.62 MB/s	    1593 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    3488	    635436 ns/op	1650.17 MB/s	    1623 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=false-4          	    4201	    646778 ns/op	1621.23 MB/s	    1637 B/op	      43 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    4340	    485768 ns/op	2158.60 MB/s	    1668 B/op	      45 allocs/op
+BenchmarkProxyLarge/splice=true-4           	    5090	    393302 ns/op	2666.08 MB/s	    1669 B/op	      45 allocs/op

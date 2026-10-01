@@ -1,0 +1,4 @@
+    headpool_test.go:38: cap buffer head nhận lại sau head 60 KiB: không chặn 65536, chặn (> 16384 bỏ) 512
+    headpool_test.go:38: cap buffer head nhận lại sau head 60 KiB: không chặn 65536, chặn (> 16384 bỏ) 512
+    headpool_test.go:38: cap buffer head nhận lại sau head 60 KiB: không chặn 65536, chặn (> 16384 bỏ) 512
+ok  	github.com/thaivro/edgegate/internal/httpx	0.030s

@@ -2,7 +2,7 @@
 
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** (điền khi xong)
 - **Bắt đầu:** 2026-10-01 14:08 · **Kết thúc:** —
-- **Trạng thái:** 🟡 turn 1 — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
+- **Trạng thái:** 🟡 turn 2 xong — **3/8 giả thuyết sai** (G1 vế ns/op, G5 vế GC, G8 cả bốn vế); G2-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
 - **Commit:** — (commit nền `4f89247`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase9-log.md`](phase9-log.md). File này là bản biên tập.
@@ -119,6 +119,8 @@ make l4l7lab        # G4
 make pproflab       # G5: profile trước/sau
 make epolllab       # G6, G7
 make bench-vs-nginx # G8 (cần docker, image nginx:1.25-alpine)
+./scripts/rps-vs-nginx.sh   # G8 phụ: trần rps closed-loop ba proxy + direct
+./scripts/cpu-vs-nginx.sh   # G8 phụ: CPU / request ba proxy (ít nhạy load nền)
 ```
 
 ## Nhật ký
@@ -157,4 +159,198 @@ Chi tiết: [`phase9-log.md` §1](phase9-log.md). Số trong lần chạy thử 
 
 `go test ./... -count=1 -race` xanh (`bench/p9-turn1-race.txt`). `make bench-vs-nginx` chạy thử `RATES=2000
 DUR=2s`: bốn cột 100 % 200, nginx 1.25.5 trong docker `--network host`, container tự gỡ khi xong.
+
+### 2026-10-01 14:33-15:08 — Turn 2: đo, chấm G1-G8
+
+Output thô: [`phase9-log.md` §2](phase9-log.md). Commit nền `c569eb4`. **Load 1.5 → 7.6** suốt turn (một tiến trình
+nền `MainThr…` của session khác ăn ~85 % một core suốt 5 giờ, cộng indexer) — `uptime` đầu mỗi file bench. Mọi
+server ghim core bằng `taskset`, nhưng core ghim **vẫn chia** với tiến trình nền: mọi số tuyệt đối dưới đây nhiễu
+1.5-2.5x giữa lượt (thấy ở cột `direct`), kết luận chỉ lấy từ tỉ số **cùng lượt**.
+
+**(1) G1 — `sync.Pool`** (`bench/p9-perflab.txt`, 3 lượt xen kẽ × 2, core 0-3):
+
+```console
+$ make perflab
+== lượt 1 tags=nodefense9
+BenchmarkProxyKeepAlive/body=1024-4   110908 ns/op   68129 B/op   47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4    94153 ns/op   68129 B/op   47 allocs/op
+== lượt 1 tags=mặc định
+BenchmarkProxyKeepAlive/body=1024-4    48090 ns/op    1590 B/op   43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4    41958 ns/op    1593 B/op   43 allocs/op
+… lượt 2: 95002 / 164715 vs 50342 / 34362 · lượt 3: 88404 / 101930 vs 36058 / 38466
+```
+
+B/op **68 129 → 1 590 (43x)** — đúng hướng, mạnh hơn kỳ vọng ≥ 4x vì `copyBody` cấp 32 KiB cả cho body request
+rỗng (2×32 KiB, không phải 1×). allocs/op 47 → 43 (Δ **4**, đăng ký 1-3). ns/op **88-165 µs → 34-50 µs ≈ 2.4x**
+— đăng ký "≤ 15 %". **Sai.** Vì sao (`bench/p9-perflab-gogc.txt`):
+
+```console
+$ GOGC=$g go test ./internal/proxy -bench ProxyKeepAlive -tags nodefense9   # bản TRƯỚC
+GOGC=100   88170 / 86345 ns/op   GC/20000 req: 419
+GOGC=400   52987 / 54090 ns/op   GC/20000 req: 94
+GOGC=1600  50376 / 46565 ns/op   GC/20000 req: 25
+GOGC=off  220085 / 222345 ns/op  (heap phình không giới hạn — máy còn ~2.6 GB trống)
+$ GODEBUG=gctrace=1 … bản SAU (mặc định): GC/20000 req: 32
+```
+
+Chi phí không nằm ở `malloc` mà ở **tần suất GC = tốc độ cấp phát / heap sống**. Proxy có heap sống rất nhỏ (vài
+MiB) ⇒ 68 KiB mỗi request ⇒ một chu kỳ GC mỗi ~46 request. Nới GOGC 16x đưa bản trước về 48 µs — sát bản pool
+(36-43 µs); phần chênh còn lại ≈ 15 % đúng là cỡ đăng ký cho "cấp phát thuần". GOGC=off **chậm hơn** (220 µs): bộ
+nhớ mới mỗi request = page fault, không phải tái dùng.
+
+**(2) G2 — bẫy pool giữ buffer to** (`bench/p9-g2.txt`): ×3 "không chặn **65536**, chặn (> 16384 bỏ) **512**". Đúng.
+
+**(3) G3 — RSS mỗi connection rỗi, 10 000 conn** (`bench/p9-idlelab.txt`, xen kẽ ×2):
+
+```console
+$ make idlelab
+edgegate-nodefense9  conns 10000 · VmRSS 8960 → 295040 KiB · Δ 28.61 KiB/conn
+edgegate             conns 10000 · VmRSS 8704 →  88960 KiB · Δ  8.03 KiB/conn
+edgegate-nodefense9  conns 10000 · VmRSS 8960 → 279552 KiB · Δ 27.06 KiB/conn
+edgegate             conns 10000 · VmRSS 8960 → 102016 KiB · Δ  9.31 KiB/conn
+```
+
+Trước 27.1-28.6 (đăng ký 20-30), sau 8.0-9.3 (≤ 12), **3.0-3.6x** (≥ 2x). Đúng. 10 000 connection rỗi: 280 MiB →
+90-100 MiB.
+
+**(4) G4 — giá của L7, body 10 MiB × 100** (`bench/p9-l4l7lab.txt`, 3 lượt; proxy core 0):
+
+```console
+$ make l4l7lab                     # lượt 1 (lượt 2, 3 cùng hình dạng)
+direct           100 × 10 MiB trong 354ms · 2826 MiB/s
+l4splice         100 × 10 MiB trong 375ms · 2665 MiB/s · CPU proxy 0.30 s = 0.31 s/GiB · pipe fd tối đa 6
+l4copy           100 × 10 MiB trong 882ms · 1133 MiB/s · CPU proxy 0.82 s = 0.84 s/GiB · pipe fd tối đa 0
+edgegate         100 × 10 MiB trong 822ms · 1217 MiB/s · CPU proxy 0.76 s = 0.78 s/GiB · pipe fd tối đa 0
+edgegate-splice  100 × 10 MiB trong 372ms · 2692 MiB/s · CPU proxy 0.30 s = 0.31 s/GiB · pipe fd tối đa 2
+```
+
+| Tỉ số (lượt 1 / 2 / 3) | Đăng ký | Đo |
+|---|---|---|
+| CPU/GiB l4splice / l4copy | ≤ 0.6x | 0.37 / 0.42 / 0.48 ✅ |
+| throughput l4splice / l4copy | ≥ 1.2x | 2.35 / 2.11 / 1.84 ✅ |
+| throughput l4splice / edgegate | ≥ 1.7x | 2.19 / 2.02 / 1.76 ✅ |
+| CPU/GiB edgegate / l4splice | ≥ 2x | 2.5 / 2.3 / 2.0 ✅ (sát biên lượt 3) |
+| throughput edgegate-splice / l4splice | trong 1.2x | 1.01 / 0.92 / 1.01 ✅ |
+
+Đúng cả năm vế. Điều **không** đăng ký: edgegate L7 ≈ l4copy (1217-1482 vs 1133-1416 MiB/s, CPU/GiB 0.65-0.78 vs
+0.67-0.84) — với body to, **toàn bộ** giá của L7 là mất splice; parse head và flush-mỗi-lần-đọc không thấy được.
+Pipe fd khẳng định splice có chạy (6 = hai chiều × cache pipe; 2 = một chiều body response; 0 ở hai bản copy).
+l4splice đạt 92-95 % `direct` ⇒ trần ở đây là client/upstream, tỉ số splice là **cận dưới**.
+
+**(5) G5 — pprof 30 s @ 8 000 rps open-loop** (`bench/p9-pproflab.txt`, `bench/p9-pprof-*.{prof,txt}`,
+`bench/p9-pprof-groups.txt`; proxy core 0-1):
+
+| Nhóm (CPU / tổng) | Đăng ký | trước (`nodefense9`) 40.66 s | sau 27.79 s |
+|---|---|---|---|
+| `Syscall6` (flat) | ≥ 40 % | 13.70 s = **33.7 %** ❌ | 15.30 s = 55.1 % ✅ |
+| `httpx` (trừ syscall/malloc/runtime) | ≤ 10 % | 1.56 s = 3.8 % ✅ | 1.34 s = 4.8 % ✅ |
+| GC (mark/sweep/assist) + `mallocgc` | ≤ 15 %, pool cắt ≤ 5 điểm | 7.85 + 7.84 = **38.6 %** ❌ | 0.26 + 1.38 = 5.9 % — cắt **33 điểm** ❌ |
+| `findRunnable` + `futex` | — | 2.57 + 2.11 | 3.62 + 1.74 |
+
+CPU mỗi request **169 → 116 µs** (−32 %); p99 ở 8 000 rps **348 ms → 10.7 ms** — bản trước đang quá tải ở mức mà
+bản sau còn chịu được. Cùng nguyên nhân G1: GC, không phải malloc. Parse + ghi lại head (thứ "L7" đắt về lý thuyết)
+chỉ **4-5 %**; syscall là hơn nửa.
+
+**(6) G6 — RSS mỗi conn rỗi, 10 000 conn, epoll vs netpoller** (`bench/p9-epolllab.txt`):
+
+```console
+epoll      conns 10000 · VmRSS 4608 →  6016 KiB · Δ 0.14 KiB/conn · luồng OS 10 → 10
+netpoller  conns 10000 · VmRSS 4224 → 81408 KiB · Δ 7.72 KiB/conn · luồng OS 7 → 9
+epoll      conns 10000 · VmRSS 4480 →  5888 KiB · Δ 0.14 KiB/conn
+netpoller  conns 10000 · VmRSS 4608 → 81152 KiB · Δ 7.65 KiB/conn
+```
+
+epoll 0.14 (≤ 1), netpoller 7.65-7.72 (6-10), **55x** (≥ 6x). Đúng. 0.14 KiB = map entry + `conn{}` 48 B; 7.7 KiB =
+buffer 4 KiB + stack goroutine. (0.00 ở 2 000 conn của turn 1 = 280 KiB nằm gọn trong trang heap đã thường trú.)
+
+**(7) G7 — throughput epoll vs netpoller, 256 conn closed-loop** (*coordinated omission chưa loại trừ — chỉ đọc
+rps*), 6 cặp xen kẽ:
+
+```console
+epoll 91092 / netpoller 71344 · epoll 69851 / netpoller 108140 · epoll 107054 / netpoller 106776
+netpoller 108099 / epoll 83094 · netpoller 97889 / epoll 106552 · netpoller 106935 / epoll 103994
+CPU server µs/req: epoll 19.8 22.7 18.4 19.2 18.7 18.5 (TB 19.6) · netpoller 21.4 17.1 16.7 17.6 19.2 17.8 (TB 18.3)
+```
+
+netpoller/epoll từng cặp 0.78 / 1.55 / 1.00 / 1.30 / 0.92 / 1.03 — trung vị **1.01**, lượt tốt nhất 108.1k vs
+107.1k; CPU/req netpoller **0.93x** epoll. Đúng (4/6 cặp trong dải; 2 cặp ngoài dải lệch **cả hai chiều** = nhiễu,
+không phải xu hướng). Vòng epoll tự viết **không** rẻ hơn per request: netpoller chính là epoll, và scheduler của Go
+gần như không tốn gì ở đây. Cái epoll thắng là bộ nhớ (G6), không phải tốc độ.
+
+**(8) G8 — EdgeGate / nginx / ReverseProxy** (`bench/p9-bench-vs-nginx.txt` + `-2.txt` — 3 lượt open-loop;
+`bench/p9-rps-vs-nginx.txt`; `bench/p9-cpu-vs-nginx.txt`). Open-loop 5 000 rps, p99:
+
+| lượt (load) | EdgeGate | nginx | ReverseProxy | direct |
+|---|---|---|---|---|
+| 1 (3.2) | 3.35 ms | 5.63 ms | 15.87 ms | 1.68 ms |
+| 2 (6.5-7.6) | 7.98 ms | 4.18 ms | 115.57 ms | 3.57 ms |
+| 3 (6.4) | 6.03 ms | 7.75 ms | 125.54 ms | 1.56 ms |
+
+Rate cao nhất còn p99 < 10 ms: EdgeGate 20k / 5k / 10k; nginx 20k / 5k / 5k; ReverseProxy 2k / < 5k / < 5k (cả
+ba proxy không đơn điệu theo rate ở lượt 1 — 15k trượt, 20k qua — vì load nền). Closed-loop 64 conn + CPU (lượt
+load ~5):
+
+```console
+$ ./scripts/cpu-vs-nginx.sh
+edgegate  29366 rps · 49.7 µs/req   |  28736 · 62.0  |  29835 · 53.2
+nginx     33828 rps · 51.6 µs/req   |  32769 · 48.9  |  30591 · 55.7
+rp         9563 rps · 186.0 µs/req  |   9331 · 198.9 |   9727 · 188.4
+```
+
+| Vế | Đăng ký | Đo | |
+|---|---|---|---|
+| rps nginx / EdgeGate | ≥ 1.5x | 1.15 / 1.14 / 1.03 (closed-loop); trần open-loop bằng hoặc thấp hơn | ❌ |
+| EdgeGate / ReverseProxy | 0.8-1.25 | rps **3.07-3.08x**, CPU/req **3.2-3.7x** ít hơn | ❌ |
+| p99 @ 5k nginx tốt hơn EdgeGate | ≥ 1.5x | 0.60x / 1.91x / 0.78x — không nhất quán | ❌ |
+| p99 @ 5k EdgeGate vs ReverseProxy | 0.7-1.4 | ReverseProxy tệ hơn **4.7-21x** | ❌ |
+
+**Sai cả bốn vế, theo cùng một hướng**: EdgeGate không đứng giữa, mà **ngang nginx** (CPU/req EdgeGate / nginx 0.96 / 1.27 / 0.96 —
+trong cùng nhiễu), và **cách xa ReverseProxy**. Hai quan sát giải thích (chưa chứng minh):
+
+- **ReverseProxy:** không nghẽn CPU khi chậm (profile 6 s: 110 % trên 2 core lúc 3.4k rps) mà nghẽn **chờ**: đếm
+  context switch tự nguyện của tiến trình (`bench/p9-rp-ctxsw.txt`) — ReverseProxy **0.68-0.69 / request**,
+  EdgeGate **0.05-0.14**. Transport của net/http chuyển mỗi request qua goroutine `readLoop`/`writeLoop` riêng của
+  connection upstream; EdgeGate làm trọn một request trong một goroutine. Mỗi lần goroutine nhường mà P rỗi, luồng
+  OS ngủ futex — và trên máy này đánh thức một vCPU rỗi tốn cỡ trăm µs (dưới).
+- **nginx ≈ EdgeGate:** cả hai ~50 µs CPU/request — nhiều lần một proxy C trên máy thật. `Syscall6` = 55 % CPU của
+  EdgeGate; nếu syscall trên WSL2 đắt cỡ đó cho cả nginx (không đo được: không có `perf`), thì hai proxy làm **cùng
+  số syscall** mỗi request và phần runtime/ngôn ngữ chỉ còn là phần nhỏ. Không suy kết quả này ra máy thật.
+
+**Phát hiện phụ — sàn latency của máy:** `direct` 1 connection tuần tự chỉ **1 295 rps = 770 µs/request** trên
+loopback; open-loop `direct` p50 640 µs ở 2 000 rps nhưng 310-350 µs ở 10 000-30 000 rps — latency **giảm** khi tải
+tăng: vCPU rỗi của WSL2 ngủ sâu, đánh thức tốn hàng trăm µs. Ở concurrency thấp, mọi p50 trong file này đo cái giá
+đánh thức, không đo phần mềm.
+
+**Bẫy trong lúc đo:** `pkill -f epolllab` khớp chính dòng lệnh của shell đang chạy nó ⇒ giết shell (exit 144) giữa
+thí nghiệm, để lại server mồ côi giữ cổng 18100 (lần đo kế "bind: address already in use" rồi đo nhầm server cũ).
+Từ đó dùng `pkill -x <tên>`.
+
+#### Giả thuyết sai
+
+| # | Đoán | Đo | Vì sao sai |
+|---|---|---|---|
+| G1 | ns/op giảm ≤ 15 % (alloc không phải nút cổ chai) | **2.4x** | Nhầm "giá cấp phát" với "giá GC". Với heap sống vài MiB, 68 KiB/request = một GC mỗi ~46 request; nới GOGC 16x thì chênh còn ~15 % |
+| G1 | Δallocs 1-3 | 4 | Không đếm `copyBody` cho body request rỗng |
+| G5 | GC + malloc ≤ 15 %, pool cắt ≤ 5 điểm | 38.6 % → 5.9 % | Cùng gốc G1 |
+| G5 | syscall ≥ 40 % (bản trước) | 33.7 % | GC chiếm chỗ; bản sau 55.1 % |
+| G8 | nginx ≥ 1.5x EdgeGate; EdgeGate ≈ ReverseProxy | nginx 1.03-1.15x; EdgeGate 3.1x rps, 3.2-3.7x ít CPU hơn ReverseProxy | Đoán theo "C > Go, Go ≈ Go". Thực tế: (a) giá syscall WSL2 san phẳng nginx/EdgeGate; (b) ReverseProxy trả giá handoff goroutine × giá đánh thức vCPU — một chi phí của **kiến trúc** (Transport), không phải của ngôn ngữ |
+
+#### Số đo
+
+| Thứ đo | Trước / A | Sau / B | Tỉ số |
+|---|---|---|---|
+| G1 B/op keep-alive 1 KiB | 68 129 | 1 590 | 43x |
+| G1 ns/op keep-alive | 88-165 µs | 34-50 µs | ≈ 2.4x |
+| G1 GC / 20 000 request | 419-433 | 32 | 13x |
+| G3 RSS / conn rỗi (10k) | 27.1-28.6 KiB | 8.0-9.3 KiB | 3.0-3.6x |
+| G4 throughput 10 MiB: l4splice / edgegate | 2611-2894 MiB/s | 1217-1482 MiB/s | 1.76-2.19x |
+| G4 edgegate-splice / l4splice | 2636-2692 | 2611-2894 | 0.92-1.01 |
+| G5 CPU / request @ 8k rps | 169 µs | 116 µs | 1.46x |
+| G5 p99 @ 8k rps | 348 ms | 10.7 ms | 33x |
+| G6 RSS / conn rỗi: netpoller / epoll | 7.65-7.72 KiB | 0.14 KiB | 55x |
+| G7 rps netpoller / epoll | — | — | trung vị 1.01 |
+| G8 CPU / request EdgeGate / nginx / ReverseProxy | 49.7-62.0 | 48.9-55.7 / 186-199 µs | 1 : 0.79-1.05 : 3.2-3.7 |
+
+Code đổi trong turn: `cmd/rpbaseline -pprof` (để profile cột so sánh); thêm `scripts/rps-vs-nginx.sh`,
+`scripts/cpu-vs-nginx.sh`. Không đổi data path.
 

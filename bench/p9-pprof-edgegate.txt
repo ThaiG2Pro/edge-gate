@@ -1,0 +1,44 @@
+File: edgegate
+Build ID: 574b91dc793d59a0a05f9b2c72565b71edd6447a
+Type: cpu
+Time: 2026-10-01 15:01:46 +07
+Duration: 30s, Total samples = 27.79s (92.63%)
+Showing nodes accounting for 22.01s, 79.20% of 27.79s total
+Dropped 363 nodes (cum <= 0.14s)
+Showing top 35 nodes out of 132
+      flat  flat%   sum%        cum   cum%
+    15.30s 55.06% 55.06%     15.30s 55.06%  internal/runtime/syscall/linux.Syscall6
+     1.74s  6.26% 61.32%      1.74s  6.26%  runtime.futex
+     0.40s  1.44% 62.76%      0.40s  1.44%  runtime.nextFreeFast (inline)
+     0.38s  1.37% 64.12%      0.38s  1.37%  time.runtimeNow
+     0.29s  1.04% 65.17%      0.29s  1.04%  aeshashbody
+     0.29s  1.04% 66.21%      0.29s  1.04%  runtime.nanotime (inline)
+     0.22s  0.79% 67.00%      0.22s  0.79%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     0.22s  0.79% 67.79%      0.27s  0.97%  internal/runtime/maps.(*Iter).Next
+     0.19s  0.68% 68.48%      0.19s  0.68%  runtime.memclrNoHeapPointers
+     0.19s  0.68% 69.16%      0.19s  0.68%  runtime.memmove
+     0.18s  0.65% 69.81%      0.18s  0.65%  net/textproto.validHeaderFieldByte (inline)
+     0.18s  0.65% 70.46%      1.39s  5.00%  runtime.netpoll
+     0.17s  0.61% 71.07%      0.55s  1.98%  internal/poll.runtime_pollSetDeadline
+     0.16s  0.58% 71.64%      0.16s  0.58%  runtime.procyieldAsm
+     0.15s  0.54% 72.18%      0.33s  1.19%  net/textproto.CanonicalMIMEHeaderKey
+     0.14s   0.5% 72.69%     17.53s 63.08%  github.com/thaivro/edgegate/internal/proxy.(*Server).exchange
+     0.14s   0.5% 73.19%      3.40s 12.23%  internal/poll.(*FD).Read
+     0.14s   0.5% 73.70%      0.14s   0.5%  runtime.gopark
+     0.12s  0.43% 74.13%      0.59s  2.12%  github.com/thaivro/edgegate/internal/httpx.Header.appendWire
+     0.12s  0.43% 74.56%      0.18s  0.65%  runtime.exitsyscall
+     0.11s   0.4% 74.96%      0.30s  1.08%  runtime.lock2
+     0.11s   0.4% 75.35%      0.30s  1.08%  runtime.mallocgcTiny
+     0.10s  0.36% 75.71%      1.38s  4.97%  runtime.mallocgc
+     0.09s  0.32% 76.03%      0.17s  0.61%  runtime.casgstatus
+     0.09s  0.32% 76.36%      3.79s 13.64%  runtime.findRunnable
+     0.09s  0.32% 76.68%      0.49s  1.76%  runtime.mapassign_faststr
+     0.09s  0.32% 77.01%      0.19s  0.68%  runtime.unlock2
+     0.08s  0.29% 77.29%     23.43s 84.31%  github.com/thaivro/edgegate/internal/proxy.(*Server).serveConn
+     0.08s  0.29% 77.58%      0.28s  1.01%  github.com/thaivro/edgegate/internal/proxy.(*pool).put
+     0.08s  0.29% 77.87%      0.55s  1.98%  github.com/thaivro/edgegate/internal/proxy.(*prefixReader).Read
+     0.08s  0.29% 78.16%      0.71s  2.55%  runtime.newobject
+     0.08s  0.29% 78.45%      0.15s  0.54%  strings.IndexAny
+     0.07s  0.25% 78.70%      2.24s  8.06%  bufio.(*Reader).fill
+     0.07s  0.25% 78.95%      0.17s  0.61%  internal/runtime/maps.(*Iter).Init
+     0.07s  0.25% 79.20%      0.21s  0.76%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr

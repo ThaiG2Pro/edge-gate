@@ -1,0 +1,24 @@
+== GOGC=100 tags=nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   28773	     75949 ns/op	  13.48 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   26884	     87100 ns/op	  11.76 MB/s	   68129 B/op	      47 allocs/op
+== GOGC=100 tags=mặc định
+BenchmarkProxyKeepAlive/body=1024-4         	   58338	     41105 ns/op	  24.91 MB/s	    1590 B/op	      43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   56919	     43447 ns/op	  23.57 MB/s	    1587 B/op	      43 allocs/op
+== GOGC=off tags=nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   36321	    220085 ns/op	   4.65 MB/s	   68128 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   52666	    222345 ns/op	   4.61 MB/s	   68128 B/op	      47 allocs/op
+== GOGC=off tags=mặc định
+BenchmarkProxyKeepAlive/body=1024-4         	   57544	     44807 ns/op	  22.85 MB/s	    1568 B/op	      43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   68155	     33842 ns/op	  30.26 MB/s	    1568 B/op	      43 allocs/op
+== GOGC=100 nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   30955	     88170 ns/op	  11.61 MB/s	   68129 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   28554	     86345 ns/op	  11.86 MB/s	   68129 B/op	      47 allocs/op
+  GC/20000 req: 419
+== GOGC=400 nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   48625	     52987 ns/op	  19.33 MB/s	   68128 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   47988	     54090 ns/op	  18.93 MB/s	   68128 B/op	      47 allocs/op
+  GC/20000 req: 94
+== GOGC=1600 nodefense9
+BenchmarkProxyKeepAlive/body=1024-4         	   46549	     50376 ns/op	  20.33 MB/s	   68128 B/op	      47 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   47204	     46565 ns/op	  21.99 MB/s	   68128 B/op	      47 allocs/op
+  GC/20000 req: 25

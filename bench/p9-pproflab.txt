@@ -1,0 +1,96 @@
+Thu Oct  1 15:01:07 +07 2026
+ 15:01:07 up  5:36,  1 user,  load average: 4.31, 5.69, 5.35
+edgegate-nodefense9@8000 n=256000 200:100.0%
+               200: p50 2.47ms p90 143.1ms p99 348.13ms p99.9 377.95ms max 393.67ms · goodput 8000/s
+== edgegate-nodefense9: bench/p9-pprof-edgegate-nodefense9.txt
+File: edgegate-nodefense9
+Build ID: f8e328055a557ff88217e5315f39b9ca05d4c12c
+Type: cpu
+Time: 2026-10-01 15:01:10 +07
+Duration: 30s, Total samples = 40.66s (135.52%)
+Showing nodes accounting for 27.70s, 68.13% of 40.66s total
+Dropped 472 nodes (cum <= 0.20s)
+Showing top 35 nodes out of 203
+      flat  flat%   sum%        cum   cum%
+    13.70s 33.69% 33.69%     13.70s 33.69%  internal/runtime/syscall/linux.Syscall6
+     2.11s  5.19% 38.88%      2.11s  5.19%  runtime.futex
+     1.99s  4.89% 43.78%      1.99s  4.89%  runtime.memclrNoHeapPointers
+     0.86s  2.12% 45.89%      1.60s  3.94%  runtime.scanblock
+     0.81s  1.99% 47.88%      1.09s  2.68%  runtime.tryDeferToSpanScan
+     0.55s  1.35% 49.24%      1.42s  3.49%  runtime.scanObject
+     0.53s  1.30% 50.54%      1.41s  3.47%  runtime.pcvalue
+     0.51s  1.25% 51.80%      0.57s  1.40%  runtime.step
+     0.48s  1.18% 52.98%      0.48s  1.18%  runtime.memmove
+     0.43s  1.06% 54.03%      0.43s  1.06%  time.runtimeNow
+     0.41s  1.01% 55.04%      0.41s  1.01%  runtime.procyieldAsm
+     0.40s  0.98% 56.03%      0.47s  1.16%  runtime.typePointers.next
+     0.37s  0.91% 56.94%      0.79s  1.94%  runtime.scanObjectsSmall
+     0.34s  0.84% 57.77%      0.34s  0.84%  runtime.nanotime (inline)
+     0.28s  0.69% 58.46%      0.28s  0.69%  runtime.nextFreeFast (inline)
+     0.27s  0.66% 59.12%      0.27s  0.66%  internal/runtime/atomic.(*Uint32).CompareAndSwap
+     0.27s  0.66% 59.79%      1.01s  2.48%  runtime.(*unwinder).resolveInternal
+     0.27s  0.66% 60.45%      0.32s  0.79%  runtime.findfunc
+     0.26s  0.64% 61.09%      0.37s  0.91%  runtime.findObject
+     0.24s  0.59% 61.68%      0.24s  0.59%  aeshashbody
+     0.23s  0.57% 62.25%      0.23s  0.57%  runtime.asyncPreempt
+     0.23s  0.57% 62.81%      0.52s  1.28%  runtime.lock2
+     0.22s  0.54% 63.35%      0.34s  0.84%  internal/runtime/maps.(*Iter).Next
+     0.21s  0.52% 63.87%      0.82s  2.02%  internal/poll.runtime_pollSetDeadline
+     0.21s  0.52% 64.39%      0.88s  2.16%  runtime.(*sweepLocked).sweep
+     0.21s  0.52% 64.90%      0.87s  2.14%  runtime.adjustframe
+     0.20s  0.49% 65.40%      0.92s  2.26%  runtime.(*stkframe).getStackMap
+     0.19s  0.47% 65.86%      0.29s  0.71%  runtime.unlock2
+     0.16s  0.39% 66.26%      0.41s  1.01%  runtime.(*spanSet).push
+     0.14s  0.34% 66.60%     15.87s 39.03%  github.com/thaivro/edgegate/internal/proxy.copyBody
+     0.13s  0.32% 66.92%      0.29s  0.71%  net/textproto.CanonicalMIMEHeaderKey
+     0.13s  0.32% 67.24%      0.96s  2.36%  runtime.netpoll
+     0.12s   0.3% 67.54%      1.77s  4.35%  github.com/thaivro/edgegate/internal/httpx.Header.appendWire
+     0.12s   0.3% 67.83%      0.28s  0.69%  runtime.mallocgcTiny
+     0.12s   0.3% 68.13%      4.19s 10.30%  runtime.newobject
+edgegate@8000  n=256000 200:100.0%
+               200: p50 860µs p90 2.63ms p99 10.71ms p99.9 20.67ms max 38.1ms · goodput 8000/s
+== edgegate: bench/p9-pprof-edgegate.txt
+File: edgegate
+Build ID: 574b91dc793d59a0a05f9b2c72565b71edd6447a
+Type: cpu
+Time: 2026-10-01 15:01:46 +07
+Duration: 30s, Total samples = 27.79s (92.63%)
+Showing nodes accounting for 22.01s, 79.20% of 27.79s total
+Dropped 363 nodes (cum <= 0.14s)
+Showing top 35 nodes out of 132
+      flat  flat%   sum%        cum   cum%
+    15.30s 55.06% 55.06%     15.30s 55.06%  internal/runtime/syscall/linux.Syscall6
+     1.74s  6.26% 61.32%      1.74s  6.26%  runtime.futex
+     0.40s  1.44% 62.76%      0.40s  1.44%  runtime.nextFreeFast (inline)
+     0.38s  1.37% 64.12%      0.38s  1.37%  time.runtimeNow
+     0.29s  1.04% 65.17%      0.29s  1.04%  aeshashbody
+     0.29s  1.04% 66.21%      0.29s  1.04%  runtime.nanotime (inline)
+     0.22s  0.79% 67.00%      0.22s  0.79%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     0.22s  0.79% 67.79%      0.27s  0.97%  internal/runtime/maps.(*Iter).Next
+     0.19s  0.68% 68.48%      0.19s  0.68%  runtime.memclrNoHeapPointers
+     0.19s  0.68% 69.16%      0.19s  0.68%  runtime.memmove
+     0.18s  0.65% 69.81%      0.18s  0.65%  net/textproto.validHeaderFieldByte (inline)
+     0.18s  0.65% 70.46%      1.39s  5.00%  runtime.netpoll
+     0.17s  0.61% 71.07%      0.55s  1.98%  internal/poll.runtime_pollSetDeadline
+     0.16s  0.58% 71.64%      0.16s  0.58%  runtime.procyieldAsm
+     0.15s  0.54% 72.18%      0.33s  1.19%  net/textproto.CanonicalMIMEHeaderKey
+     0.14s   0.5% 72.69%     17.53s 63.08%  github.com/thaivro/edgegate/internal/proxy.(*Server).exchange
+     0.14s   0.5% 73.19%      3.40s 12.23%  internal/poll.(*FD).Read
+     0.14s   0.5% 73.70%      0.14s   0.5%  runtime.gopark
+     0.12s  0.43% 74.13%      0.59s  2.12%  github.com/thaivro/edgegate/internal/httpx.Header.appendWire
+     0.12s  0.43% 74.56%      0.18s  0.65%  runtime.exitsyscall
+     0.11s   0.4% 74.96%      0.30s  1.08%  runtime.lock2
+     0.11s   0.4% 75.35%      0.30s  1.08%  runtime.mallocgcTiny
+     0.10s  0.36% 75.71%      1.38s  4.97%  runtime.mallocgc
+     0.09s  0.32% 76.03%      0.17s  0.61%  runtime.casgstatus
+     0.09s  0.32% 76.36%      3.79s 13.64%  runtime.findRunnable
+     0.09s  0.32% 76.68%      0.49s  1.76%  runtime.mapassign_faststr
+     0.09s  0.32% 77.01%      0.19s  0.68%  runtime.unlock2
+     0.08s  0.29% 77.29%     23.43s 84.31%  github.com/thaivro/edgegate/internal/proxy.(*Server).serveConn
+     0.08s  0.29% 77.58%      0.28s  1.01%  github.com/thaivro/edgegate/internal/proxy.(*pool).put
+     0.08s  0.29% 77.87%      0.55s  1.98%  github.com/thaivro/edgegate/internal/proxy.(*prefixReader).Read
+     0.08s  0.29% 78.16%      0.71s  2.55%  runtime.newobject
+     0.08s  0.29% 78.45%      0.15s  0.54%  strings.IndexAny
+     0.07s  0.25% 78.70%      2.24s  8.06%  bufio.(*Reader).fill
+     0.07s  0.25% 78.95%      0.17s  0.61%  internal/runtime/maps.(*Iter).Init
+     0.07s  0.25% 79.20%      0.21s  0.76%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr

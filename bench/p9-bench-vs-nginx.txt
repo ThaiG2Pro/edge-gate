@@ -1,0 +1,51 @@
+Thu Oct  1 14:39:31 +07 2026
+ 14:39:31 up  5:14,  1 user,  load average: 3.18, 2.53, 2.22
+nginx version: nginx/1.25.5
+edgegate@2000  n=20000 200:100.0%
+               200: p50 890µs p90 1.59ms p99 4.2ms p99.9 9.98ms max 15.9ms · goodput 2000/s
+nginx@2000     n=20000 200:100.0%
+               200: p50 770µs p90 1.53ms p99 3.17ms p99.9 8.8ms max 17.23ms · goodput 2000/s
+rp@2000        n=20000 200:100.0%
+               200: p50 890µs p90 1.45ms p99 3.41ms p99.9 5.65ms max 10.19ms · goodput 2000/s
+direct@2000    n=20000 200:100.0%
+               200: p50 640µs p90 1.22ms p99 1.48ms p99.9 3.84ms max 6.38ms · goodput 2000/s
+nginx@5000     n=50000 200:100.0%
+               200: p50 830µs p90 1.99ms p99 5.63ms p99.9 9.48ms max 12.38ms · goodput 5000/s
+rp@5000        n=50000 200:100.0%
+               200: p50 1.32ms p90 4.34ms p99 15.87ms p99.9 27.94ms max 45.39ms · goodput 5000/s
+direct@5000    n=50000 200:100.0%
+               200: p50 430µs p90 1.23ms p99 1.68ms p99.9 6.63ms max 12.66ms · goodput 5000/s
+edgegate@5000  n=50000 200:100.0%
+               200: p50 660µs p90 1.04ms p99 3.35ms p99.9 7.88ms max 18.25ms · goodput 5000/s
+rp@10000       n=100000 200:100.0%
+               200: p50 422.51ms p90 1.07285s p99 1.4068s p99.9 1.43119s max 1.44959s · goodput 10000/s
+direct@10000   n=100000 200:100.0%
+               200: p50 310µs p90 700µs p99 1.75ms p99.9 5.5ms max 8.34ms · goodput 10000/s
+edgegate@10000 n=100000 200:100.0%
+               200: p50 750µs p90 1.4ms p99 5.31ms p99.9 14.5ms max 20.49ms · goodput 10000/s
+nginx@10000    n=100000 200:100.0%
+               200: p50 1.02ms p90 3.74ms p99 16.41ms p99.9 25.08ms max 32.99ms · goodput 10000/s
+direct@15000   n=150000 200:100.0%
+               200: p50 320µs p90 630µs p99 2.16ms p99.9 5.59ms max 9.18ms · goodput 15000/s
+edgegate@15000 n=150000 200:100.0%
+               200: p50 940µs p90 3.96ms p99 25.41ms p99.9 40.54ms max 47.4ms · goodput 15000/s
+nginx@15000    n=150000 200:100.0%
+               200: p50 1.05ms p90 3.8ms p99 11.39ms p99.9 19.09ms max 25.31ms · goodput 15000/s
+rp@15000       n=150000 200:100.0%
+               200: p50 3.8702s p90 6.98883s p99 7.62939s p99.9 7.72624s max 7.7402s · goodput 15000/s
+edgegate@20000 n=200000 200:100.0%
+               200: p50 870µs p90 3.23ms p99 8.5ms p99.9 14.19ms max 20ms · goodput 20000/s
+nginx@20000    n=200000 200:100.0%
+               200: p50 1.11ms p90 3.27ms p99 8.33ms p99.9 13.98ms max 24.12ms · goodput 20000/s
+rp@20000       n=200000 200:100.0%
+               200: p50 5.56256s p90 14.36305s p99 16.11408s p99.9 16.27154s max 16.28847s · goodput 20000/s
+direct@20000   n=200000 200:100.0%
+               200: p50 340µs p90 730µs p99 2.68ms p99.9 5.91ms max 34.28ms · goodput 20000/s
+nginx@30000    n=300000 200:100.0%
+               200: p50 55.37ms p90 405.45ms p99 528.18ms p99.9 535.48ms max 539.82ms · goodput 30000/s
+rp@30000       n=300000 200:100.0%
+               200: p50 22.42369s p90 33.44877s p99 35.84825s p99.9 36.06959s max 36.09952s · goodput 30000/s
+direct@30000   n=300000 200:100.0%
+               200: p50 350µs p90 1.08ms p99 3.78ms p99.9 6.02ms max 12.56ms · goodput 30000/s
+edgegate@30000 n=300000 200:100.0%
+               200: p50 252.75ms p90 1.53009s p99 2.25496s p99.9 2.39578s max 2.40616s · goodput 30000/s

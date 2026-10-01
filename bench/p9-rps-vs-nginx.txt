@@ -1,0 +1,14 @@
+Thu Oct  1 14:45:35 +07 2026
+ 14:45:35 up  5:20,  1 user,  load average: 4.52, 4.46, 3.20
+edgegate                 closed-loop 64 conn 8.003s: 205557 response, 25683 rps, lỗi 0
+nginx                    closed-loop 64 conn 8.004s: 203899 response, 25475 rps, lỗi 0
+rp                       closed-loop 64 conn 8.032s: 18171 response, 2262 rps, lỗi 0
+direct                   closed-loop 64 conn 8.004s: 306477 response, 38288 rps, lỗi 0
+edgegate                 closed-loop 64 conn 8.013s: 86509 response, 10796 rps, lỗi 0
+nginx                    closed-loop 64 conn 8.005s: 66283 response, 8280 rps, lỗi 0
+rp                       closed-loop 64 conn 8.024s: 23293 response, 2903 rps, lỗi 0
+direct                   closed-loop 64 conn 8.001s: 237740 response, 29713 rps, lỗi 0
+edgegate                 closed-loop 64 conn 8.012s: 86405 response, 10784 rps, lỗi 0
+nginx                    closed-loop 64 conn 8.006s: 77687 response, 9703 rps, lỗi 0
+rp                       closed-loop 64 conn 8.089s: 11902 response, 1471 rps, lỗi 0
+direct                   closed-loop 64 conn 8.004s: 177913 response, 22229 rps, lỗi 0

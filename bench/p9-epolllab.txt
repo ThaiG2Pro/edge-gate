@@ -1,0 +1,18 @@
+Thu Oct  1 15:03:01 +07 2026
+ 15:03:01 up  5:38,  1 user,  load average: 3.81, 5.50, 5.35
+epoll                    conns 10000 (mở trong 3.626s) · VmRSS 4608 → 6016 KiB · Δ 0.14 KiB/conn · luồng OS 10 → 10
+netpoller                conns 10000 (mở trong 5.009s) · VmRSS 4224 → 81408 KiB · Δ 7.72 KiB/conn · luồng OS 7 → 9
+epoll                    conns 10000 (mở trong 5.567s) · VmRSS 4480 → 5888 KiB · Δ 0.14 KiB/conn · luồng OS 9 → 10
+netpoller                conns 10000 (mở trong 5.274s) · VmRSS 4608 → 81152 KiB · Δ 7.65 KiB/conn · luồng OS 8 → 9
+epoll                    closed-loop 256 conn 10.003s: 911213 response, 91092 rps, lỗi 0 · CPU server 18.06 s = 19.8 µs/req
+netpoller                closed-loop 256 conn 10.004s: 713689 response, 71344 rps, lỗi 0 · CPU server 15.28 s = 21.4 µs/req
+epoll                    closed-loop 256 conn 10.004s: 698778 response, 69851 rps, lỗi 0 · CPU server 15.84 s = 22.7 µs/req
+netpoller                closed-loop 256 conn 10.004s: 1081831 response, 108140 rps, lỗi 0 · CPU server 18.50 s = 17.1 µs/req
+epoll                    closed-loop 256 conn 10.005s: 1071124 response, 107054 rps, lỗi 0 · CPU server 19.73 s = 18.4 µs/req
+netpoller                closed-loop 256 conn 10.005s: 1068337 response, 106776 rps, lỗi 0 · CPU server 17.85 s = 16.7 µs/req
+netpoller                closed-loop 256 conn 10.009s: 1081914 response, 108099 rps, lỗi 0 · CPU server 19.08 s = 17.6 µs/req
+epoll                    closed-loop 256 conn 10.004s: 831242 response, 83094 rps, lỗi 0 · CPU server 16.00 s = 19.2 µs/req
+netpoller                closed-loop 256 conn 10.003s: 979145 response, 97889 rps, lỗi 0 · CPU server 18.81 s = 19.2 µs/req
+epoll                    closed-loop 256 conn 10.002s: 1065706 response, 106552 rps, lỗi 0 · CPU server 19.93 s = 18.7 µs/req
+netpoller                closed-loop 256 conn 10.003s: 1069679 response, 106935 rps, lỗi 0 · CPU server 19.05 s = 17.8 µs/req
+epoll                    closed-loop 256 conn 10.007s: 1040713 response, 103994 rps, lỗi 0 · CPU server 19.23 s = 18.5 µs/req

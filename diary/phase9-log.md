@@ -48,3 +48,33 @@
 - Nợ thấy trong lúc làm (ghi `docs/debts.md` ở turn 3): (a) splice: `ReadFrom` không tách lỗi đọc upstream với
   lỗi ghi client ⇒ client bỏ đi giữa body splice bị tính là lỗi upstream (outlier); (b) body request (upload) không
   splice; (c) `copyBody` lấy buffer 32 KiB cho cả body request rỗng (GET).
+
+## §2 Turn 2 — 2026-10-01 14:33 → 15:08
+
+- 14:33 load 1.5. `make perflab` (`bench/p9-perflab.txt`): B/op 68129 → 1590, ns/op ≈ 2.4x nhanh hơn — G1 vế
+  ns/op sai xa. Nghi GC: `GOGC=off` bản trước **chậm hơn** (220 µs — heap phình, máy còn 2.6 GB, page fault);
+  gctrace 433 vs 32 GC / 20 000 request; GOGC 100/400/1600 ⇒ 87 / 53 / 48 µs (`bench/p9-perflab-gogc.txt`).
+- 14:37 `make idlelab` (10 000 conn ×2 xen kẽ): 28.6 / 27.1 vs 8.0 / 9.3 KiB/conn.
+- 14:39 `make l4l7lab` ×3: đúng cả năm vế; edgegate ≈ l4copy (không đăng ký).
+- 14:39-14:45 `bench-vs-nginx.sh` lượt 1 (load 3.2): EdgeGate và nginx đều không đơn điệu (15k trượt, 20k qua);
+  ReverseProxy sập từ 5-10k (p50 422 ms @ 10k). Viết `scripts/rps-vs-nginx.sh` (closed-loop): lượt 1 edgegate
+  25683 / nginx 25475 / rp 2262 / direct 38288; lượt 2-3 edgegate, nginx **và direct** tụt ~2.4x cùng lúc (load
+  4.5) — nhiễu máy, không phải proxy.
+- Đào ReverseProxy: curl header bình thường; ss: 64 ESTAB + 252 TIME-WAIT tới upstream; profile 6 s: 110 % CPU trên
+  2 core ⇒ không nghẽn CPU. Ngõ cụt 1: `go build … && taskset … &` — `&` áp cho cả chuỗi ⇒ chạy binary cũ ("flag
+  provided but not defined: -pprof"). Ngõ cụt 2: `pkill -f "bin/epolllab"` khớp dòng lệnh của chính shell ⇒ shell
+  chết (exit 144) ×2, server mồ côi giữ 18100 ⇒ lần kế "address already in use" và đo nhầm server cũ. Từ đây
+  `pkill -x`.
+- 1 connection tuần tự: direct 1295 rps (770 µs/req!), edgegate 374, rp 352 — ở concurrency 1 ba cái gần nhau,
+  máy chậm như nhau ⇒ sàn là đánh thức vCPU WSL2.
+- Upstream net/http (`cmd/upstream`): direct 11926, edgegate 9257, rp 4700 — upstream thành nút cổ chai, rp vẫn
+  ≈ 0.5x. `MaxIdleConnsPerHost` 64 vs 256: 6798 vs 5822 — không phải pool.
+- Đếm `voluntary_ctxt_switches` mọi luồng (`bench/p9-rp-ctxsw.txt`): rp 0.68-0.69 / request, edgegate 0.05-0.14.
+- 14:51-15:00 `bench-vs-nginx.sh` lượt 2-3 (load 6.4-7.6). `top`: pid 26494 `MainThr…` 85 % suốt 303 phút CPU —
+  của session khác, không đụng.
+- 15:01 `pproflab.sh 8000`: hai profile; nhóm bằng `-focus`/`-ignore` (`bench/p9-pprof-groups.txt`). `httpx` cum
+  ban đầu ra 8.9 s vì gồm `bufio.fill` → syscall đọc; trừ syscall/malloc/runtime còn 1.56 / 1.34 s.
+- 15:03 `make epolllab`: 0.14 vs 7.7 KiB/conn; rps 3 cặp nhiễu (0.78 / 1.55 / 1.00) ⇒ thêm 3 cặp: 1.30 / 0.92 / 1.03.
+- 15:06 `scripts/cpu-vs-nginx.sh` (CPU nginx = tổng pid `nginx` của container thấy từ host): ~50 µs/req cho cả
+  EdgeGate và nginx, rp ~190.
+- G2 ×3 (`bench/p9-g2.txt`). 15:08 viết diary.

@@ -1,0 +1,16 @@
+== edgegate-nodefense9 tổng 40.66 s CPU / 30 s
+  syscall: 13.70s
+  httpx: 8.90s
+  gc-mark/sweep: 7.85s
+  mallocgc: 7.84s
+  scheduler(findRunnable): 2.57s
+  futex: 2.11s
+== edgegate tổng 27.79 s CPU / 30 s
+  syscall: 15.30s
+  httpx: 5.54s
+  gc-mark/sweep: 0.26s
+  mallocgc: 1.38s
+  scheduler(findRunnable): 3.62s
+  futex: 1.74s
+edgegate-nodefense9 httpx trừ syscall/malloc/runtime: accounting for 1.56s
+edgegate httpx trừ syscall/malloc/runtime: accounting for 1.34s

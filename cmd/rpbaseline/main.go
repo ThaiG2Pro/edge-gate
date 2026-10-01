@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	_ "net/http/pprof"
 	"net/url"
 	"time"
 )
@@ -19,7 +20,11 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:18092", "địa chỉ lắng nghe")
 	upstream := flag.String("upstream", "127.0.0.1:18100", "backend")
 	idle := flag.Int("max-idle", 64, "MaxIdleConnsPerHost")
+	pprofAddr := flag.String("pprof", "", "listener pprof riêng (vd 127.0.0.1:6062)")
 	flag.Parse()
+	if *pprofAddr != "" {
+		go http.ListenAndServe(*pprofAddr, nil)
+	}
 
 	target := &url.URL{Scheme: "http", Host: *upstream}
 	rp := httputil.NewSingleHostReverseProxy(target)

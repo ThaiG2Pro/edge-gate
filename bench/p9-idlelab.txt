@@ -1,0 +1,6 @@
+Thu Oct  1 14:37:28 +07 2026
+ 14:37:28 up  5:12,  1 user,  load average: 1.86, 2.03, 2.04
+edgegate-nodefense9      conns 10000 (mở trong 10.866s) · VmRSS 8960 → 295040 KiB · Δ 28.61 KiB/conn · luồng OS 7 → 8
+edgegate                 conns 10000 (mở trong 20.655s) · VmRSS 8704 → 88960 KiB · Δ 8.03 KiB/conn · luồng OS 7 → 8
+edgegate-nodefense9      conns 10000 (mở trong 13.099s) · VmRSS 8960 → 279552 KiB · Δ 27.06 KiB/conn · luồng OS 6 → 8
+edgegate                 conns 10000 (mở trong 11.809s) · VmRSS 8960 → 102016 KiB · Δ 9.31 KiB/conn · luồng OS 6 → 8

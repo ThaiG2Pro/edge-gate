@@ -1,0 +1,11 @@
+Thu Oct  1 15:06:32 +07 2026
+ 15:06:32 up  5:41,  1 user,  load average: 4.99, 5.62, 5.44
+edgegate                 closed-loop 64 conn 6.002s: 176265 response, 29366 rps, lỗi 0 · CPU proxy 8770 ms = 49.7 µs/req
+nginx                    closed-loop 64 conn 6.003s: 203056 response, 33828 rps, lỗi 0 · CPU proxy 10490 ms = 51.6 µs/req
+rp                       closed-loop 64 conn 6.009s: 57460 response, 9563 rps, lỗi 0 · CPU proxy 10690 ms = 186.0 µs/req
+edgegate                 closed-loop 64 conn 6.005s: 172545 response, 28736 rps, lỗi 0 · CPU proxy 10700 ms = 62.0 µs/req
+nginx                    closed-loop 64 conn 6.002s: 196684 response, 32769 rps, lỗi 0 · CPU proxy 9630 ms = 48.9 µs/req
+rp                       closed-loop 64 conn 6.007s: 56048 response, 9331 rps, lỗi 0 · CPU proxy 11150 ms = 198.9 µs/req
+edgegate                 closed-loop 64 conn 6.003s: 179099 response, 29835 rps, lỗi 0 · CPU proxy 9540 ms = 53.2 µs/req
+nginx                    closed-loop 64 conn 6.002s: 183615 response, 30591 rps, lỗi 0 · CPU proxy 10240 ms = 55.7 µs/req
+rp                       closed-loop 64 conn 6.005s: 58411 response, 9727 rps, lỗi 0 · CPU proxy 11010 ms = 188.4 µs/req
