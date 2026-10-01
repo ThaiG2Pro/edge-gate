@@ -115,3 +115,16 @@ crc32       vnode=150   load=[26021 20068 23278 30633] max/min=1.53
 - 17:55 `go vet ./... && go test ./... -count=1 -race` xanh. `grep '"net/http"'` trên `internal/lb`,
   `internal/proxy/*.go` (trừ test), `cmd/lblab`: rỗng.
 - Makefile: `lblab-flap` thêm dòng `-conns 4`; target mới `lblab-recover`.
+
+## §3 Turn 3 — 2026-10-01 09:38 → 09:46
+
+- 09:38 người dùng gõ lại "làm tiếp phase 6 turn 2" — turn 2 đã commit `6a38ca4`; hỏi lại, chọn turn 3.
+- 09:43 chạy lại các lệnh của bảng invariant (`bench/p6-invariants.txt`, load 3.93 lúc mới boot): tất cả
+  xanh; `poollab-nodefense` và `lblab-nodefense` đỏ đúng dòng.
+- Song song đọc Finagle `PeakEwma.scala` / `Balancers.scala` (nhánh `develop`) cho câu 4: tau mặc định
+  10 s; mẫu cao hơn ⇒ `cost.reset()` (nhảy lên tức thì); `get()` decay khi đọc; phạt `Penalty` khi
+  `cost == 0 ∧ pending != 0`. Cái cuối thành nợ P6-3.
+- Đọc lại `forward.go:roundTrip` để viết câu 2: `Done` chạy **sau** `put` (defer trong `exchange`),
+  ngược với D2 và comment `balancer.go:Done`. Sửa comment, ghi vào câu 2; chênh vài µs, không đo được.
+- Đếm lại G: turn 2 ghi "3 sai + 1 sai một vế" lẫn lộn; chuẩn: G3 sai hẳn, G1/G2/G5 sai một vế ⇒ 4/7.
+- `docs/debts.md`: P6-1..P6-5 vào Đang nợ; P5-2/P5-3/P5-5 sang Đã trả. ROADMAP/README hàng 6 ✅.

@@ -125,19 +125,6 @@ taskset -c 0,1 go run ./cmd/poollab -pool both -n 2000 | tee bench/p5-poollab-rt
 make poollab-rtt 2>&1 | tee bench/p5-poollab-rtt20-quiet.txt
 ```
 
-### 🔧 P5-2 · Con quá `MaxIdleTime` ở đáy stack không bị dọn (D9)
-
-`pool.get` chỉ kiểm tuổi con **đỉnh** (LIFO); `put` chỉ bỏ đáy khi đầy. Pool 5 con rỗi, tất cả quá
-tuổi, `get` một lần ⇒ bỏ 1, dùng… không, dial mới, còn 4 con chết nằm đó tới lần đầy. Test fail
-trước: `TestPoolExpiredAtBottom` (5 idle, ngủ quá MaxIdleTime, 1 request, đòi `Idle == 1`). Sửa:
-trong `put`, quét từ đáy bỏ mọi con quá tuổi (dừng ở con đầu còn hạn — LIFO nên đáy già nhất).
-
-### ⏳ P5-3 · Pool một upstream; inflight tính từ đâu
-
-Phase 6 cần `map[addr]*pool`, `MaxIdlePerHost` theo host, và least-conn cần "inflight": tăng ở
-`get` hay giảm ở `put`? Turn 2 G6 cho thấy client nhận response **trước** khi proxy `put` — hai thời
-điểm khác nhau, chọn sai thì least-conn đếm thừa đúng lúc cần chính xác nhất.
-
 ### 🔧 P5-4 · Body vào connection chết giữa probe và `Write` ⇒ 502
 
 D4 (c) không retry request có body vì body đã stream (I2). `TestIdleClosedUpstream/noprobe-POST-body-502`
@@ -145,11 +132,44 @@ cho mẫu 25/50 khi tắt probe; với probe là 0/50 nhưng cửa sổ probe→
 upstream đóng rỗi ngẫu nhiên 1-50 ms sau response, 10k POST, đếm 502. Nếu > 0.1 %: buffer body
 ≤ 64 KiB để replay đúng một lần — đổi I2 có điều kiện, đăng ký D trước khi code.
 
-### 🔧 P5-5 · `MaxIdleTime` 60 s bằng nginx mặc định — phải ngắn hơn upstream
+### 📏 P6-1 · Bench LB closed-loop không biến capacity bỏ phí thành p99
 
-Ai đóng trước quyết định ai thấy FIN. Pool phải đóng **trước** upstream để probe/retry chỉ là lưới đỡ.
-Fixture Go không đặt `IdleTimeout` nên chưa lộ. Sửa mặc định 30 s; test fail trước: raw upstream idle
-100 ms, `MaxIdleTime` 50 ms, 20 request cách 70 ms ⇒ `DeadOnProbe == 0`, `DropExpired == 20`.
+`-flap -recover`: P2C tau 30 s cho b2 hồi phục **0.0 %** tải nửa sau (least-conn 25.0 %), nhưng p99
+nửa sau bằng nhau (4.43 vs 4.13 ms) vì 3 node còn lại dư sức và client tự gửi chậm lại. Cần open-loop
+ở ~80-90 % capacity để thấy cái giá thành latency:
+
+```bash
+# thêm -rate R vào cmd/lblab: lịch gửi cố định, latency tính từ giờ HẸN, không từ lúc gửi
+go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -rate 1200 -n 20000 -conns 64
+```
+
+### 🔧 P6-2 · P2C chia lệch 20.3-31.7 % trên 4 node giống hệt nhau
+
+`bench/p6-lblab-even.txt`: max/min 1.56x (least-conn 1.01x). EWMA khởi từ mẫu đầu (có dial ≈ 1 ms),
+với tau 1 s mỗi mẫu sau nặng ~5·10⁻⁴ ⇒ thứ hạng vài trăm ms đầu là may rủi. Test fail trước: `make lblab`
+đòi max/min share P2C ≤ 1.2. Sửa thử: không cho mẫu có dial vào EWMA, hoặc khởi tạo bằng trung vị cụm.
+
+### 🔧 P6-3 · Node chưa có mẫu được điểm 0 kể cả khi đang có request
+
+`ewma.go:score` trả 0 khi `n == 0` ⇒ mọi request trong lúc chờ mẫu đầu đều đổ vào node mới/hồi phục.
+Finagle `PeakEwma.get`: `if (lcost == 0.0 && pending != 0) Penalty + pending`. Test fail trước: 4 backend
+dưới tải 32 conn, thêm backend thứ 5 (hoặc revive), đếm inflight đỉnh của nó trước `Done` đầu tiên —
+đòi ≤ 1.
+
+### 📏 P6-4 · `consecutive_5xx` chậm ở rps thấp
+
+Kỳ vọng ~586 request tới chuỗi 5 lỗi đầu với lỗi 30 % ⇒ 0.17 s ở 3 400 rps nhưng ~1 phút ở 10 rps.
+Đo: `lblab -skew err=30% -conns 1` (≈ vài trăm rps chia 4) với `-n 2000`, đọc share b1 và 5xx; nếu
+outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D trước.
+
+### 📏 P6-5 · Passive outlier cắt cửa sổ dial lỗi của active — chưa đo
+
+`TestLBKillRevive` tắt outlier ⇒ 111-120 dial lỗi trong 500 ms trước khi active đánh dấu b3. Dự đoán
+"bật outlier ⇒ ~5" chưa có số. Thêm sub-test cùng kịch bản với `Outlier{Consecutive: 5}`, log `Fails`:
+
+```bash
+go test ./internal/proxy -run 'TestLBKillRevive' -count=3 -v
+```
 
 ### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`
 
@@ -196,6 +216,23 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P5-2 · Con quá `MaxIdleTime` ở đáy stack — trả 2026-09-04 (phase 6 turn 1)
+
+Sổ nợ tả sai một nửa: `get` dọn cả stack khi **đỉnh** quá tuổi; lỗ thật là đỉnh luôn tươi (một client
+keep-alive) còn đáy già mãi. `pool.put` giờ quét từ đáy bỏ mọi con quá tuổi. `TestPoolExpiredAtBottom`:
+đỏ trên code cũ `Idle 5, DropExpired 0` (`bench/p6-debts-failfirst.txt`), xanh `Idle 1, DropExpired 4`.
+
+### ✅ P5-3 · Pool theo host; inflight theo request — trả 2026-09-04 (phase 6 turn 1)
+
+`Server.pools map[addr]*pool` (`proxy.go:poolFor`), `MaxIdle` per host; inflight tăng ở `lb.Pick`, giảm ở
+`lb.Done` sau `exchange` (sau cả `put` — D2 ghi "trước", sai vài µs, diary phase 6 câu 2).
+`TestLBPoolPerHost`: Dials/Reuses/Idle 4/396/4, `Inflight 0` cả 4 backend.
+
+### ✅ P5-5 · `MaxIdleTime` phải ngắn hơn upstream — trả 2026-09-04 (phase 6 turn 1)
+
+Mặc định 60 → 30 s. `TestMaxIdleTimeShorterThanUpstream`: upstream idle 100 ms; pool 50 ms ⇒
+`DropExpired 19, DeadOnProbe 0`; pool 60 s ⇒ `DropExpired 0, DeadOnProbe 19`.
 
 ### ✅ P2-3 · CL+TE ⇒ từ chối — trả 2026-09-04 (phase 4 D1)
 

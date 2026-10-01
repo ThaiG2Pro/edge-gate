@@ -120,8 +120,9 @@ func (bl *Balancer) Pick(key string) *Backend {
 	return b
 }
 
-// Done: request trên b đã xong (exchange trả về — TRƯỚC khi connection về
-// pool). latency nuôi EWMA; failed nuôi outlier.
+// Done: request trên b đã xong (exchange trả về — client đã nhận response VÀ
+// connection đã put/discard trong defer của exchange; D2 ghi "trước put" là
+// sai, chênh vài µs, xem diary phase 6 câu 2). latency nuôi EWMA; failed nuôi outlier.
 func (bl *Balancer) Done(b *Backend, latency time.Duration, failed bool) {
 	now := time.Now()
 	b.inflight.Add(-1)

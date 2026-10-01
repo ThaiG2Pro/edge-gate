@@ -1,0 +1,35 @@
+$ go test ./internal/lb -count=1 -v -run "TestRoundRobin|TestLeastConn|TestP2CColdStart|TestOutlierEjectBackoffAndCap|TestHealthFallRise|TestConsistentHashSkips"
+=== RUN   TestRoundRobinEvenAndSkipsUnhealthy
+--- PASS: TestRoundRobinEvenAndSkipsUnhealthy (0.00s)
+=== RUN   TestLeastConnPicksMinInflight
+--- PASS: TestLeastConnPicksMinInflight (0.00s)
+=== RUN   TestP2CColdStartSpreads
+--- PASS: TestP2CColdStartSpreads (0.00s)
+=== RUN   TestConsistentHashSkipsUnavailable
+--- PASS: TestConsistentHashSkipsUnavailable (0.00s)
+=== RUN   TestOutlierEjectBackoffAndCap
+--- PASS: TestOutlierEjectBackoffAndCap (0.18s)
+=== RUN   TestHealthFallRiseAndProbe
+--- PASS: TestHealthFallRiseAndProbe (0.20s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/lb	0.409s
+$ go test ./internal/proxy -count=1 -v -run "TestLBAllDown503|TestLBHashHeaderSticky|TestLBOutlierEjects5xx|TestNoGoroutineLeak"
+--- PASS: TestLBAllDown503 (0.06s)
+--- PASS: TestLBHashHeaderSticky (0.23s)
+--- PASS: TestLBOutlierEjects5xx (0.02s)
+    proxy_test.go:415: G6: goroutine trước 5, sau 7 (chờ 20ms)
+--- PASS: TestNoGoroutineLeak (0.37s)
+PASS
+ok  	github.com/thaivro/edgegate/internal/proxy	0.721s
+$ go test ./internal/proxy -run TestDirtyConnNotPooled -count=20
+ok  	github.com/thaivro/edgegate/internal/proxy	0.720s
+$ make poollab-nodefense
+    pool_test.go:162: B: status 502 body "502 Bad Gateway: upstream trả response không hợp lệ hoặc đóng sớm\n" — connection bẩn về pool
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	0.086s
+FAIL
+$ make lblab-nodefense
+--- FAIL: TestP2CRecovers (2.08s)
+    lb_test.go:116: A được chọn lại 0/200 lần trong 2 s (tau 100 ms)
+    lb_test.go:118: A không hồi phục: 0/200 — EWMA không decay theo thời gian
+FAIL

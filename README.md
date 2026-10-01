@@ -51,7 +51,7 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | 3 | Vertical slice | ✅ [phase3.md](./diary/phase3.md) — **1/6 giả thuyết sai** (G4 sai hai lần), overhead L7 3.39x |
 | 4 | RFC compliance & smuggling | ✅ [phase4.md](./diary/phase4.md) — **3/7 giả thuyết sai**; 61 ca, phản chứng đỏ 20/52, Go làm oracle chỉ cùng từ chối 46 % |
 | 5 | Upstream connection pool | ✅ [`diary/phase5.md`](diary/phase5.md) — pool LIFO + probe `MSG_PEEK` + retry một lần; phản chứng connection bẩn đỏ 20/20; RTT 0: 5.34x / 0.96 ms, RTT 20 ms: 1.37x / 17.9 ms — tỉ số ngược ROADMAP, khoản tiết kiệm mới đúng |
-| 6 | Load balancing + health | ⬜ |
+| 6 | Load balancing + health | ✅ [`diary/phase6.md`](diary/phase6.md) — **4/7 giả thuyết sai**; p99 chỉ giảm khi node chậm < 1 % tải (least-conn 4.3 % ⇒ 0.98x, P2C 0.6 % ⇒ 3.4x); P2C thua khi node **hồi phục** (tau 30 s: 0.0 % vs least-conn 25 %); phản chứng EWMA decay theo request đỏ 0/200 |
 | 7 | Resiliency | ⬜ |
 | 8 | TLS + SNI | ⬜ |
 | 9 | Performance & epoll | ⬜ |

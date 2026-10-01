@@ -1,8 +1,9 @@
 # Phase 6 — Load balancing + health (kèm trả nợ phase 5)
 
-- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** _(turn 3 điền)_
-- **Bắt đầu:** 2026-09-04 19:05 · **Kết thúc:** _______
-- **Trạng thái:** 🟡 turn 2 xong 2026-09-29 (đo xong, G1-G7 đã chấm: **3 sai + 1 sai một vế**) — còn turn 3 (invariant, rút ra, nợ). Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
+- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~4 giờ làm việc trong 3 buổi (turn 1 19:05-22:13,
+  turn 2 17:41-17:58, turn 3 2026-10-01 09:38-09:46), trải 2026-09-04 → 2026-10-01
+- **Bắt đầu:** 2026-09-04 19:05 · **Kết thúc:** 2026-10-01
+- **Trạng thái:** ✅ xong — **4/7 giả thuyết sai**: G3 sai cả hai vế; G1 (p99), G2 (outlier), G5 (số dial lỗi) sai một vế; G4/G6/G7 đúng. (Turn 2 ghi "3 sai + 1 sai một vế" — đếm G1/G2 như sai hẳn; bảng chấm ở Số đo là chuẩn.) Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
 - **Commit:** _______ (commit nền `a0a5e1a`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase6-log.md`](phase6-log.md). File này là bản biên tập.
@@ -384,23 +385,145 @@ dial lỗi ✗), G6 ✅, G7 ✅.
 
 ## Invariant + lệnh kiểm chứng
 
-_(turn 3)_
+Chạy lại 2026-10-01 09:43 (load 3.93 — vừa khởi động máy), output: `bench/p6-invariants.txt`,
+`bench/p6-tests-g4-g7.txt`.
+
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **Invariant sạch phase 5 không sứt** khi pool thành `map[host]*pool`: connection chỉ về **đúng pool của nó** khi sạch | `proxy.go:poolFor` (tạo lười, mutex); `pooledConn.p`; `forward.go:exchange` `defer` put/discard giữ nguyên | `go test ./internal/proxy -run TestDirtyConnNotPooled -count=20`; `make poollab-nodefense` PHẢI đỏ; `TestLBPoolPerHost` | 20/20 xanh; nodefense đỏ đúng dòng `connection bẩn về pool`; Dials/Reuses/Idle **4/396/4**, mỗi host 1/1 |
+| **Inflight đếm theo request**, tăng ở `Pick`, giảm ở `Done` — không theo connection trong pool (P5-3) | `balancer.go:Pick` (`inflight.Add(1)`), `balancer.go:Done`; `forward.go:roundTrip` gọi `Done` sau `exchange` ở **mọi** đường ra (dial lỗi, retry hỏng, xong) | `TestLBPoolPerHost` đòi `Inflight == 0` sau 400 request; `TestLeastConnPicksMinInflight` | 4 backend `Picks 100, Inflight 0`; xanh |
+| **Không bao giờ chọn node không dùng được**: `available = healthy ∧ now ≥ ejectedUntil`; RR xoay trên tập available | `backend.go:available`; `picker.go` cả 4 `Pick` lọc qua nó; chash đi tiếp trên ring | `TestRoundRobinEvenAndSkipsUnhealthy`, `TestConsistentHashSkipsUnavailable`, `TestLBKillRevive` (picks b3 không đổi 300 ms sau unhealthy) | xanh; picks 165→165, 173→173, 169→169 |
+| **Dial lỗi không thành lỗi client** (D9): chưa gửi byte ⇒ Pick lại đúng một lần, kể cả có body | `forward.go:roundTrip` nhánh `err != nil` + `repicked` | `TestLBDeadBackend` (GET + POST xen kẽ), `TestLBKillRevive` ×3 | 30/30 200; **0 lỗi / 2 964** request trong lúc giết b3 |
+| **Hết backend ⇒ 503, giữ client** (D8) | `forward.go:roundTrip` `be == nil` ⇒ `drain` + `writeError(503)` | `TestLBAllDown503` | xanh |
+| **EWMA decay theo thời gian** ⇒ node bị phạt rồi im lặng vẫn hạ điểm và được thử lại | `ewma.go:observe` + `ewma.go:score` (decay khi đọc, không ghi) | `go test ./internal/lb -run TestP2CRecovers`; `make lblab-nodefense` PHẢI đỏ | 45/200 xanh; nodefense **0/200 đỏ** |
+| **Outlier có trần**: không eject quá 50 % backend; backoff mũ, có trần | `outlier.go:recordOutcome`, `outlier.go:tryEject` (`(ejected+1)·100 > MaxEjectPercent·N` ⇒ từ chối) | `TestOutlierEjectBackoffAndCap`, `TestLBOutlierEjects5xx` | xanh. Bench không chạm trần (`refused 0` mọi dòng) — trần chỉ có bằng chứng từ test đơn vị |
+| **Health không rò goroutine**: goroutine health sinh ở `New`, chết ở `Close` | `balancer.go:Start` (gọi trong `proxy.New`), `balancer.go:Close`; `health.go:healthLoop` | `TestNoGoroutineLeak` | trước 5, sau 7 (≤ +2) |
+| **Data path không `net/http`** (kể cả health check) | `health.go:probe` dùng `net` + `httpx.ReadResponse` | `grep -rn '"net/http"' internal/lb internal/proxy/*.go cmd/lblab \| grep -v _test.go` | rỗng |
 
 ## Đọc gì
 
-- ROADMAP phase 6; Finagle `PeakEwma` (Aperture) — công thức decay theo thời gian; Envoy
-  `outlier_detection` (`consecutive_5xx`, `base_ejection_time`, `max_ejection_percent`);
-  Karger et al. consistent hashing; nginx `upstream` (`max_fails`, `fail_timeout`, `keepalive_timeout`).
+- ROADMAP phase 6; Envoy `outlier_detection` (`consecutive_5xx`, `base_ejection_time`,
+  `max_ejection_percent`, `success_rate`); Karger et al. consistent hashing; nginx `upstream`
+  (`max_fails`, `fail_timeout`, `keepalive_timeout`); MurmurHash3 `fmix64` (turn 1).
+- **Finagle `PeakEwma`**, đọc lại turn 3 (2026-10-01, nhánh `develop`) — để trả lời câu 4 bằng nguồn,
+  không bằng trí nhớ:
+  - `loadbalancer/Balancers.scala` `def p2cPeakEwma(decayTime: Duration = 10.seconds, ...)` — tau mặc
+    định **10 s**; doc Clients guide: "decayTime (default: 10 seconds)".
+  - `loadbalancer/PeakEwma.scala` `observe`: `if (rtt > cost.last) { cost.reset() }` rồi `cost.update`
+    ⇒ mẫu **cao hơn** thay luôn cost (nhảy lên tức thì), mẫu thấp hơn mới trộn theo `exp(-td/tau)`.
+  - `get()`: gọi `observe(0.0)` trước (decay khi đọc — cùng ý D3), rồi
+    `if (lcost == 0.0 && pending != 0) Penalty + pending else lcost * (pending + 1)` — cùng công thức
+    D4, nhưng node **chưa có mẫu mà đang có request** bị phạt `Penalty = Long.MaxValue >> 16`. Ta cho 0.
 
 ## Rút ra
 
-_(turn 3)_
+**1. Least-conn dồn vào đâu, và vì sao "inflight thấp" không có nghĩa là "khoẻ".** Least-conn chỉ
+thấy một con số: bao nhiêu request đang nằm ở backend. Con số đó thấp khi backend trả lời **nhanh** —
+và một backend trả 503 trong 50 µs là backend trả lời nhanh nhất cụm. Nên nó được thưởng: b1 lỗi 30 %
+nhận **38.5-39.3 %** tải thay vì 25 %, tỉ lệ 5xx client thấy lên **11.3-12.0 %** so với 7.5-7.9 % của RR
+— least-conn làm tệ hơn cả thuật toán không nhìn gì. Mặt kia cùng gốc: least-conn không phân biệt "rảnh
+vì nhanh" với "rảnh vì vừa xong một request 20 ms". Node chậm 10x vẫn nhận **4.1-4.5 %** — đúng bằng
+"một connection" (1/20 ms ≈ 50 rps trên ~1 100 rps), vì mỗi lần nó rảnh nó hoà inflight 0 với mọi node
+khác. 4 % nghe nhỏ, nhưng p99 là 1 % chậm nhất, nên 4 % là đủ để p99 = latency của node chậm
+(RR/LC = **0.97-0.98**). Quy tắc rút ra: một thuật toán chỉ cải thiện percentile `p` khi nó đẩy node
+xấu xuống **dưới `1 − p`** phần tải. Least-conn cắt 6x (25 → 4.3 %) mà p99 không đổi; P2C cắt 40x
+(→ 0.6 %) thì p99 tốt **3.4-3.7x**. Muốn least-conn không dồn vào node lỗi nhanh thì phải có outlier —
+và outlier bắt được (câu 6).
+
+**2. Inflight tăng ở đâu, giảm ở đâu.** Tăng ở `Balancer.Pick`, lúc request được gán backend; giảm ở
+`Balancer.Done`, mà `roundTrip` gọi ở **mọi** đường ra: dial lỗi, retry hỏng, xong. Không đếm theo pool
+vì pool trả lời câu hỏi khác: số connection **rỗi**, không phải số request đang chạy, và connection về
+pool **sau** khi client đã có response (P5-3). Đếm theo pool thì một backend vừa trả xong vẫn bị tính
+"bận" tới lúc `put` — lệch đúng lúc request kế tới. Đọc lại code turn 3 thấy D2 tự viết sai một chi
+tiết: `Done` chạy **sau** `put`, không trước — `exchange` flush response cho client, `defer` put/discard,
+rồi mới trả về để `roundTrip` gọi `Done`. Khoảng chênh là thời gian một `put` (khoá mutex, xoá
+deadline, vài µs), nên least-conn không lệch đo được ở 1 100-11 000 rps; nhưng comment ở
+`balancer.go:Done` nói ngược code, đã sửa. Cái đáng giữ: inflight phải bao trọn **mọi** đường ra, vì
+một `Done` thiếu là một backend bị tính bận mãi — `TestLBPoolPerHost` đòi `Inflight == 0` sau 400
+request chính là để bắt cái đó.
+
+**3. Decay theo thời gian vs theo số request, và giá của điểm 0 cho node mới.** Decay theo request
+nghĩa là điểm chỉ thay đổi khi **có mẫu**, và mẫu chỉ có khi node được chọn. Node bị một mẫu 500 ms thì
+điểm cao ⇒ P2C không chọn ⇒ không có mẫu ⇒ điểm đứng yên mãi: `nodefenselb` cho **0/200** lần chọn lại
+trong 2 s. Decay theo thời gian cắt vòng đó: `score()` áp `exp(−t/tau)` từ mẫu cuối tới **bây giờ**, nên
+node im lặng tự hạ điểm tới lúc rẻ hơn node khác và được thử lại (**45/200** với tau 100 ms). Finagle làm
+đúng như vậy (`get()` gọi `observe(0.0)` trước khi đọc). Node chưa có mẫu ta cho điểm 0 — lạc quan, được
+thử ngay. Bench lộ hai giá: (a) với tau 1 s, EWMA khởi từ **mẫu đầu tiên** (có dial ≈ 1 ms) và mẫu sau
+chỉ nặng ~5·10⁻⁴, nên trên 4 node giống hệt nhau P2C vẫn chia **20.3-31.7 %** (P6-2); (b) điểm 0 không
+phân biệt "chưa thử" với "đang thử": nhiều request đổ vào cùng một node mới trước khi mẫu đầu về.
+Finagle chặn (b) bằng `Penalty` khi `cost == 0 ∧ pending != 0` — node mới chỉ nhận **một** request thử
+cho tới khi có mẫu. Ta chưa có, và chưa đo được nó dồn bao nhiêu (P6-3).
+
+**4. P2C thua ở đâu — và không phải chỗ tôi đoán.** Tôi đăng ký "tau dài ⇒ phản ứng chậm khi node
+**xấu đi**". Sai: điểm là `EWMA × (inflight + 1)`, và node xấu đi giữ request lâu hơn ⇒ inflight lên
+**ngay**, không chờ EWMA. Với tau 30 s, EWMA b2 gần như đứng yên (3.7 → 8.1 ms trong khi thật là 20 ms),
+vậy mà b2 vẫn chỉ nhận 4.0-4.4 % nửa sau — ngang least-conn (4.3-4.5 %). Inflight che EWMA cũ. Thua
+thật ở chiều **ngược**: node **tốt lên**. Lúc đó nó không được chọn ⇒ inflight 0 ⇒ không có gì kéo
+điểm xuống ngoài decay `exp(−t/tau)`. Least-conn cho b2 hồi phục **25.0 %** ngay (inflight không có trí
+nhớ); P2C tau 30 s cho **0.0 %** suốt ~7 s nửa sau, ước bỏ đói `tau·ln(EWMA cũ / latency mới)` ≈
+30·ln 6 ≈ **54 s**; tau 1 s cho 16.5-17.8 %. Đây là bất đối xứng "né nhanh, tin lại chậm", và Finagle
+**cố ý làm nó mạnh hơn**: mẫu cao hơn cost thì `cost.reset()` — nhảy lên tức thì, chỉ đi xuống theo
+tau 10 s (≈ 18 s để tin lại một node từng chậm 6x). Vì sao họ vẫn chọn P2C: (a) chỗ P2C **thắng** là
+chỗ đắt — đẩy node chậm xuống dưới 1 % là p99 tốt **3.4-5x** (bảng Số đo), còn cái thua là capacity
+bỏ phí, chỉ thành latency khi cụm gần bão hoà (bench closed-loop không tới được, P6-1); (b) phần sau
+đây là **lập luận, chưa đo**: P2C chỉ đọc 2 node mỗi lần chọn thay vì quét N, và khi nhiều proxy độc
+lập cùng nhìn một cụm, "least" toàn cục làm mọi proxy đổ vào cùng một node vừa rảnh (herd), còn hai
+lựa chọn ngẫu nhiên thì không. Cả hai cần bench nhiều proxy để thành bằng chứng.
+
+**5. Thêm một node: modulo vs ring, và consistent hash trả giá gì.** 4 → 5 node, 100 000 key:
+`hash % N` đổi chủ **80.1 %** key (lý thuyết `1 − 1/5` — gần như mọi key đổi vì mọi phép chia đổi), ring
+150 vnode đổi **21.6 %** (lý thuyết `1/5`: chỉ phần node mới nhận). Một vnode mỗi backend thì cung của
+mỗi node là một đoạn ngẫu nhiên, lệch tải **5.64x**; 150 vnode thì tổng 150 đoạn ngẫu nhiên, luật số
+lớn kéo về **1.17x** (±7.9 %). Nhưng vnode chỉ làm mịn khi hash rải đều: với FNV-1a trần, 150 vnode
+vẫn **3.57x** và 1000 vnode **2.85x** (turn 1), vì `addr#0…addr#149` khác nhau vài byte cuối và FNV
+không có avalanche ⇒ vnode của một backend nằm cạnh nhau. Thêm `fmix64` mới cứu. Giá của consistent
+hash: nó **không nhìn tải**. b0 chậm 10x vẫn nhận 23.6-25.0 %, p99 bằng RR (**0.98-0.99x**). Nó đổi khả
+năng né node xấu lấy tính ổn định của key — đáng khi key mang trạng thái (cache, session); vô nghĩa khi
+không. Một điều tốt ngoài dự tính: khi b1 bị eject, các key của nó đi theo ring sang node kế, và vì 150
+vnode rải đều nên phần đó chia đều cho ba node còn lại (32.0 / 34.6 / 32.1 %), không dồn vào một hàng xóm.
+
+**6. Active và passive bắt được gì của nhau, và vì sao phải có trần eject.** Active (probe nền)
+bắt node **chết khi không có traffic** — passive không có mẫu thì không biết gì. Nhưng active chậm và mù
+với lỗi ứng dụng: giết b3 thì cần **500-503 ms** (fall 3 × 200 ms) để đánh dấu, và trong cửa sổ đó proxy
+đã trả **111-120** lần dial lỗi (client không thấy nhờ D9, nhưng mỗi lần là một dial phí rồi chọn lại).
+Probe TCP còn không thấy b1 trả 503 — nó vẫn accept được. Passive (outlier) bắt node **sống mà trả lỗi**
+trên chính traffic thật: b1 lỗi 30 % bị eject sau kỳ vọng ~586 request (≈ **0.17 s** ở 3 400 rps), còn
+**0.7-0.8 %** tải. Tôi đã đoán ngược (G2): `0.3⁵ = 0.24 %` là xác suất **mỗi request**, còn câu hỏi là
+"bao lâu" — ở rps cao, chuyện hiếm theo request xảy ra trong một phần năm giây. Hệ quả ngược lại cũng
+đúng: ở 10 rps tới b1 thì cùng ~586 request là **~1 phút** (P6-4). Trần 50 %: nếu upstream chậm hay lỗi
+**đồng loạt** vì chính proxy quá tải (hoặc một dependency chung chết), outlier không trần sẽ eject lần
+lượt từng node ⇒ tải dồn vào phần còn lại ⇒ phần còn lại lỗi ⇒ eject tiếp ⇒ 503 toàn tập: phòng tuyến tự
+làm sập cụm. Trần giữ ít nhất một nửa trong vòng để phục vụ dù tệ. Bench phase này không chạm trần
+(`refused 0`), bằng chứng chỉ có ở `TestOutlierEjectBackoffAndCap` — ghi rõ là chưa thấy nó cứu gì ngoài
+test. Còn một bài học nhỏ từ bảng outlier: eject b1 làm P2C chọn cặp trong 3 node, b0 chậm lên **1.2 %**
+> 1 % và p99 P2C nhảy 6.44 → 20.31 ms — bỏ node lỗi làm lộ node chậm.
+
+**7. Hai món nợ pool.** P5-2: LIFO lấy từ **đỉnh**, nên khi một client keep-alive dùng đi dùng lại
+một connection thì đỉnh luôn tươi và `get` không bao giờ chạm tới đáy — 4 con dưới già mãi tới lần pool
+đầy. Sổ nợ đã mô tả sai một nửa ("`get` chỉ kiểm con đỉnh") — thật ra `get` dọn cả stack khi đỉnh quá
+tuổi; lỗ là đỉnh **không bao giờ** quá tuổi. Test dựng đúng ca đó, đỏ trên code cũ (`Idle 5`), xanh sau
+khi `put` quét từ đáy (`Idle 1, DropExpired 4`). P5-5: bên nào đóng connection rỗi trước thì bên kia là
+người thấy FIN. `MaxIdleTime` 50 ms trước upstream 100 ms ⇒ **DropExpired 19, DeadOnProbe 0**: ta tự bỏ,
+không dial phí. 60 s sau upstream ⇒ **DeadOnProbe 19**: upstream đóng trước, probe MSG_PEEK bắt từng
+con. Cùng upstream, cùng nhịp, chỉ đổi ai đóng trước. Mặc định giờ là 30 s, dưới nginx 60 s; probe và
+retry chỉ còn là lưới đỡ khi cấu hình hai bên lệch.
 
 ## Nợ kỹ thuật
 
-_(turn 3 chốt và chép vào `docs/debts.md`)_ Phát sinh turn 2:
+Chi tiết + lệnh trả trong `docs/debts.md`.
 
-- [ ] **P6-1** bench open-loop gần bão hoà để biến "capacity bỏ phí" của P2C tau dài thành p99 —
-  closed-loop không tạo được. Trả: `lblab -rate` (hàng đợi theo lịch cố định, đo từ giờ hẹn).
-- [ ] **P6-2** P2C chia lệch 20.3-31.7 % trên 4 node giống nhau: EWMA khởi từ mẫu đầu (có dial).
-  Trả: bỏ mẫu có dial khỏi EWMA hoặc khởi tạo bằng trung vị cụm; đo lại `make lblab`.
+- [ ] **P6-1** 📏 — Mọi số phase này closed-loop: capacity P2C tau dài bỏ phí (b2 hồi phục 0.0 %)
+  không thành p99 vì client tự gửi ít đi. `lblab -rate R` open-loop (lịch cố định, latency tính từ giờ
+  hẹn) ở ~80-90 % capacity, chạy `-flap -recover`.
+- [ ] **P6-2** 🔧 — P2C chia lệch 20.3-31.7 % trên 4 node giống nhau: EWMA khởi từ mẫu đầu (có dial),
+  mẫu sau nặng ~5·10⁻⁴. Test trước: `make lblab` đòi max/min share ≤ 1.2.
+- [ ] **P6-3** 🔧 — Node chưa có mẫu được điểm 0 kể cả khi đang có request ⇒ dồn vào node mới/hồi
+  phục. Finagle phạt `cost == 0 ∧ pending != 0`. Test trước: thêm backend giữa tải 32 conn, đếm inflight
+  đỉnh của nó trước mẫu đầu.
+- [ ] **P6-4** 📏 — Outlier `consecutive_5xx` bắt node lỗi 30 % sau ~586 request: 0.17 s ở 3 400 rps,
+  ~1 phút ở 10 rps. Đo ở rps thấp; nếu chậm, thêm `success_rate` kiểu Envoy.
+- [ ] **P6-5** 📏 — "Passive cắt cửa sổ 111-120 dial lỗi xuống ~5" là dự đoán chưa đo:
+  `TestLBKillRevive` tắt outlier. Chạy cùng ca với outlier bật, đếm `Fails`.
+- [x] **P5-2**, **P5-3**, **P5-5** — trả ở turn 1 (bằng chứng ở câu 7 và bảng invariant).
+- P0-6 (netem có jitter cho `lblab-skew`) **vẫn mở**: phase này dùng service time giả lập nên không
+  cần, nhưng P2C trên mạng có jitter thật chưa ai đo.
