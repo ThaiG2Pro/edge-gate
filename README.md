@@ -54,7 +54,7 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | 6 | Load balancing + health | ✅ [`diary/phase6.md`](diary/phase6.md) — **4/7 giả thuyết sai**; p99 chỉ giảm khi node chậm < 1 % tải (least-conn 4.3 % ⇒ 0.98x, P2C 0.6 % ⇒ 3.4x); P2C thua khi node **hồi phục** (tau 30 s: 0.0 % vs least-conn 25 %); phản chứng EWMA decay theo request đỏ 0/200 |
 | 7 | Resiliency | ✅ [`diary/phase7.md`](diary/phase7.md) — **6/9 giả thuyết sai một vế**; Slowloris không giết Go, trần connection mới giết; shed p99 352x; drain lười 0 mất; chaoslab 4/4 invariant |
 | 8 | TLS + SNI | ✅ [`diary/phase8.md`](diary/phase8.md) — **2/8 giả thuyết sai một vế**; 421 chặn domain fronting; resumption cắt 0 RTT ở TLS 1.3; pool upstream TLS tiết kiệm 2 RTT; reload 0 lỗi |
-| 9 | Performance & epoll | ⬜ |
+| 9 | Performance & epoll | ✅ [`diary/phase9.md`](diary/phase9.md) — **3/8 giả thuyết sai**; pool: GC chứ không malloc (ns/op 2.4x); conn rỗi 28 → 8-9 KiB; giá L7 ở body = mất splice, lấy lại bằng splice body; epoll 55x ít RAM, rps ngang; EdgeGate ≈ nginx, ReverseProxy 3.1x chậm hơn (WSL2) |
 | 10 | HTTP/2 h2c (tùy chọn) | ⬜ |
 
 ## Ba con số của phase 0

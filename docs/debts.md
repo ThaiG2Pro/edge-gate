@@ -252,6 +252,61 @@ Phase 7: 20.7 KiB / connection plaintext treo. TLS thêm buffer record (tới 16
 RFC 9110 §15.5.20 (421 — hành vi retry của client), RFC 8446 §4.6.1 (thời điểm NewSessionTicket) và §8
 (anti-replay 0-RTT): công cụ fetch cắt trang ở turn 3. Đọc và trích vào `diary/phase8.md` Đọc gì.
 
+### 🔧 P9-1 · Splice body: lỗi ghi client bị tính là lỗi upstream
+
+`proxy/splice.go:spliceBody` gọi `(*net.TCPConn).ReadFrom` — một lời gọi, một lỗi, không tách được "upstream đóng
+giữa body" với "client bỏ đi giữa body". Hiện coi mọi thiếu byte là upstream (`rerr`) ⇒ client bỏ đi giữa một
+response splice nuôi outlier ejection (phase 6 D7) oan cho backend. Test trước: client đóng sau 100 KB của body
+1 MiB splice ⇒ `LBStats` không được ghi một lỗi cho backend.
+
+```bash
+go test ./internal/proxy -run TestSpliceClientGone -v   # (test chưa có — viết cho nó đỏ trước)
+```
+
+### ⏳ P9-2 · Body request (upload) không splice
+
+D5 chỉ làm chiều response. Upload lớn CL qua proxy vẫn đi `copyBody` userspace (32 KiB). Cùng điều kiện (CL, hai
+phía TCP trần, `br.Buffered()` chép trước). Đáng làm khi có workload upload thật; đo bằng `perflab -mode l4l7`
+chiều ngược.
+
+### 📏 P9-4 · Bảng ba cột (G8) đo trên WSL2 ồn
+
+Load 1.5-7.6 suốt turn 2 (tiến trình nền của session khác ăn ~85 % một core); cùng cột lệch 2-3x giữa lượt;
+open-loop không đơn điệu theo rate. Kết luận "EdgeGate ≈ nginx, ~50 µs CPU/req" có thể là đặc thù WSL2 (syscall
+đắt, đánh thức vCPU đắt — `direct` 1 conn 770 µs/req). Chạy lại trên Linux thuần, `uptime` < 1, và đo **số syscall
+mỗi request** của nginx vs EdgeGate (`strace -c -f` hoặc `perf trace -s`) để kiểm giả thuyết "syscall san phẳng".
+
+```bash
+./scripts/linux-baseline.sh && make bench-vs-nginx && ./scripts/cpu-vs-nginx.sh
+strace -c -f -p $(pgrep -x edgegate) & sleep 5; kill %1    # cần strace
+```
+
+### 📏 P9-5 · Vì sao ReverseProxy chậm 3x — mới là tương quan
+
+Đo được: 0.68 context switch tự nguyện / request vs 0.05-0.14 của EdgeGate; Transport đẩy request qua `writech`/
+`reqch` sang `writeLoop`/`readLoop` (`net/http/transport.go:1994-1995, 2882-2887`). Chưa chứng minh nhân quả.
+Cần `go tool trace` (độ trễ goroutine runnable → running) hoặc block profile của `rpbaseline` dưới cùng tải.
+
+```bash
+curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"; go tool trace -pprof=sched rp.trace > sched.prof
+```
+
+### 📏 P9-6 · 8 KiB còn lại của connection rỗi chưa chia nhỏ; nginx chưa đối chiếu
+
+Sau D2: 8.0-9.3 KiB/conn. Đoán là stack goroutine (`serveConn` sâu khi xử lý request, chỉ co lại khi GC quét) +
+`net.Conn`/`connState`/map — chưa tách bằng số. ROADMAP nói "nginx dùng buffer nhỏ hơn nhiều" — chưa đọc tài liệu
+nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và chưa đo RSS/conn của nginx cùng kịch bản.
+
+```bash
+./bin/perflab -mode idle -conns 10000 -spawn "bin/edgegate -config config/bench.json -pprof 127.0.0.1:6061" \
+  & sleep 25; curl -s 127.0.0.1:6061/debug/pprof/goroutine?debug=1 | head; go tool pprof -top http://127.0.0.1:6061/debug/pprof/heap
+```
+
+### ⏳ P9-7 · `SpliceBody` tắt mặc định
+
+An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
+Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
+
 ### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`
 
 `pgrep -a -x upstream` lúc 16:00 phase 5 thấy `./bin/upstream -addr :8081` pid 146978 từ phase 3.
@@ -297,6 +352,12 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P9-3 · `copyBody` cấp 32 KiB cho body request rỗng — trả 2026-10-01 (phase 9 turn 3)
+
+`forward.go:exchange` gọi `copyBody(ubw, req.Body, …)` cả khi GET không body ⇒ mỗi request 2 buffer 32 KiB
+(nguồn của "68 KiB, không phải 33" ở G1). Sửa: chỉ gọi khi `ContentLength != 0 || Chunked`. `bench/p9-p93.txt`:
+bản `nodefense9` 68 129 → **35 361 B/op**, 47 → 46 allocs; suite `-race` xanh (`bench/p9-invariants.txt`).
 
 ### ✅ P8-2 · SNI lạ ⇒ alert `internal_error` — trả 2026-10-01 (phase 8 turn 3)
 

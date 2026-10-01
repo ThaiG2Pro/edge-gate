@@ -1,0 +1,4 @@
+BenchmarkProxyKeepAlive/body=1024-4         	   22994	     93565 ns/op	  10.94 MB/s	   35361 B/op	      46 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   31000	     75533 ns/op	  13.56 MB/s	   35361 B/op	      46 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   41166	     56353 ns/op	  18.17 MB/s	    1601 B/op	      43 allocs/op
+BenchmarkProxyKeepAlive/body=1024-4         	   41292	    115556 ns/op	   8.86 MB/s	    1592 B/op	      43 allocs/op

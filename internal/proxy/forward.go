@@ -183,7 +183,10 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		// eofReader) trên br — nó trả io.EOF khi hết body, KHÔNG phải khi
 		// client đóng. Đây là "một dòng" tránh bẫy #1: không bao giờ
 		// io.Copy(upstream, c).
-		readErr, writeErr = copyBody(ubw, req.Body, req.Chunked)
+		if req.ContentLength != 0 || req.Chunked {
+			// Phase 9 turn 3 (P9-3): GET không body không cần buffer 32 KiB.
+			readErr, writeErr = copyBody(ubw, req.Body, req.Chunked)
+		}
 	}
 	if writeErr == nil {
 		writeErr = ubw.Flush()

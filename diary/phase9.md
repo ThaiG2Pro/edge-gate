@@ -1,9 +1,9 @@
 # Phase 9 — Performance: sync.Pool, splice, pprof, epoll vs netpoller
 
-- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** (điền khi xong)
-- **Bắt đầu:** 2026-10-01 14:08 · **Kết thúc:** —
-- **Trạng thái:** 🟡 turn 2 xong — **3/8 giả thuyết sai** (G1 vế ns/op, G5 vế GC, G8 cả bốn vế); G2-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
-- **Commit:** — (commit nền `4f89247`)
+- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~80 phút làm việc (turn 1 14:08-14:29, turn 2 14:33-15:08, turn 3 15:34-15:40)
+- **Bắt đầu:** 2026-10-01 14:08 · **Kết thúc:** 2026-10-01 15:40
+- **Trạng thái:** ✅ xong — **3/8 giả thuyết sai** (G1 vế ns/op, G5 vế GC, G8 cả bốn vế); G2-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
+- **Commit:** (turn 3, ghi ở commit kế) (turn 1 `c569eb4`, turn 2 `7762a46`; commit nền `4f89247`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase9-log.md`](phase9-log.md). File này là bản biên tập.
 >
@@ -325,7 +325,7 @@ tăng: vCPU rỗi của WSL2 ngủ sâu, đánh thức tốn hàng trăm µs. �
 thí nghiệm, để lại server mồ côi giữ cổng 18100 (lần đo kế "bind: address already in use" rồi đo nhầm server cũ).
 Từ đó dùng `pkill -x <tên>`.
 
-#### Giả thuyết sai
+## Giả thuyết sai
 
 | # | Đoán | Đo | Vì sao sai |
 |---|---|---|---|
@@ -335,7 +335,7 @@ Từ đó dùng `pkill -x <tên>`.
 | G5 | syscall ≥ 40 % (bản trước) | 33.7 % | GC chiếm chỗ; bản sau 55.1 % |
 | G8 | nginx ≥ 1.5x EdgeGate; EdgeGate ≈ ReverseProxy | nginx 1.03-1.15x; EdgeGate 3.1x rps, 3.2-3.7x ít CPU hơn ReverseProxy | Đoán theo "C > Go, Go ≈ Go". Thực tế: (a) giá syscall WSL2 san phẳng nginx/EdgeGate; (b) ReverseProxy trả giá handoff goroutine × giá đánh thức vCPU — một chi phí của **kiến trúc** (Transport), không phải của ngôn ngữ |
 
-#### Số đo
+## Số đo
 
 | Thứ đo | Trước / A | Sau / B | Tỉ số |
 |---|---|---|---|
@@ -354,3 +354,117 @@ Từ đó dùng `pkill -x <tên>`.
 Code đổi trong turn: `cmd/rpbaseline -pprof` (để profile cột so sánh); thêm `scripts/rps-vs-nginx.sh`,
 `scripts/cpu-vs-nginx.sh`. Không đổi data path.
 
+
+**Chấm G1-G8:** G2, G3, G4, G6, G7 ✅; G1 ❌ vế ns/op (+ Δallocs lệch 1); G5 ❌ vế GC/syscall bản trước; G8 ❌ cả
+bốn vế.
+
+## Invariant + lệnh kiểm chứng
+
+Chạy lại 2026-10-01 15:36 (load 3.15), output `bench/p9-invariants.txt`; số lab lấy từ turn 2.
+
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **Buffer về pool chỉ khi không còn byte của ai** — `br.Buffered() > 0` (pipelining) ⇒ giữ (I1) | `proxy.go:serveConn` nhánh `pipelined` / `releaseIdleBufio` | `TestIdlePipeliningAndPrefix` | 200, 201 trong một lần ghi; byte đầu tách 50 ms ⇒ 202 |
+| **Connection rỗi không cầm `bufio`** | `proxy.go:serveConn` (Read 1 byte vào `connState.pre`, `bufpool.go:prefixReader`) | `TestIdleReleasesBufio`; `make perflab-nodefense` PHẢI đỏ; `make idlelab` | 0 bufio / 20 conn; nodefense **40**; 28 → 8-9 KiB/conn |
+| **Trả pool đúng một lần** (hai người cầm chung một buffer = rò dữ liệu giữa request) | `pool.go:pooledConn.close` (nil sau khi trả); `serveConn` defer chỉ trả cái đang cầm | `go test ./... -race` (pool + race detector) | xanh |
+| **Pool không phình theo request tệ nhất** | `httpx/headpool.go:putHead` (bỏ cap > 16 KiB) | `TestHeadPoolDropsOversize` (×3, `-race` ×5) | không chặn 65536, chặn 512 |
+| **Splice giữ ranh giới CL (I1) và sạch mới về pool (I4)** | `splice.go:spliceBody` — phần trong `ubr` đi trước, `LimitedReader{N: còn lại}`; `forward.go:exchange` `clean = bodyDone && ubr.Buffered()==0` | `TestSpliceBody`, `TestSpliceBodyShortUpstream`; nodefense PHẢI đỏ | đúng từng byte 1 MiB + 100 000; `Dials:1 Reuses:3`; upstream đứt ⇒ client bị đóng, `DropDirty:1`; nodefense 0 splice |
+| **Splice thật sự chạy** (không suy từ code) | Go `net/splice_linux.go:spliceFrom` | `make l4l7lab` cột pipe fd | 6 / 2 ở bản splice, 0 ở bản copy |
+| **epoll tự viết đúng giao thức** (ET đọc tới EAGAIN, EAGAIN ghi ⇒ EPOLLOUT, head dở có trần) | `epollsrv/epoll_linux.go:readAll/handle/write/flush` | `go test ./internal/epollsrv -race` | head cắt giữa `\r\n\r`/`\n`, pipelining 3, response 4 MiB, 1000 conn × 5 — chia 333/319/348 cho 3 loop |
+| **I3, I7, I8 giữ nguyên** | không đổi deadline/counter/Close | `go test ./... -race` (TestDeadline, TestNoGoroutineLeak, chaos test phase 7) | xanh |
+| **Data path không `net/http`** | — | `grep -rln '"net/http"' internal cmd/edgegate cmd/perflab cmd/epolllab \| grep -v _test.go` | `internal/fixture` (upstream giả, được phép) + `cmd/edgegate/pprof.go` (listener admin D10, tắt mặc định) |
+
+## Đọc gì
+
+Đọc trực tiếp mã nguồn Go 1.26.2 (`$(go env GOROOT)/src`) ở turn 3:
+
+- `net/tcpsock_posix.go:47-51` — `(*TCPConn).readFrom` thử `spliceFrom` trước, rồi `sendFile`.
+- `net/splice_linux.go:19-45` — `spliceFrom` gỡ `*io.LimitedReader` lấy `N` làm `remain`, nhận nguồn
+  `*TCPConn` / `tcpConnWithoutWriteTo` / unix stream; kiểu khác ⇒ `handled=false` (về copy thường). Đây là lý do
+  D5 bọc đúng `&io.LimitedReader{R: upTCP}` và bản `l4copy` (giấu kiểu) ra 0 pipe.
+- `internal/poll/splice_linux.go:21-25, 184-220` — `maxSpliceSize = 1 << 20`; pipe lấy từ `splicePipePool`
+  (`sync.Pool`) ⇒ pipe fd còn sống sau copy (nguồn của số "6" ở l4splice).
+- `sync/pool.go:103-106` — dưới race detector, `Put` "Randomly drop x on floor" khi `runtime_randn(4) == 0` (1/4).
+  Nguồn của test đỏ ở turn 1.
+- `runtime/mgcpacer.go:58-60` — `defaultHeapMinimum` = 4 MiB (trừ khi bật GOEXPERIMENT `HeapMinimum512KiB`;
+  `go env GOEXPERIMENT` rỗng) ⇒ heap sống nhỏ hơn thì mốc GC kế ≈ 4 MiB: với 68 KiB/request là ~60 request/chu kỳ,
+  khớp bậc với 419-433 GC / 20 000 request (46/chu kỳ) đo được.
+- `runtime/netpoll_epoll.go` — netpoller trên Linux là một `epfd` epoll của runtime (câu 5).
+- `net/http/transport.go:1994-1995` (`go pconn.readLoop()`, `go pconn.writeLoop()`) và `:2882-2887`
+  (`pc.writech <- writeRequest{…}`, `pc.reqch <- requestAndChan{…}`) — mỗi request đi qua hai channel sang hai
+  goroutine khác (câu 6).
+
+Không đọc (và không trích): tài liệu/mã nginx (buffer client, `reuseport`, số syscall mỗi request) — nợ P9-6, P9-4.
+
+## Rút ra
+
+**1. CPU của EdgeGate đi vào syscall, không vào parse.** Profile 30 s ở 8 000 rps (bản sau): `Syscall6` **55 %**,
+scheduler (`findRunnable` + `futex`) **≤ 19 %** (hai nhóm có thể chồng nhau), GC + malloc **6 %**, `httpx` (parse + ghi lại head) **4.8 %**. Thứ
+làm proxy "L7" — đọc từng dòng header, canonical hoá, ghi lại — rẻ đến mức gần như không thấy. Nhưng câu trả lời
+"đừng tối ưu GC" là **sai** cho bản trước: ở đó GC + malloc là **38.6 %**, lớn hơn cả syscall (33.7 %), và CPU mỗi
+request 169 µs vs 116 µs. Không phải vì GC của Go chậm, mà vì một chỗ cấp phát 32 KiB mỗi lần gọi (hai lần mỗi
+request — một cho body request **rỗng**, P9-3). Bài học: profile trước, và đọc profile theo **nhóm** (`-focus` /
+`-ignore`) — `httpx` cum ban đầu ra 8.9 s vì gồm cả syscall đọc qua `bufio.fill`; trừ ra còn 1.3-1.6 s.
+
+**2. `sync.Pool` cắt tần suất GC, không cắt giá cấp phát.** B/op **68 129 → 1 590 (43x)**, allocs/op chỉ 47 → 43,
+ns/op **≈ 2.4x**. Đoán "≤ 15 %" sai vì nhầm hai chi phí: cấp phát 32 KiB (zero 32 KiB, vài µs) vs **GC** — heap sống
+của proxy chỉ vài MiB, mốc GC tối thiểu 4 MiB (`mgcpacer.go`), nên 68 KiB/request kích một chu kỳ GC mỗi ~46
+request (đo: 419-433 GC / 20 000 request vs 32 sau pool). Nới GOGC 16x đưa bản trước từ 87 µs về 48 µs — gần bản
+pool; phần chênh còn lại ~15 % mới là "giá cấp phát" mà G1 đoán. GOGC=off còn **tệ hơn** (220 µs): không GC ⇒ mọi
+cấp phát là trang mới ⇒ page fault. Pool không chạm syscall (thứ chiếm hơn nửa CPU). Bẫy "pool giữ buffer to"
+có thật ở đúng một chỗ: buffer head lớn lên theo header (tới `MaxHeaderBytes` 64 KiB); không chặn ⇒ request nhỏ sau
+đó nhận lại 64 KiB; `putHead` bỏ cap > 16 KiB. Bẫy thứ hai không ai báo trước: `sync.Pool` dưới `-race` cố ý vứt
+1/4 số `Put` (`sync/pool.go:103`) — test dựa vào "Put rồi Get lại được" là test hên xui.
+
+**3. Connection rỗi: 28 KiB → 8-9 KiB, vì buffer chứ không vì goroutine.** 10 000 connection keep-alive rỗi: bản
+trước **27.1-28.6 KiB/conn** (280 MiB tổng), bản trả `bufio` lúc rỗi **8.0-9.3 KiB/conn** (90-100 MiB) — **3.0-3.6x**.
+Cơ chế: hết response, `Buffered() == 0` ⇒ trả cả hai `bufio`; chờ byte đầu của request kế bằng một `Read` 1 byte
+vào trường của `connState`; có byte ⇒ lấy `bufio` mới, đọc qua `prefixReader` trả byte đó trước. Pipelining là
+ngoại lệ bắt buộc: byte request kế đã nằm trong `br` thì trả `br` là **mất request** (I1). 8 KiB còn lại chủ yếu là
+stack goroutine — đó là giá của mô hình goroutine-per-connection, không thể trả về pool (câu 5). nginx làm gì ở cùng
+chỗ: chưa đọc nguồn — không kết luận (P9-6).
+
+**4. Giá của L7 với body lớn = giá mất splice, và lấy lại được.** Body 10 MiB × 100, proxy một core:
+L4 `io.Copy` TCP→TCP (splice) **2611-2894 MiB/s, 0.29-0.32 s CPU/GiB**; L4 copy userspace **1133-1416 MiB/s,
+0.67-0.84 s/GiB**; EdgeGate L7 **1217-1482 MiB/s, 0.65-0.78 s/GiB**. L4 nhanh hơn L7 **1.76-2.19x**, rẻ CPU hơn
+**2.0-2.5x** — nhưng EdgeGate L7 **ngang L4 copy**: parse head, ghi lại head, flush mỗi lần đọc đều chìm trong 10 MiB
+copy. Toàn bộ khoảng cách là byte đi lên userspace rồi xuống lại. Và nó **không** bắt buộc với L7: parse xong head,
+ranh giới body là CL đã biết, phần còn lại đúng là việc của L4 — `SpliceBody` (D5) chép phần body đã nằm trong
+`ubr` qua `bw`, rồi `ReadFrom(&io.LimitedReader{upTCP, còn lại})` ⇒ Go splice (`net/splice_linux.go`). EdgeGate +
+splice **0.92-1.01x** L4 splice. Câu "L4 LB nhanh hơn L7 LB" vì vậy đúng ở **head** (L7 phải đọc từng byte head;
+với GET nhỏ thì đó là cả request — câu 1 nói nó rẻ) và **không** đúng ở body CL. Không splice được: TLS (byte phải
+giải/mã), chunked (phải đọc khung), body tới-EOF, body nhỏ (đã nằm cả trong `ubr`), và chiều upload (chưa làm, P9-2).
+
+**5. epoll tự viết thắng bộ nhớ 55x, hoà tốc độ — vì netpoller chính là epoll.** Cùng giao thức tối giản, 10 000
+connection rỗi: epoll (trạng thái conn ~48 B + map entry, buffer đọc 64 KiB dùng chung mỗi loop) **0.14 KiB/conn**;
+netpoller (goroutine + buffer 4 KiB mỗi conn) **7.65-7.72 KiB/conn** — **55x**. Throughput 256 conn: netpoller/epoll
+trung vị **1.01** (6 cặp), CPU/req netpoller **0.93x** epoll. Hai câu trả lời ngược nhau vì hai mô hình trả cùng một
+số syscall mỗi request (`runtime/netpoll_epoll.go` là một epoll), chỉ khác **chỗ giữ trạng thái chờ**: goroutine
+chờ trong `Read` thì phải có stack và buffer **trước** khi có byte; vòng epoll chỉ cấp buffer **khi** có byte, và một
+buffer phục vụ mọi conn của loop. Chi phí của goroutine-per-conn là không gian, không phải thời gian. Muốn
+"connection rỗi gần như miễn phí" ở Go thì phải đổi mô hình — không phải tối ưu.
+
+**6. EdgeGate ngang nginx và cách xa ReverseProxy — trên máy này.** Cùng upstream, cùng ghim core (proxy 2 core):
+CPU/request EdgeGate **49.7-62.0 µs**, nginx **48.9-55.7 µs**, `httputil.ReverseProxy` **186-199 µs**; rps closed-loop
+nginx/EdgeGate **1.03-1.15x**, EdgeGate/ReverseProxy **3.07x**; p99 open-loop @ 5 000 rps ReverseProxy tệ hơn
+**4.7-21x**, EdgeGate vs nginx không nhất quán (0.60 / 1.91 / 0.78x). Đoán "nginx ≥ 1.5x, EdgeGate ≈ ReverseProxy"
+sai cả bốn vế, theo cùng một hướng — đoán theo ngôn ngữ ("C > Go, Go ≈ Go") thay vì theo **kiến trúc**:
+ReverseProxy không nghẽn CPU khi chậm (110 % / 200 %) mà có **0.68 context switch / request** vs 0.05-0.14 — Transport
+đẩy mỗi request qua hai channel sang `writeLoop`/`readLoop` (`transport.go:2882-2887`), mỗi lần nhường mà P rỗi thì
+luồng OS ngủ, và đánh thức một vCPU rỗi trên WSL2 tốn hàng trăm µs (`direct` 1 conn: 770 µs/request). EdgeGate làm
+trọn một request trong một goroutine. Khoảng cách tới nginx "đến từ đâu" — ở đây **không có** khoảng cách đo được;
+giả thuyết (P9-4, chưa kiểm): syscall WSL2 đắt (55 % CPU EdgeGate) và hai proxy làm cùng số syscall mỗi request ⇒
+runtime/ngôn ngữ chỉ còn phần nhỏ. **Không đưa "ngang nginx" vào CV** khi chưa chạy lại trên Linux thuần.
+
+## Nợ kỹ thuật
+
+Chi tiết + lệnh trả trong `docs/debts.md`.
+
+- [ ] **P9-1** 🔧 Splice: lỗi ghi client tính là lỗi upstream (outlier oan).
+- [ ] **P9-2** ⏳ Body request (upload) không splice.
+- [x] **P9-3** — trả turn 3: `copyBody` không gọi cho body request rỗng (`bench/p9-p93.txt`: bản trước 68 129 →
+  35 361 B/op — khớp mức G1 đăng ký "≥ 33 KiB").
+- [ ] **P9-4** 📏 G8 chạy lại trên Linux thuần + đếm syscall/request của nginx vs EdgeGate.
+- [ ] **P9-5** 📏 ReverseProxy chậm: tương quan context switch — cần `go tool trace` để thành nhân quả.
+- [ ] **P9-6** 📏 8 KiB/conn rỗi còn lại chưa chia; RSS/conn nginx chưa đo, tài liệu nginx chưa đọc.
+- [ ] **P9-7** ⏳ `SpliceBody` tắt mặc định — bật sau P9-1 + chaoslab body lớn.

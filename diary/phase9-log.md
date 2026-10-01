@@ -78,3 +78,15 @@
 - 15:06 `scripts/cpu-vs-nginx.sh` (CPU nginx = tổng pid `nginx` của container thấy từ host): ~50 µs/req cho cả
   EdgeGate và nginx, rp ~190.
 - G2 ×3 (`bench/p9-g2.txt`). 15:08 viết diary.
+
+## §3 Turn 3 — 2026-10-01 15:34 → 15:40
+
+- Đọc nguồn Go 1.26.2 trước khi viết Rút ra: `net/tcpsock_posix.go:47-51`, `net/splice_linux.go:19-45`,
+  `internal/poll/splice_linux.go` (pipe pool), `sync/pool.go:103-106` (race bỏ 1/4 Put), `runtime/mgcpacer.go:58-60`
+  (heap minimum 4 MiB; `go env GOEXPERIMENT` rỗng ⇒ không phải 512 KiB), `net/http/transport.go:1994-1995,
+  2882-2887`. Không đọc gì về nginx ⇒ không viết gì về nginx ngoài số đo.
+- Trả P9-3: `exchange` chỉ gọi `copyBody` khi request có body. `bench/p9-p93.txt`: bản trước 68 129 → 35 361 B/op;
+  ns/op lượt đó nhiễu (bản sau 56 / 116 µs — load) ⇒ không dùng số ns/op của lượt này.
+- 15:36 invariant (`bench/p9-invariants.txt`, load 3.15): `-race` xanh; nodefense9 đỏ đúng hai test; grep
+  `net/http` chỉ còn fixture + `cmd/edgegate/pprof.go`.
+- Nợ P9-1, 2, 4-7 vào `docs/debts.md`; P9-3 sang Đã trả. ROADMAP hàng 9 + 4 hàng bảng con số; README hàng 9 ✅.
