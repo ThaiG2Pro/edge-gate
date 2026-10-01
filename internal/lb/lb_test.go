@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -360,5 +361,88 @@ func TestNewRejectsBadConfig(t *testing.T) {
 	}
 	if _, err := New(addrs(1), Config{Algo: "magic"}); err == nil {
 		t.Fatal("algo lạ mà New không lỗi")
+	}
+}
+
+// G5 (phase 7 D5) — half-open cho ĐÚNG MỘT request. b0 bị eject 200 ms; hết
+// hạn đúng lúc 32 goroutine cùng Pick (32 connection đang chờ). Có half-open:
+// b0 nhận 1. nodefense7 (hành vi phase 6): b0 nhận ~¼ của 32 — cả loạt rơi
+// vào một node vừa hết hạn mà vẫn hỏng. Rồi: thử hỏng ⇒ open lại (backoff ×2);
+// thử tốt ⇒ closed.
+func TestBreakerHalfOpen(t *testing.T) {
+	bl, err := New(addrs(4), Config{Algo: "rr", Health: HealthConfig{Disabled: true},
+		Outlier: OutlierConfig{Consecutive: 5, BaseEject: 200 * time.Millisecond, MaxEject: time.Second, MaxEjectPercent: 50},
+		Logf:    t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b0 := bl.backends[0]
+	for i := 0; i < 5; i++ {
+		b0.inflight.Add(1)
+		bl.Done(b0, time.Millisecond, true)
+	}
+	if b0.State(time.Now()) != "open" {
+		t.Fatalf("5 lỗi liên tiếp phải open: %s", b0.State(time.Now()))
+	}
+	burst := func() (onB0 int, got []*Backend) {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := 0; i < 32; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				if b := bl.Pick(""); b != nil {
+					mu.Lock()
+					got = append(got, b)
+					mu.Unlock()
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		for _, b := range got {
+			if b == b0 {
+				onB0++
+			}
+		}
+		return onB0, got
+	}
+	time.Sleep(210 * time.Millisecond) // hết hạn eject
+	n, got := burst()
+	// Latency đo từ SAU Pick, như proxy (start := time.Now() sau Pick). Đo từ
+	// trước Pick thì request thử trông như request cũ và không ai giải half-open
+	// — bản đầu của test này mắc đúng chỗ đó.
+	t0 := time.Now()
+	t.Logf("hết hạn eject, 32 Pick cùng lúc: b0 nhận %d (state %s, probes %d)", n, b0.State(time.Now()), b0.probes.Load())
+	if n != 1 {
+		t.Fatalf("half-open phải cho đúng 1 request vào b0, được %d", n)
+	}
+	// Mọi request khác xong tốt; request thử trên b0 hỏng ⇒ open lại, eject 400 ms.
+	for _, b := range got {
+		bl.Done(b, time.Since(t0), b == b0)
+	}
+	if st := b0.State(time.Now()); st != "open" || b0.reopens.Load() != 1 {
+		t.Fatalf("thử hỏng phải open lại: state %s reopens %d", st, b0.reopens.Load())
+	}
+	left := time.Until(time.Unix(0, b0.ejectedUntil.Load()))
+	if left < 350*time.Millisecond || left > 400*time.Millisecond {
+		t.Fatalf("open lại còn %s, kỳ vọng ≈ 400 ms (backoff ×2)", left)
+	}
+	time.Sleep(left + 10*time.Millisecond)
+	n, got = burst()
+	t1 := time.Now()
+	if n != 1 {
+		t.Fatalf("half-open lần 2: b0 nhận %d", n)
+	}
+	for _, b := range got {
+		bl.Done(b, time.Since(t1), false) // b0 đã hồi phục
+	}
+	if st := b0.State(time.Now()); st != "closed" {
+		t.Fatalf("thử tốt phải closed: %s", st)
+	}
+	if n, _ = burst(); n < 6 {
+		t.Fatalf("closed rồi mà b0 chỉ nhận %d/32 (RR ⇒ 8)", n)
 	}
 }

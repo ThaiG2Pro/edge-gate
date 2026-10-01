@@ -37,11 +37,43 @@ type Backend struct {
 	ejectCount   int          // số lần eject (backoff mũ) — dưới Balancer.mu
 	lastEject    time.Time    // dưới Balancer.mu
 	ejections    atomic.Int64
+
+	// Phase 7 D5: circuit breaker 3 trạng thái trên outlier. closed ⇔
+	// ejectedUntil == 0; open ⇔ now < ejectedUntil; half-open ⇔ ejectedUntil ≠ 0
+	// ∧ now ≥ ejectedUntil. Ở half-open chỉ MỘT request được qua (probing CAS);
+	// probeAt = lúc nó được Pick — Done nhận ra nó vì chỉ nó bắt đầu ≥ probeAt
+	// (request cũ đang chạy từ trước khi eject đều bắt đầu sớm hơn).
+	probing atomic.Bool
+	probeAt time.Time // dưới Balancer.mu
+	probes  atomic.Int64
+	reopens atomic.Int64
+}
+
+// halfOpen: đã hết hạn eject nhưng chưa có request thử nào thành công.
+func (b *Backend) halfOpen(now time.Time) bool {
+	u := b.ejectedUntil.Load()
+	return breakerHalfOpen && u != 0 && now.UnixNano() >= u
+}
+
+// State: "closed" | "open" | "half-open" (stats, chaoslab).
+func (b *Backend) State(now time.Time) string {
+	u := b.ejectedUntil.Load()
+	switch {
+	case u != 0 && now.UnixNano() < u:
+		return "open"
+	case b.halfOpen(now):
+		return "half-open"
+	}
+	return "closed"
 }
 
 // available: dùng được ⇔ active health nói sống ∧ không đang bị eject (D8).
 func (b *Backend) available(now time.Time) bool {
-	return b.healthy.Load() && now.UnixNano() >= b.ejectedUntil.Load()
+	if !b.healthy.Load() || now.UnixNano() < b.ejectedUntil.Load() {
+		return false
+	}
+	// half-open: chỉ khi chưa ai giữ lượt thử. Pick giành lượt bằng CAS.
+	return !(b.halfOpen(now) && b.probing.Load())
 }
 
 // Inflight: số request đang gánh (test và stats).
@@ -57,6 +89,9 @@ type BackendStats struct {
 	EWMA      time.Duration // điểm EWMA hiện tại (đã decay tới lúc chụp)
 	Healthy   bool          // active
 	Ejected   bool          // passive
+	State     string        // breaker: closed | open | half-open (phase 7)
+	Probes    int64         // số request thử ở half-open
+	Reopens   int64         // half-open thử hỏng ⇒ open lại
 }
 
 func (b *Backend) stats(now time.Time) BackendStats {
@@ -64,5 +99,6 @@ func (b *Backend) stats(now time.Time) BackendStats {
 		Addr: b.Addr, Picks: b.picks.Load(), Inflight: b.inflight.Load(), Fails: b.fails.Load(),
 		Ejections: b.ejections.Load(), EWMA: time.Duration(b.ewma.score(now)),
 		Healthy: b.healthy.Load(), Ejected: now.UnixNano() < b.ejectedUntil.Load(),
+		State: b.State(now), Probes: b.probes.Load(), Reopens: b.reopens.Load(),
 	}
 }

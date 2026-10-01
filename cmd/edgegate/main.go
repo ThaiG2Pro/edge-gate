@@ -1,5 +1,6 @@
-// edgegate: reverse proxy L7 từ socket trần. Phase 3-6: phòng tuyến smuggling
-// + XFF trust, connection pool theo backend, load balancing + health.
+// edgegate: reverse proxy L7 từ socket trần. Phase 3-7: phòng tuyến smuggling
+// + XFF trust, connection pool theo backend, load balancing + health, rate
+// limit / shedding / retry budget / graceful drain (SIGTERM).
 package main
 
 import (
@@ -54,6 +55,21 @@ type fileConfig struct {
 			MaxEjectPercent int  `json:"max_eject_percent"`
 		} `json:"outlier"`
 	} `json:"lb"`
+	// Phase 7. Thiếu khối nào thì cơ chế đó tắt (rate_limit, shed) hoặc mặc định
+	// (retry_budget 10 %, drain 30 s).
+	RateLimit struct {
+		Rate    float64 `json:"rate"`
+		Burst   float64 `json:"burst"`
+		MaxKeys int     `json:"max_keys"`
+	} `json:"rate_limit"`
+	Shed struct {
+		MaxInflight    int `json:"max_inflight"`
+		MaxQueue       int `json:"max_queue"`
+		QueueTimeoutMs int `json:"queue_timeout_ms"`
+	} `json:"shed"`
+	RetryBudgetPercent float64 `json:"retry_budget_percent"`
+	DrainTimeoutMs     int     `json:"drain_timeout_ms"`
+	ReusePort          bool    `json:"reuse_port"`
 }
 
 func main() {
@@ -110,12 +126,28 @@ func main() {
 			Outlier: lb.OutlierConfig{Disabled: fc.LB.Outlier.Disabled, Consecutive: fc.LB.Outlier.Consecutive,
 				BaseEject: ms(fc.LB.Outlier.BaseEjectMs), MaxEject: ms(fc.LB.Outlier.MaxEjectMs), MaxEjectPercent: fc.LB.Outlier.MaxEjectPercent},
 		},
+		RateLimit:   proxy.RateLimitConfig{Rate: fc.RateLimit.Rate, Burst: fc.RateLimit.Burst, MaxKeys: fc.RateLimit.MaxKeys},
+		Shed:        proxy.ShedConfig{MaxInflight: fc.Shed.MaxInflight, MaxQueue: fc.Shed.MaxQueue, QueueTimeout: ms(fc.Shed.QueueTimeoutMs)},
+		RetryBudget: proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
+		ReusePort:   fc.ReusePort,
 	})
+	drainTO := ms(fc.DrainTimeoutMs)
+	if drainTO == 0 {
+		drainTO = 30 * time.Second
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	stopped := make(chan struct{})
 	go func() {
-		<-sig
+		defer close(stopped)
+		// D8: SIGTERM (rolling restart) ⇒ drain; SIGINT (Ctrl-C) ⇒ đóng ngay.
+		if s := <-sig; s == syscall.SIGTERM {
+			log.Printf("edgegate: SIGTERM ⇒ drain tối đa %s", drainTO)
+			forced := srv.Drain(drainTO)
+			log.Printf("edgegate: drain xong, %d connection bị đóng cưỡng bức", forced)
+			return
+		}
 		log.Print("edgegate: đóng")
 		srv.Close()
 	}()
@@ -126,6 +158,9 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+	// Serve trả về NGAY khi Drain đóng listener — thoát ở đây là giết các
+	// request đang drain. Chờ goroutine signal làm xong.
+	<-stopped
 }
 
 func ms(v int) time.Duration { return time.Duration(v) * time.Millisecond }

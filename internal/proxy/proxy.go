@@ -57,6 +57,19 @@ type Config struct {
 	// MaxIdleTime 30 s, probe bật. Pool.Disabled = hành vi phase 3-4.
 	Pool PoolConfig
 
+	// Phase 7. RateLimit (D4): token bucket per-IP sau ranh giới tin cậy;
+	// Rate 0 = tắt. Shed (D7): trần request đang chạy + hàng đợi có trần;
+	// MaxInflight 0 = tắt. RetryBudget (D6): luôn bật, zero value = 10 %.
+	RateLimit   RateLimitConfig
+	Shed        ShedConfig
+	RetryBudget RetryBudgetConfig
+	// MaxConns (D3): trần connection client toàn cục — Accept chờ khi đầy.
+	// 0 = không trần (mặc định). CHỈ để chứng minh G3: trần này chính là thứ
+	// Slowloris cần; shed theo request (Shed) mới là cách đúng.
+	MaxConns int
+	// ReusePort (D9): SO_REUSEPORT ở ListenAndServe — hai instance cùng port.
+	ReusePort bool
+
 	Logf func(format string, args ...any)
 }
 
@@ -128,8 +141,12 @@ type Server struct {
 	closed atomic.Bool
 
 	mu    sync.Mutex
-	conns map[net.Conn]struct{}
+	conns map[net.Conn]*connState
 	wg    sync.WaitGroup
+
+	// Phase 7: rate limit / shed / retry budget / trần connection (resilience.go).
+	res      resilience
+	draining atomic.Bool
 
 	// Phase 5-6: một pool cho mỗi backend (P5-3), tạo lười ở poolFor.
 	pmu   sync.Mutex
@@ -142,7 +159,8 @@ type Server struct {
 // cùng lý do với trusted_proxies.
 func New(cfg Config) *Server {
 	cfg.withDefaults()
-	s := &Server{cfg: cfg, conns: map[net.Conn]struct{}{}, pools: map[string]*pool{}}
+	s := &Server{cfg: cfg, conns: map[net.Conn]*connState{}, pools: map[string]*pool{}}
+	s.initResilience()
 	bl, err := lb.New(cfg.Upstreams, cfg.LB)
 	if err != nil {
 		panic("proxy: " + err.Error())
@@ -213,7 +231,7 @@ func (s *Server) PoolStatsFor(addr string) PoolStats {
 func (s *Server) LBStats() lb.Stats { return s.lb.Stats() }
 
 func (s *Server) ListenAndServe() error {
-	ln, err := net.Listen("tcp", s.cfg.Listen)
+	ln, err := Listen(s.cfg.Listen, s.cfg.ReusePort)
 	if err != nil {
 		return err
 	}
@@ -226,9 +244,18 @@ func (s *Server) Serve(ln net.Listener) error {
 	s.ln = ln
 	s.mu.Unlock()
 	for {
+		// D3: trần connection — giành chỗ TRƯỚC Accept. Đầy ⇒ không Accept ⇒
+		// connection mới nằm trong backlog kernel (client tưởng đã nối) rồi
+		// tràn backlog. Đây là hành vi worker-pool mà Slowloris cần (G3).
+		if s.res.connSem != nil {
+			s.res.connSem <- struct{}{}
+		}
 		c, err := ln.Accept()
 		if err != nil {
-			if s.closed.Load() {
+			if s.res.connSem != nil {
+				<-s.res.connSem
+			}
+			if s.closed.Load() || s.draining.Load() {
 				return nil
 			}
 			// EMFILE/ENFILE (hết fd) là lỗi tạm thời: đừng chết, lùi một nhịp.
@@ -242,13 +269,13 @@ func (s *Server) Serve(ln net.Listener) error {
 			}
 			return err
 		}
-		s.track(c)
+		st := s.track(c)
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
 			defer s.untrack(c)
 			defer c.Close()
-			s.serveConn(c)
+			s.serveConn(c, st)
 		}()
 	}
 }
@@ -271,9 +298,14 @@ func (s *Server) Close() error {
 	if s.ln != nil {
 		err = s.ln.Close()
 	}
-	for c := range s.conns {
+	for c, st := range s.conns {
 		c.Close()
+		if up := st.up.Load(); up != nil {
+			(*up).Close()
+		}
 	}
+	// Serve chặn ở "giành chỗ trước Accept" khi MaxConns đầy sẽ được nhả khi
+	// các handler vừa bị đóng ở trên chạy untrack — rồi Accept thấy listener đóng.
 	s.mu.Unlock()
 	s.wg.Wait()
 	s.lb.Close()
@@ -291,22 +323,38 @@ func (s *Server) Close() error {
 	return err
 }
 
-func (s *Server) track(c net.Conn) {
+// connState: trạng thái một connection client mà Drain cần đọc (D8).
+type connState struct {
+	idle atomic.Bool // đang chờ byte đầu của request kế (vòng keep-alive)
+	// up: connection upstream request hiện tại đang cầm (nil khi không có).
+	// Close đóng nó cùng connection client — không thì handler đang chờ
+	// upstream treo giữ Close (và Drain) tới UpstreamHeaderTimeout/BodyTimeout.
+	up atomic.Pointer[net.Conn]
+}
+
+func (s *Server) track(c net.Conn) *connState {
+	st := &connState{}
 	s.mu.Lock()
-	s.conns[c] = struct{}{}
+	s.conns[c] = st
 	s.mu.Unlock()
+	s.res.connsActive.Add(1)
+	return st
 }
 
 func (s *Server) untrack(c net.Conn) {
 	s.mu.Lock()
 	delete(s.conns, c)
 	s.mu.Unlock()
+	s.res.connsActive.Add(-1)
+	if s.res.connSem != nil {
+		<-s.res.connSem
+	}
 }
 
 // serveConn: vòng đời một connection client. Một *bufio.Reader cho cả đời
 // connection — byte của request N+1 có thể đã nằm trong buffer khi đang xử lý
 // request N, nên KHÔNG BAO GIỜ đọc trực tiếp từ c (bẫy #3).
-func (s *Server) serveConn(c net.Conn) {
+func (s *Server) serveConn(c net.Conn, st *connState) {
 	s.setNoDelay(c)
 	lim := s.cfg.Limits
 	br := bufio.NewReaderSize(c, 8<<10)
@@ -315,18 +363,29 @@ func (s *Server) serveConn(c net.Conn) {
 		// Rỗi: chờ byte đầu của request kế tiếp trong IdleTimeout. Hết hạn hay
 		// client đóng (io.EOF) đều là kết thúc bình thường, không trả gì.
 		c.SetReadDeadline(time.Now().Add(lim.IdleTimeout))
-		if _, err := br.Peek(1); err != nil {
+		// D8: đánh dấu rỗi RỒI mới đọc draining (cặp Dekker với Drain).
+		st.idle.Store(true)
+		if s.draining.Load() && br.Buffered() == 0 {
+			return
+		}
+		_, err := br.Peek(1)
+		st.idle.Store(false)
+		if err != nil {
 			return
 		}
 		// Có byte đầu: đồng hồ Slowloris bắt đầu. Toàn bộ head phải xong trong
 		// HeaderTimeout tính từ ĐÂY, không phải từ mỗi byte.
-		c.SetReadDeadline(time.Now().Add(lim.HeaderTimeout))
+		if headerTimeoutOn {
+			c.SetReadDeadline(time.Now().Add(lim.HeaderTimeout))
+		} else {
+			c.SetReadDeadline(time.Time{}) // nodefense7: Slowloris sống mãi (G2 b)
+		}
 		req, err := httpx.ReadRequest(br, lim)
 		if err != nil {
 			s.replyReadError(c, bw, err)
 			return
 		}
-		if !s.roundTrip(c, br, bw, req) {
+		if !s.roundTrip(c, st, br, bw, req) || s.draining.Load() {
 			return
 		}
 	}

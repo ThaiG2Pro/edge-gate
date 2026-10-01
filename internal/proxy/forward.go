@@ -22,7 +22,7 @@ import (
 // Phase 5: connection upstream lấy từ pool. Vòng for là D4 — retry ĐÚNG MỘT
 // lần, chỉ khi exchange báo "chưa có byte response nào và connection là đồ
 // dùng lại"; lần hai luôn dial mới.
-func (s *Server) roundTrip(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req *httpx.Request) bool {
+func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufio.Writer, req *httpx.Request) bool {
 	// --- 1. Head sang upstream --------------------------------------------
 	up := &httpx.Request{Method: req.Method, Target: req.Target, Proto: "HTTP/1.1", Header: req.Header.Clone()}
 	up.Header.StripHopByHop()
@@ -54,6 +54,16 @@ func (s *Server) roundTrip(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req *
 			key = v
 		}
 	}
+
+	// --- 1b. Phase 7: rate limit (D4) → shedding (D7) → budget retry (D6) -----
+	// Sau khi đọc xong head (conn Slowloris không bao giờ tới đây ⇒ không giành
+	// slot, G3), trước Pick (request bị từ chối không tốn gì của upstream).
+	ok, keep, release := s.admit(c, bw, req, clientIP)
+	if !ok {
+		return keep
+	}
+	defer release() // I7: slot trả trên MỌI đường ra
+	s.res.budget.Deposit(time.Now())
 
 	// --- 2. Chọn backend (phase 6) + connection upstream: pool hoặc dial ------
 	// attempt đếm số lần exchange trên CÙNG backend (D4 phase 5: retry một lần,
@@ -89,9 +99,10 @@ func (s *Server) roundTrip(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req *
 		if err != nil {
 			s.cfg.Logf("proxy: dial %s: %v", be.Addr, err)
 			s.lb.Done(be, time.Since(start), true)
-			if !repicked && attempt == 0 {
+			if !repicked && attempt == 0 && s.allowRetry() {
 				// D9: dial lỗi = chưa gửi byte nào ⇒ chọn backend khác đúng một
 				// lần, bất kể request có body (khác D4: body vẫn còn nguyên trong br).
+				// Phase 7 D6: chỉ khi còn retry budget.
 				repicked = true
 				attempt = -1
 				continue
@@ -101,13 +112,16 @@ func (s *Server) roundTrip(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req *
 			s.writeError(c, bw, 502, "không dial được upstream", keep)
 			return keep
 		}
+		st.up.Store(&pc.c) // Close cưỡng bức đóng được cả chiều upstream
 		keep, retry, upFail := s.exchange(c, bw, req, up, pc)
+		st.up.Store(nil)
 		if !retry {
 			s.lb.Done(be, time.Since(start), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
 			return keep
 		}
-		// D4 (a)(b)(c) đã thoả trong exchange. Chỉ một lần, cùng backend.
-		if attempt == 0 {
+		// D4 (a)(b)(c) đã thoả trong exchange. Chỉ một lần, cùng backend, và
+		// (phase 7 D6) chỉ khi còn retry budget — hết budget ⇒ 502 như lần hai.
+		if attempt == 0 && s.allowRetry() {
 			p.retries.Add(1)
 			s.cfg.Logf("proxy: %s đóng connection rỗi trước khi nhận request, retry một lần", be.Addr)
 			continue
@@ -223,7 +237,7 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 	// --- 5. Head + body về client -------------------------------------------
 	out := &httpx.Response{Proto: "HTTP/1.1", Status: resp.Status, Reason: resp.Reason, Header: resp.Header.Clone()}
 	out.Header.StripHopByHop()
-	closeClient := req.Close
+	closeClient := req.Close || s.draining.Load() // D8: đang drain ⇒ response này là cái cuối
 	const (
 		modeNone    = iota
 		modeCopy    // CL hoặc tới-EOF: chép nguyên

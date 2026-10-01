@@ -110,14 +110,29 @@ func (bl *Balancer) Close() {
 // Pick chọn backend cho request có khoá key (chỉ chash dùng) và tăng inflight
 // (D2: đếm theo request, từ ĐÂY). nil ⇒ không còn backend nào dùng được ⇒ 503.
 func (bl *Balancer) Pick(key string) *Backend {
-	b := bl.picker.Pick(bl.backends, time.Now(), key)
-	if b == nil {
-		bl.noAvailable.Add(1)
-		return nil
+	now := time.Now()
+	for try := 0; try < 3; try++ {
+		b := bl.picker.Pick(bl.backends, now, key)
+		if b == nil {
+			break
+		}
+		if b.halfOpen(now) {
+			// D5: giành lượt thử duy nhất. Thua CAS ⇒ có người vừa giành;
+			// available() giờ loại b ⇒ chọn lại.
+			if !b.probing.CompareAndSwap(false, true) {
+				continue
+			}
+			bl.mu.Lock()
+			b.probeAt = now
+			bl.mu.Unlock()
+			b.probes.Add(1)
+		}
+		b.inflight.Add(1)
+		b.picks.Add(1)
+		return b
 	}
-	b.inflight.Add(1)
-	b.picks.Add(1)
-	return b
+	bl.noAvailable.Add(1)
+	return nil
 }
 
 // Done: request trên b đã xong (exchange trả về — client đã nhận response VÀ
@@ -127,6 +142,9 @@ func (bl *Balancer) Done(b *Backend, latency time.Duration, failed bool) {
 	now := time.Now()
 	b.inflight.Add(-1)
 	b.ewma.observe(latency, now)
+	if b.probing.Load() && bl.resolveProbe(b, now.Add(-latency), failed, now) {
+		return
+	}
 	bl.recordOutcome(b, failed, now)
 }
 

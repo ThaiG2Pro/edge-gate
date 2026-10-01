@@ -4,6 +4,7 @@
 package fixture
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -143,16 +145,29 @@ func ListenAndServe(addr string) (string, func(), error) {
 	return ln.Addr().String(), func() { srv.Close() }, nil
 }
 
-// Sim bọc Handler() thành một backend "lệch" cho phase 6: ngủ Delay trước
-// mỗi response và trả 503 NGAY (không ngủ) với xác suất ErrRate. Cả hai đổi
-// được lúc chạy (atomic) để `cmd/lblab -flap` biến một node nhanh thành chậm
-// giữa bài. Chỉ dùng qua ListenAndServeSim — cmd/lblab không đụng net/http.
+// Sim bọc Handler() thành một backend "lệch" cho phase 6-7: ngủ Delay trước
+// mỗi response và trả 503 NGAY (không ngủ) với xác suất ErrRate. Mọi núm đổi
+// được lúc chạy (atomic) để lab biến một node nhanh thành chậm/hỏng giữa bài.
+// Chỉ dùng qua ListenAndServeSim / NewSimServer — các lab không đụng net/http.
+//
+// Phase 7 (D11) thêm ba núm:
+//   - SetConcurrency(n): tối đa n request xử lý cùng lúc, thừa thì XẾP HÀNG
+//     trong backend — capacity hữu hạn cho shedlab (G7). 0 = không trần.
+//   - SetHang(true): nhận request rồi không trả gì tới khi connection bị đóng
+//     (proxy hết UpstreamHeaderTimeout) — "sống mà treo" cho chaoslab.
+//   - SetDropReused(p): ở request thứ ≥ 2 trên CÙNG connection, với xác suất p
+//     đóng connection trước khi ghi byte nào — upstream quá tải đóng keep-alive,
+//     đúng ca proxy được retry (phase 5 D4) ⇒ đo khuếch đại retry (G6).
 type Sim struct {
 	Name        string
 	delayNs     atomic.Int64
 	errPermille atomic.Int64
+	dropPermil  atomic.Int64
+	hang        atomic.Bool
+	sem         atomic.Pointer[chan struct{}]
 	served      atomic.Int64
 	errors      atomic.Int64
+	dropped     atomic.Int64
 	h           http.Handler
 }
 
@@ -165,14 +180,52 @@ func NewSim(name string, delay time.Duration, errRate float64) *Sim {
 
 func (s *Sim) SetDelay(d time.Duration) { s.delayNs.Store(int64(d)) }
 func (s *Sim) SetErrRate(r float64)     { s.errPermille.Store(int64(r * 1000)) }
+func (s *Sim) SetDropReused(p float64)  { s.dropPermil.Store(int64(p * 1000)) }
+func (s *Sim) SetHang(h bool)           { s.hang.Store(h) }
 func (s *Sim) Delay() time.Duration     { return time.Duration(s.delayNs.Load()) }
 
-// Served, Errors: đếm phía backend — đối chiếu với picks phía balancer.
-func (s *Sim) Served() int64 { return s.served.Load() }
-func (s *Sim) Errors() int64 { return s.errors.Load() }
+// SetConcurrency: n ≤ 0 ⇒ bỏ trần. Request đang chờ trần cũ vẫn dùng trần cũ.
+func (s *Sim) SetConcurrency(n int) {
+	if n <= 0 {
+		s.sem.Store(nil)
+		return
+	}
+	c := make(chan struct{}, n)
+	s.sem.Store(&c)
+}
+
+// Served, Errors, Dropped: đếm phía backend — đối chiếu với số phía proxy.
+func (s *Sim) Served() int64  { return s.served.Load() }
+func (s *Sim) Errors() int64  { return s.errors.Load() }
+func (s *Sim) Dropped() int64 { return s.dropped.Load() }
+
+type connSeqKey struct{}
 
 func (s *Sim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.served.Add(1)
+	if p := s.dropPermil.Load(); p > 0 {
+		if seq, _ := r.Context().Value(connSeqKey{}).(*atomic.Int64); seq != nil && seq.Add(1) >= 2 && rand.Int64N(1000) < p {
+			if hj, ok := w.(http.Hijacker); ok {
+				if c, _, err := hj.Hijack(); err == nil {
+					s.dropped.Add(1)
+					c.Close() // 0 byte response
+					return
+				}
+			}
+		}
+	}
+	if s.hang.Load() {
+		<-r.Context().Done() // proxy đóng connection ⇒ context huỷ ⇒ không rò goroutine
+		return
+	}
+	if sp := s.sem.Load(); sp != nil {
+		select {
+		case *sp <- struct{}{}:
+			defer func() { <-*sp }()
+		case <-r.Context().Done():
+			return
+		}
+	}
 	if p := s.errPermille.Load(); p > 0 && rand.Int64N(1000) < p {
 		s.errors.Add(1)
 		// Lỗi NHANH: đây là điểm mù của least-conn (inflight thấp ≠ khoẻ).
@@ -187,13 +240,72 @@ func (s *Sim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.h.ServeHTTP(w, r)
 }
 
+func (s *Sim) server() *http.Server {
+	return &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second,
+		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
+			return context.WithValue(ctx, connSeqKey{}, new(atomic.Int64))
+		}}
+}
+
 // ListenAndServeSim: như ListenAndServe nhưng phục vụ sim.
 func ListenAndServeSim(addr string, sim *Sim) (string, func(), error) {
-	ln, err := net.Listen("tcp", addr)
+	ss, err := NewSimServer(addr, sim)
 	if err != nil {
 		return "", nil, err
 	}
-	srv := &http.Server{Handler: sim, ReadHeaderTimeout: 10 * time.Second}
-	go srv.Serve(ln)
-	return ln.Addr().String(), func() { srv.Close() }, nil
+	return ss.Addr, ss.Kill, nil
+}
+
+// SimServer: một Sim gắn một địa chỉ cố định, Kill/Revive được (D11) — đóng
+// listener + mọi connection, rồi mở lại ĐÚNG port đó (chaoslab, drainlab).
+type SimServer struct {
+	Sim  *Sim
+	Addr string
+	mu   sync.Mutex
+	srv  *http.Server
+}
+
+func NewSimServer(addr string, sim *Sim) (*SimServer, error) {
+	ss := &SimServer{Sim: sim}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	ss.Addr = ln.Addr().String()
+	ss.srv = sim.server()
+	go ss.srv.Serve(ln)
+	return ss, nil
+}
+
+// Kill: đóng listener và mọi connection đang mở. Gọi hai lần vô hại.
+func (ss *SimServer) Kill() {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	if ss.srv != nil {
+		ss.srv.Close()
+		ss.srv = nil
+	}
+}
+
+// Revive: mở lại cùng port. Đang sống ⇒ không làm gì.
+func (ss *SimServer) Revive() error {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	if ss.srv != nil {
+		return nil
+	}
+	ln, err := net.Listen("tcp", ss.Addr)
+	if err != nil {
+		return err
+	}
+	ss.srv = ss.Sim.server()
+	go ss.srv.Serve(ln)
+	return nil
+}
+
+// Alive: đang lắng nghe không.
+func (ss *SimServer) Alive() bool {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	return ss.srv != nil
 }

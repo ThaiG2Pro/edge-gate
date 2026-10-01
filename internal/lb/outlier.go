@@ -83,6 +83,31 @@ func (bl *Balancer) tryEject(b *Backend, now time.Time) {
 	}
 	b.lastEject = now
 	b.ejectedUntil.Store(now.Add(d).UnixNano())
+	b.probing.Store(false) // lượt thử cũ (nếu có) không còn là lượt thử
 	b.ejections.Add(1)
 	bl.cfg.Logf("lb: eject %s trong %s (lần %d)", b.Addr, d, b.ejectCount)
+}
+
+// resolveProbe (D5): Done của request bắt đầu lúc start trên b đang half-open.
+// Chỉ request thử (start ≥ probeAt) quyết trạng thái: tốt ⇒ closed; hỏng ⇒
+// open lại với backoff kế tiếp (không chờ đủ Consecutive lỗi — một lần thử
+// hỏng là đủ). Backoff KHÔNG reset khi closed: giữ luật phase 6 (yên quá
+// 2×MaxEject mới về Base), để node chập chờn không được thử lại ở Base mãi.
+// Trả false ⇒ không phải request thử, xử lý như thường.
+func (bl *Balancer) resolveProbe(b *Backend, start time.Time, failed bool, now time.Time) bool {
+	bl.mu.Lock()
+	isProbe := !start.Before(b.probeAt)
+	bl.mu.Unlock()
+	if !isProbe || !b.probing.CompareAndSwap(true, false) {
+		return false
+	}
+	if failed {
+		b.fails.Add(1)
+		b.reopens.Add(1)
+		bl.tryEject(b, now)
+		return true
+	}
+	b.consecFails.Store(0)
+	b.ejectedUntil.Store(0)
+	return true
 }

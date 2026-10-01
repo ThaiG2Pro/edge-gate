@@ -1,0 +1,13 @@
+$ make breakerlab-nodefense
+--- FAIL: TestBreakerHalfOpen (0.21s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 8 (state closed, probes 0)
+    lb_test.go:420: half-open phải cho đúng 1 request vào b0, được 8
+exit=0
+$ make ratelab-nodefense
+ip-that        mỗi IP 200: min 254 max 258 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 500 / 500 (kỳ vọng 260 ± 5 %), 429 = 0
+FAIL: rate limit per-IP sai (ngoài ± 5 %) hoặc XFF giả lọt qua ranh giới tin cậy
+--- FAIL: TestLimiterMemory (1.54s)
+    limit_test.go:85: 1e6 khoá: giữ 1000000 khoá, đuổi 0, heap tăng 144.7 MiB (152 B/khoá giữ)
+    limit_test.go:88: heap tăng 144.7 MiB > 5 MiB — map per-IP không trần là rò rỉ attacker điều khiển được
+exit=0

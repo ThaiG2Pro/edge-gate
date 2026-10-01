@@ -7,7 +7,7 @@
 	smugglelab smugglelab-nodefense \
 	poollab poollab-rtt poollab-nodefense \
 	lblab lblab-skew lblab-flap lblab-recover lblab-nodefense \
-	chaoslab slowlab ratelab \
+	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab \
 	perflab bench-vs-nginx epolllab \
 	rtt-up rtt-down
@@ -259,18 +259,54 @@ lblab-nodefense:
 # ---------------------------------------------------------------------------
 # Phase 7: resiliency
 # ---------------------------------------------------------------------------
+# G1: bảy deadline, mỗi cái fire đúng status / đúng thời điểm.
+deadlinelab:
+	go test ./internal/proxy -run 'TestDeadline' -count=1 -v
+
+# G2 (a) + G3: Slowloris 500 conn × 1 byte/10 s từ 127.0.0.2, probe 50 rps từ 127.0.0.1.
 slowlab:
-	go run ./cmd/slowlab -conns 500 -byte-every 10s -probe
+	go run ./cmd/slowlab -conns 500 -byte-every 10s
+	go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns 256
+	go run ./cmd/slowlab -conns 500 -byte-every 10s -max-inflight 64
 
+# G2 (b): tắt HeaderTimeout — probe vẫn sống (không worker pool), connection sống mãi.
+# G3 (a): + MaxConns 256 ⇒ chết. Không có '!' : đây là đo, không phải phản chứng.
+slowlab-nodefense:
+	go run -tags nodefense7 ./cmd/slowlab -conns 500 -byte-every 10s
+	go run -tags nodefense7 ./cmd/slowlab -conns 500 -byte-every 10s -max-conns 256
+
+# G4: 20 IP × 100 rps, bucket 50/s burst 10; spoof XFF từ peer không tin PHẢI bị chặn.
 ratelab:
-	go run ./cmd/ratelab -ips 100 -rate 50 -burst 10
-	@echo "== và thử bypass bằng header giả: PHẢI bị chặn =="
-	go run ./cmd/ratelab -spoof-xff
+	go run ./cmd/ratelab -ips 20 -rate 50 -burst 10 -per-ip 100 -duration 5s
+	go test ./internal/limit -run TestLimiterMemory -count=1 -v
 
+# Phản chứng G4: khoá = XFF thô ⇒ spoof lọt; map không trần ⇒ heap phình. PHẢI đỏ.
+ratelab-nodefense:
+	! go run -tags nodefense7 ./cmd/ratelab -ips 20 -rate 50 -burst 10 -per-ip 100 -duration 5s
+	! go test ./internal/limit -run TestLimiterMemory -count=1 -tags nodefense7
+
+# Phản chứng G5: không half-open ⇒ cả loạt request rơi vào node vừa hết hạn eject. PHẢI đỏ.
+breakerlab-nodefense:
+	! go test ./internal/lb -run TestBreakerHalfOpen -count=1 -tags nodefense7
+
+# G6: khuếch đại retry. Thường (budget 10 %) rồi retry mù (nodefense7).
+retrylab:
+	go run ./cmd/chaoslab -scenario retry -duration 10s -rate 1000 -drop 0.5
+	go run -tags nodefense7 ./cmd/chaoslab -scenario retry -duration 10s -rate 1000 -drop 0.5
+
+# G7: 2x capacity open-loop, không shed vs shed.
+shedlab:
+	go run ./cmd/shedlab -x 2 -duration 10s
+
+# G8: 20 rolling restart qua SO_REUSEPORT, không retry vs client retry khi 0 byte.
+drainlab:
+	go run ./cmd/drainlab -restarts 20 -every 500ms
+
+# G9: test quyết định. Thoát mã 1 nếu invariant vỡ.
 chaoslab:
-	go run ./cmd/chaoslab -duration 60s -kill -slow -flap
-	@echo "== invariant: goroutine và connection phải về mức nền =="
-	ss -tan | grep -c ESTAB
+	go run ./cmd/chaoslab -duration 60s -rate 500 -tick 300ms
+	@echo "== ESTAB còn lại trên máy (chỉ để đối chiếu; chaoslab đã đếm fd của chính nó) =="
+	-ss -tan | grep -c ESTAB
 
 # ---------------------------------------------------------------------------
 # Phase 8: TLS + SNI
