@@ -1,0 +1,42 @@
+
+Thu Oct  1 11:16:44 +07 2026
+ 11:16:44 up  1:51,  1 user,  load average: 3.15, 5.25, 5.59
+$ ./bin/tlslab -mode upstream -n 500   # RTT 0, lượt 1
+RTT đo (TCP connect trơn tới upstream, median 21): 158µs
+
+upstream       pool          p50       mean    dials   (client keep-alive một connection, tuần tự 500 request)
+plain          false       553µs      604µs      500
+plain          true        273µs      290µs        1
+tls            false     1.694ms    1.766ms      500
+tls            true        285µs      320µs        1
+tiết kiệm của pool, upstream plain: 314µs / request = 1.99 RTT
+tiết kiệm của pool, upstream tls  : 1.446ms / request = 9.17 RTT
+tỉ số tiết kiệm tls / plain: 4.61x
+
+Thu Oct  1 11:16:46 +07 2026
+ 11:16:46 up  1:51,  1 user,  load average: 3.15, 5.25, 5.59
+$ ./bin/tlslab -mode upstream -n 500   # RTT 0, lượt 2
+RTT đo (TCP connect trơn tới upstream, median 21): 75µs
+
+upstream       pool          p50       mean    dials   (client keep-alive một connection, tuần tự 500 request)
+plain          false       676µs      716µs      500
+plain          true        274µs      277µs        1
+tls            false     1.919ms    2.017ms      500
+tls            true        274µs      301µs        1
+tiết kiệm của pool, upstream plain: 439µs / request = 5.87 RTT
+tiết kiệm của pool, upstream tls  : 1.716ms / request = 22.98 RTT
+tỉ số tiết kiệm tls / plain: 3.91x
+
+Thu Oct  1 11:16:47 +07 2026
+ 11:16:47 up  1:51,  1 user,  load average: 3.14, 5.21, 5.58
+$ ./bin/tlslab -mode upstream -n 500   # RTT 0, lượt 3
+RTT đo (TCP connect trơn tới upstream, median 21): 183µs
+
+upstream       pool          p50       mean    dials   (client keep-alive một connection, tuần tự 500 request)
+plain          false       996µs    1.082ms      500
+plain          true        285µs      366µs        1
+tls            false     3.269ms    3.392ms      500
+tls            true        256µs      415µs        1
+tiết kiệm của pool, upstream plain: 716µs / request = 3.91 RTT
+tiết kiệm của pool, upstream tls  : 2.977ms / request = 16.25 RTT
+tỉ số tiết kiệm tls / plain: 4.16x

@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/thaivro/edgegate/internal/fixture"
@@ -38,19 +39,33 @@ import (
 
 var noHealth = lb.Config{Health: lb.HealthConfig{Disabled: true}}
 
+// kex: CurvePreferences của client (nil = mặc định Go). Server chọn trong cái
+// client đề nghị, nên đặt ở client là đủ quyết key exchange của cả hai phía.
+var kex []tls.CurveID
+
 func main() {
 	mode := flag.String("mode", "handshake", "handshake | rtt | upstream | reload")
 	n := flag.Int("n", 500, "số lần đo mỗi biến thể")
 	conns := flag.Int("conns", 64, "reload: số connection keep-alive")
 	dur := flag.Duration("duration", 10*time.Second, "reload: thời gian")
 	every := flag.Duration("every", 100*time.Millisecond, "reload: khoảng giữa hai lần reload")
+	kexFlag := flag.String("kex", "default", "key exchange phía client: default (Go 1.26: có X25519MLKEM768 lai hậu lượng tử) | x25519 | p256")
 	flag.Parse()
+	switch *kexFlag {
+	case "x25519":
+		kex = []tls.CurveID{tls.X25519}
+	case "p256":
+		kex = []tls.CurveID{tls.CurveP256}
+	case "default":
+	default:
+		fatal(fmt.Errorf("kex %q", *kexFlag))
+	}
 
 	ca, err := tlsx.NewCA()
 	if err != nil {
 		fatal(err)
 	}
-	fmt.Printf("tlslab: mode=%s n=%d\n", *mode, *n)
+	fmt.Printf("tlslab: mode=%s n=%d kex=%s\n", *mode, *n, *kexFlag)
 	fmt.Println("  (loopback; proxy + upstream + client cùng tiến trình ⇒ thời gian handshake là CPU hai phía cộng lại; không ghim core)")
 	switch *mode {
 	case "handshake":
@@ -134,7 +149,7 @@ var variants = []variant{
 }
 
 func clientCfg(ca *tlsx.CA, v variant) *tls.Config {
-	cfg := &tls.Config{ServerName: "a.test", RootCAs: ca.Pool, MaxVersion: v.maxVer, NextProtos: []string{"http/1.1"}}
+	cfg := &tls.Config{ServerName: "a.test", RootCAs: ca.Pool, MaxVersion: v.maxVer, NextProtos: []string{"http/1.1"}, CurvePreferences: kex}
 	if v.resumed {
 		cfg.ClientSessionCache = tls.NewLRUClientSessionCache(8)
 	}
@@ -164,7 +179,7 @@ func handshake(ca *tlsx.CA, n int) {
 		defer s.Close()
 		stores[kt] = addr
 	}
-	fmt.Printf("\n%-20s %9s %9s %9s %9s   %s\n", "handshake (tuần tự)", "p50", "p90", "p99", "mean", "resumed / n")
+	fmt.Printf("\n%-20s %9s %9s %9s %9s %10s   %s\n", "handshake (tuần tự)", "p50", "p90", "p99", "mean", "CPU/hs", "resumed / n")
 	for _, v := range variants {
 		addr := stores[v.kt]
 		cfg := clientCfg(ca, v)
@@ -173,6 +188,8 @@ func handshake(ca *tlsx.CA, n int) {
 		}
 		var ds []time.Duration
 		resumed := 0
+		lastCurve := ""
+		cpu0 := cpuNow()
 		for i := 0; i < n; i++ {
 			t0 := time.Now()
 			c, err := tls.Dial("tcp", addr, cfg)
@@ -180,16 +197,18 @@ func handshake(ca *tlsx.CA, n int) {
 				fatal(fmt.Errorf("%s: %w", v.name, err))
 			}
 			ds = append(ds, time.Since(t0))
+			lastCurve = c.ConnectionState().CurveID.String()
 			if c.ConnectionState().DidResume {
 				resumed++
 			}
-			if v.resumed {
-				get(c, bufio.NewReader(c)) // nhận ticket mới cho lần sau
-			}
+			// Không GET: client dùng lại ticket đã có trong cache (prime). Bản đầu
+			// GET mỗi lần để nhận ticket mới ⇒ CPU của GET cộng vào cột resumed ⇒
+			// resumed trông đắt hơn full. Cột "resumed / n" kiểm ticket cũ vẫn dùng được.
 			c.Close()
 		}
+		cpu := (cpuNow() - cpu0) / time.Duration(n)
 		p := pcts(ds)
-		fmt.Printf("%-20s %9s %9s %9s %9s   %d / %d\n", v.name, rd(p[0]), rd(p[1]), rd(p[2]), rd(p[3]), resumed, n)
+		fmt.Printf("%-20s %9s %9s %9s %9s %10s   %d / %d  %s\n", v.name, rd(p[0]), rd(p[1]), rd(p[2]), rd(p[3]), rd(cpu), resumed, n, lastCurve)
 	}
 
 	// rps "mỗi request một connection mới": TLS (ECDSA 1.3 full) vs plaintext.
@@ -432,6 +451,15 @@ func pcts(ds []time.Duration) [4]time.Duration {
 	}
 	at := func(p float64) time.Duration { return s[int(float64(len(s)-1)*p)] }
 	return [4]time.Duration{at(.5), at(.9), at(.99), sum / time.Duration(len(s))}
+}
+
+// cpuNow: CPU user+sys của cả tiến trình (client + proxy cùng tiến trình ⇒
+// tổng hai phía handshake). Ít nhạy với tải máy hơn wall-time (G6).
+// Lượt resumed có thêm một GET mỗi lần (để nhận ticket) — CPU của nó cộng vào.
+func cpuNow() time.Duration {
+	var ru syscall.Rusage
+	syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
+	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
 }
 
 func rd(d time.Duration) string { return d.Round(time.Microsecond).String() }

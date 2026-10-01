@@ -38,3 +38,24 @@
 - (7) `-race` toàn bộ lần hai: `TestIdleClosedUpstream/probe-*` đỏ (DeadOnProbe 41/50; POST 43/50). Chạy riêng
   5/5 xanh, worktree commit nền `46cd0f3` 5/5 xanh ⇒ timing của test (3 ms chờ FIN) dưới load 6.8; nới 20 ms.
   Lần ba: xanh hết.
+
+## §2 Turn 2 — 2026-10-01 11:08 → 11:36
+
+- 11:08 `sudo -n true` ⇒ cần mật khẩu ⇒ phần netem phải nhờ người dùng. `go doc crypto/tls.Config.CurvePreferences`:
+  "From Go 1.24, the default includes the X25519MLKEM768 hybrid post-quantum key exchange" — nghi phạm của tín hiệu
+  turn 1 (1.3 chậm hơn 1.2). Thêm `-kex` + cột curve vào tlslab.
+- 11:09 G1-G5/G8 ×3 + nodefense (`bench/p8-tests.txt`): xanh / đỏ đúng dòng.
+- 11:10-11:11 handshake 4 lượt wall-time (`-handshake.txt`): load 7.5-10.2, cùng biến thể lệch 40 % ⇒ `ps`: codegraph,
+  pytest + next-server của project khác. Thêm cột CPU/hs (`getrusage`).
+- 11:12 4 lượt CPU (`-cpu.txt`): vẫn trôi, và **resumed đắt hơn full** ở vài dòng — vì lượt resumed GET mỗi lần để
+  lấy ticket mới. Bỏ GET (ticket cũ dùng lại được: 1000/1000 resumed). 11:13-11:15 3 lượt × 2 kex n = 1000 (`-cpu2.txt`).
+  Chỉ chấm tỉ số cùng lượt.
+- 11:15 microbench từng phép (`taskset -c 5`): X25519 222-230 µs, ML-KEM-768 240-260 µs, ECDSA s+v 221-241 µs, RSA s+v
+  1.33-1.63 ms ⇒ mật mã ≈ 20-30 % CPU handshake. Chuyển vào `internal/tlsx/kex_bench_test.go` để reproduce được.
+- 11:16 `make tlslab` (curl) — đúng hết; G8 RTT 0 ×3; mode rtt ở RTT 0 (vô nghĩa khi chia RTT: CPU áp đảo — chỉ là mốc).
+- 11:17 hỏi người dùng về netem (ảnh hưởng mọi traffic loopback của máy, cả session khác). Người dùng tự bật
+  `delay 10ms`. 11:21-11:22 ping 20.1-22.1 ms; rtt ×2, upstream ×2 (`-rtt20.txt`). Báo tháo ngay; người dùng tháo,
+  11:35 kiểm lại: `noqueue`, ping 0.037 ms.
+- 11:35 G4 dưới tải: 96 reload / 64 conn / 10 s, 98 151 request, 0 lỗi.
+- G7 đọc lần đầu: "plaintext 3 RTT, sai" — rồi thấy mọi ô +1 đúng bằng nhau ⇒ chặng proxy → upstream qua `lo` cũng
+  bị delay; hiệu số khớp đăng ký từng ô.

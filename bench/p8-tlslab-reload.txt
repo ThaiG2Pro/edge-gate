@@ -1,0 +1,5 @@
+Thu Oct  1 11:35:14 +07 2026
+ 11:35:14 up  2:10,  1 user,  load average: 1.49, 1.68, 3.05
+$ ./bin/tlslab -mode reload -conns 64 -duration 10s -every 100ms
+reload: 96 lần trong 10s dưới 64 connection: 98151 request ok, 0 lỗi, 1993 handshake mới; serial cuối 196
+exit=0

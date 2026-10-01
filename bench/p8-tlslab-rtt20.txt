@@ -1,0 +1,46 @@
+Thu Oct  1 11:21:52 +07 2026
+ 11:21:52 up  1:56,  1 user,  load average: 3.42, 3.94, 4.91
+$ tc qdisc show dev lo
+qdisc netem 8001: root refcnt 2 limit 1000 delay 10ms
+$ ping -c 10 -i 0.2 127.0.0.1 | tail -1
+rtt min/avg/max/mdev = 20.110/20.375/22.091/0.573 ms
+
+$ ./bin/tlslab -mode rtt -n 30
+RTT đo (TCP connect trơn, median 21): 20.353ms
+
+biến thể                    p50    ÷ RTT   (tới byte đầu response trên connection MỚI; median 30 lần)
+plaintext              61.827ms     3.04
+ecdsa-1.3-full         83.593ms     4.11
+ecdsa-1.3-resumed      83.733ms     4.11
+ecdsa-1.2-full        107.569ms     5.29
+ecdsa-1.2-resumed      83.819ms     4.12
+
+$ ./bin/tlslab -mode upstream -n 50
+RTT đo (TCP connect trơn tới upstream, median 21): 20.388ms
+
+upstream       pool          p50       mean    dials   (client keep-alive một connection, tuần tự 50 request)
+plain          false    61.321ms   61.447ms       50
+plain          true     41.078ms   41.585ms        1
+tls            false    83.026ms   83.414ms       50
+tls            true     41.086ms   42.028ms        1
+tiết kiệm của pool, upstream plain: 19.863ms / request = 0.97 RTT
+tiết kiệm của pool, upstream tls  : 41.386ms / request = 2.03 RTT
+tỉ số tiết kiệm tls / plain: 2.08x
+
+Thu Oct  1 11:22:36 +07 2026
+$ ./bin/tlslab -mode rtt -n 30   # lượt 2
+RTT đo (TCP connect trơn, median 21): 20.518ms
+
+biến thể                    p50    ÷ RTT   (tới byte đầu response trên connection MỚI; median 30 lần)
+plaintext              61.959ms     3.02
+ecdsa-1.3-full         84.099ms     4.10
+ecdsa-1.3-resumed      86.232ms     4.20
+ecdsa-1.2-full        110.319ms     5.38
+ecdsa-1.2-resumed      85.769ms     4.18
+$ ./bin/tlslab -mode upstream -n 50   # lượt 2
+RTT đo (TCP connect trơn tới upstream, median 21): 20.83ms
+tiết kiệm của pool, upstream plain: 24.466ms / request = 1.17 RTT
+tiết kiệm của pool, upstream tls  : 44.576ms / request = 2.14 RTT
+tỉ số tiết kiệm tls / plain: 1.82x
+$ ping -c 5 -i 0.2 127.0.0.1 | tail -1
+rtt min/avg/max/mdev = 20.231/20.655/21.188/0.389 ms

@@ -1,0 +1,56 @@
+Thu Oct  1 11:09:25 +07 2026
+ 11:09:25 up  1:44,  1 user,  load average: 5.55, 5.84, 5.47
+$ go test ./internal/proxy -run TestTLS -count=3 -v
+    phase8_test.go:119: 1000 request xen kẽ SNI a/b: lệch 0; sim A 500, B 500
+    phase8_test.go:129: SNI lạ: remote error: tls: internal error; không SNI: remote error: tls: internal error; handshake hỏng phía proxy 3
+--- PASS: TestTLSSNIRouting (0.73s)
+    phase8_test.go:146: SNI a.test, Host b.test: 421 (X-Sim ""), B phục vụ 0
+--- PASS: TestTLSDomainFronting (0.03s)
+    phase8_test.go:164: chỉ h2: remote error: tls: no application protocol
+--- PASS: TestTLSALPN (0.02s)
+    phase8_test.go:237: 20 reload dưới 32 connection: 3677 request ok, 0 lỗi; serial đầu 1001, connection cũ 1001, mới nhất 1041, connection mới thấy 1041
+--- PASS: TestTLSHotReload (1.63s)
+    phase8_test.go:273: ClientHello nhỏ giọt: proxy đóng sau 302ms (gửi 2 byte)
+--- PASS: TestTLSHandshakeTimeout (0.32s)
+    phase8_test.go:318: (a) 20 request liền: {Dials:1 Reuses:19 Puts:19 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+    phase8_test.go:319: (b) +20 request cách 100 ms, upstream idle 50 ms: {Dials:21 Reuses:19 Puts:39 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:20 Idle:0}
+--- PASS: TestTLSUpstreamProbe (2.29s)
+    phase8_test.go:119: 1000 request xen kẽ SNI a/b: lệch 0; sim A 500, B 500
+    phase8_test.go:129: SNI lạ: remote error: tls: internal error; không SNI: remote error: tls: internal error; handshake hỏng phía proxy 3
+--- PASS: TestTLSSNIRouting (1.47s)
+    phase8_test.go:146: SNI a.test, Host b.test: 421 (X-Sim ""), B phục vụ 0
+--- PASS: TestTLSDomainFronting (0.02s)
+    phase8_test.go:164: chỉ h2: remote error: tls: no application protocol
+--- PASS: TestTLSALPN (0.07s)
+    phase8_test.go:237: 20 reload dưới 32 connection: 1964 request ok, 0 lỗi; serial đầu 1001, connection cũ 1001, mới nhất 1041, connection mới thấy 1041
+--- PASS: TestTLSHotReload (2.38s)
+    phase8_test.go:273: ClientHello nhỏ giọt: proxy đóng sau 302ms (gửi 2 byte)
+--- PASS: TestTLSHandshakeTimeout (0.32s)
+    phase8_test.go:318: (a) 20 request liền: {Dials:1 Reuses:19 Puts:20 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+    phase8_test.go:319: (b) +20 request cách 100 ms, upstream idle 50 ms: {Dials:21 Reuses:19 Puts:40 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:20 Idle:1}
+--- PASS: TestTLSUpstreamProbe (2.30s)
+    phase8_test.go:119: 1000 request xen kẽ SNI a/b: lệch 0; sim A 500, B 500
+    phase8_test.go:129: SNI lạ: remote error: tls: internal error; không SNI: remote error: tls: internal error; handshake hỏng phía proxy 3
+--- PASS: TestTLSSNIRouting (0.59s)
+    phase8_test.go:146: SNI a.test, Host b.test: 421 (X-Sim ""), B phục vụ 0
+--- PASS: TestTLSDomainFronting (0.02s)
+    phase8_test.go:164: chỉ h2: remote error: tls: no application protocol
+--- PASS: TestTLSALPN (0.03s)
+    phase8_test.go:237: 20 reload dưới 32 connection: 3503 request ok, 0 lỗi; serial đầu 1001, connection cũ 1001, mới nhất 1041, connection mới thấy 1041
+--- PASS: TestTLSHotReload (1.75s)
+    phase8_test.go:273: ClientHello nhỏ giọt: proxy đóng sau 302ms (gửi 2 byte)
+--- PASS: TestTLSHandshakeTimeout (0.31s)
+    phase8_test.go:318: (a) 20 request liền: {Dials:1 Reuses:19 Puts:20 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+    phase8_test.go:319: (b) +20 request cách 100 ms, upstream idle 50 ms: {Dials:21 Reuses:19 Puts:40 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:20 Idle:1}
+--- PASS: TestTLSUpstreamProbe (2.18s)
+ok  	github.com/thaivro/edgegate/internal/proxy	16.472s
+$ make tlslab-nodefense
+    phase8_test.go:146: SNI a.test, Host b.test: 200 (X-Sim "B"), B phục vụ 1
+    phase8_test.go:148: domain fronting phải 421 và B nhận 0
+--- FAIL: TestTLSDomainFronting (0.02s)
+    phase8_test.go:273: ClientHello nhỏ giọt: proxy đóng sau 2.001s (gửi 19 byte)
+    phase8_test.go:275: muốn đóng sau ≈ HandshakeTimeout 300 ms
+--- FAIL: TestTLSHandshakeTimeout (2.00s)
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	2.034s
+FAIL

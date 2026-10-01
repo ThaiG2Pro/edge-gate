@@ -1,0 +1,25 @@
+Thu Oct  1 11:16:24 +07 2026
+ 11:16:24 up  1:51,  1 user,  load average: 3.09, 5.39, 5.64
+$ make tlslab   # phần curl
+bin/certs/a.test.crt bin/certs/a.test.key (serial 1)
+bin/certs/b.test.crt bin/certs/b.test.key (serial 2)
+bin/certs/ca.crt
+== G1: SNI a.test → A, b.test → B ==
+curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 https://a.test:8443/hello -o /dev/null -w '%{http_code} %{header_json}\n' | grep -o '^[0-9]* \|"x-upstream":\["[AB]"\]' | tr -d '\n'; echo
+200 "x-upstream":["A"]
+curl -sS --cacert bin/certs/ca.crt --resolve b.test:8443:127.0.0.1 https://b.test:8443/hello -o /dev/null -w '%{http_code} %{header_json}\n' | grep -o '^[0-9]* \|"x-upstream":\["[AB]"\]' | tr -d '\n'; echo
+200 "x-upstream":["B"]
+== G1: SNI lạ c.test ⇒ handshake hỏng ==
+curl -sS --cacert bin/certs/ca.crt --resolve c.test:8443:127.0.0.1 https://c.test:8443/hello
+curl: (35) OpenSSL/3.0.13: error:0A000438:SSL routines::tlsv1 alert internal error
+== G2: SNI a.test + Host: b.test ⇒ 421 ==
+curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 -H 'Host: b.test' https://a.test:8443/hello -o /dev/null -w '%{http_code}\n'
+421
+== G3: ALPN (curl đề nghị h2,http/1.1) ==
+curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 --http2 https://a.test:8443/hello -o /dev/null -w 'http_version=%{http_version}\n'
+http_version=1.1
+== G4: cert mới + SIGHUP ⇒ log serial mới, curl vẫn chạy ==
+curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 https://a.test:8443/hello -o /dev/null -w '%{http_code} (CA mới)\n'
+200 (CA mới)
+2026/10/01 11:16:25 edgegate: TLS 127.0.0.1:8443, 2 vhost, serial [1 2]
+2026/10/01 11:16:27 edgegate: SIGHUP reload xong, serial [100 101]

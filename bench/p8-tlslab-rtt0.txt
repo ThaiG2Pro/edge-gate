@@ -1,0 +1,11 @@
+Thu Oct  1 11:17:02 +07 2026
+ 11:17:02 up  1:52,  1 user,  load average: 3.59, 5.20, 5.57
+$ ./bin/tlslab -mode rtt -n 50   # RTT 0 (mốc)
+RTT đo (TCP connect trơn, median 21): 331µs
+
+biến thể                    p50    ÷ RTT   (tới byte đầu response trên connection MỚI; median 50 lần)
+plaintext               4.307ms    12.99
+ecdsa-1.3-full          6.814ms    20.56
+ecdsa-1.3-resumed       5.577ms    16.83
+ecdsa-1.2-full          3.018ms     9.11
+ecdsa-1.2-resumed       1.611ms     4.86

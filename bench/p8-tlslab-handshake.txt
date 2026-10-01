@@ -1,0 +1,64 @@
+
+Thu Oct  1 11:09:57 +07 2026
+ 11:09:57 up  1:44,  1 user,  load average: 7.52, 6.32, 5.64
+$ ./bin/tlslab -mode handshake -n 500 -kex default
+handshake (tuần tự)        p50       p90       p99      mean   resumed / n
+ecdsa-1.3-full         4.018ms   8.467ms  15.302ms   4.588ms   0 / 500  X25519MLKEM768
+ecdsa-1.3-resumed      2.917ms   5.884ms   9.821ms   3.264ms   500 / 500  X25519MLKEM768
+ecdsa-1.2-full         2.641ms   3.897ms   7.028ms   2.628ms   0 / 500  X25519
+ecdsa-1.2-resumed      1.013ms   1.708ms   3.348ms   1.106ms   500 / 500  X25519
+rsa-1.3-full           9.171ms   14.61ms  27.829ms   9.585ms   0 / 500  X25519MLKEM768
+rsa-1.3-resumed        3.333ms   6.883ms  10.826ms   3.753ms   500 / 500  X25519MLKEM768
+
+conn mới / request         rps       p50
+plaintext                  713   1.103ms
+tls-ecdsa-1.3              207   4.801ms
+tls-rsa-1.3                 91  10.363ms
+
+Thu Oct  1 11:10:20 +07 2026
+ 11:10:20 up  1:45,  1 user,  load average: 8.31, 6.57, 5.74
+$ ./bin/tlslab -mode handshake -n 500 -kex x25519
+handshake (tuần tự)        p50       p90       p99      mean   resumed / n
+ecdsa-1.3-full         3.442ms   6.939ms  12.059ms   3.994ms   0 / 500  X25519
+ecdsa-1.3-resumed      2.338ms   5.541ms  11.235ms   2.949ms   500 / 500  X25519
+ecdsa-1.2-full         3.549ms   8.286ms   17.18ms   4.565ms   0 / 500  X25519
+ecdsa-1.2-resumed        998µs   2.381ms   6.962ms   1.332ms   500 / 500  X25519
+rsa-1.3-full           4.734ms  11.463ms  18.886ms   6.206ms   0 / 500  X25519
+rsa-1.3-resumed        2.169ms   5.331ms   9.647ms   2.697ms   500 / 500  X25519
+
+conn mới / request         rps       p50
+plaintext                  785     618µs
+tls-ecdsa-1.3              160   4.854ms
+tls-rsa-1.3                126   6.679ms
+
+Thu Oct  1 11:10:42 +07 2026
+ 11:10:42 up  1:45,  1 user,  load average: 10.08, 7.11, 5.94
+$ ./bin/tlslab -mode handshake -n 500 -kex default
+handshake (tuần tự)        p50       p90       p99      mean   resumed / n
+ecdsa-1.3-full         4.012ms    8.99ms  17.182ms   4.827ms   0 / 500  X25519MLKEM768
+ecdsa-1.3-resumed      3.969ms   9.171ms  16.417ms   4.892ms   500 / 500  X25519MLKEM768
+ecdsa-1.2-full         3.631ms   7.784ms  18.199ms   4.392ms   0 / 500  X25519
+ecdsa-1.2-resumed      1.114ms   2.108ms   5.675ms   1.341ms   500 / 500  X25519
+rsa-1.3-full           5.055ms   9.277ms  13.631ms    5.83ms   0 / 500  X25519MLKEM768
+rsa-1.3-resumed        4.176ms  13.056ms  34.633ms    6.77ms   500 / 500  X25519MLKEM768
+
+conn mới / request         rps       p50
+plaintext                  438   1.644ms
+tls-ecdsa-1.3               96   8.822ms
+tls-rsa-1.3                 96   9.672ms
+
+Thu Oct  1 11:11:10 +07 2026
+ 11:11:10 up  1:46,  1 user,  load average: 10.21, 7.39, 6.07
+$ ./bin/tlslab -mode handshake -n 500 -kex x25519
+handshake (tuần tự)        p50       p90       p99      mean   resumed / n
+ecdsa-1.3-full         4.839ms  11.882ms  22.175ms   6.309ms   0 / 500  X25519
+ecdsa-1.3-resumed      2.711ms   4.446ms   8.962ms   3.013ms   500 / 500  X25519
+ecdsa-1.2-full         3.074ms   4.682ms   8.382ms   3.139ms   0 / 500  X25519
+ecdsa-1.2-resumed      1.011ms    1.63ms   5.942ms   1.153ms   500 / 500  X25519
+rsa-1.3-full           7.361ms  11.823ms  19.327ms   7.653ms   0 / 500  X25519
+rsa-1.3-resumed        2.325ms   5.003ms  11.406ms   2.759ms   500 / 500  X25519
+
+conn mới / request         rps       p50
+plaintext                  833     847µs
+tls-ecdsa-1.3              217   4.168ms
+tls-rsa-1.3                101   9.139ms
