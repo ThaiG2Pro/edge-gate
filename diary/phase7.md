@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~1 giờ làm việc, một buổi (turn 1 09:48-10:14, turn 2 10:19-10:40, turn 3 10:41-10:45)
 - **Bắt đầu:** 2026-10-01 09:48 · **Kết thúc:** 2026-10-01 10:45
 - **Trạng thái:** ✅ xong — **6/9 giả thuyết sai một vế** (G1 dial, G2 số conn, G3 b, G6 502, G7 504, G8 b/c), 0 sai hẳn; G4/G5/G9 đúng. Thêm D8′ drain lười (đăng ký giữa turn 2, trước khi đo) — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (commit nền `40e8cbb`)
+- **Commit:** `07ee110` (turn 1 `0ed7a23`, turn 2 `c925df4`; commit nền `40e8cbb`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase7-log.md`](phase7-log.md). File này là bản biên tập.
 >
