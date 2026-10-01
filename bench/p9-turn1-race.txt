@@ -1,0 +1,7 @@
+ok  	github.com/thaivro/edgegate/internal/epollsrv	2.316s
+ok  	github.com/thaivro/edgegate/internal/frame	2.345s
+ok  	github.com/thaivro/edgegate/internal/httpx	1.499s
+ok  	github.com/thaivro/edgegate/internal/lb	4.686s
+ok  	github.com/thaivro/edgegate/internal/limit	6.682s
+ok  	github.com/thaivro/edgegate/internal/proxy	27.309s
+ok  	github.com/thaivro/edgegate/internal/tlsx	1.037s

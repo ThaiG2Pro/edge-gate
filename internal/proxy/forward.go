@@ -297,7 +297,10 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		var rerr, werr error
 		switch mode {
 		case modeCopy:
-			rerr, werr = copyBody(bw, resp.Body, false)
+			var spliced bool
+			if spliced, rerr, werr = s.spliceBody(c, bw, resp, ubr, pc); !spliced {
+				rerr, werr = copyBody(bw, resp.Body, false)
+			}
 		case modeChunked:
 			rerr, werr = copyBody(bw, resp.Body, true)
 		}
@@ -338,7 +341,9 @@ func copyBody(dst *bufio.Writer, src io.Reader, chunked bool) (readErr, writeErr
 		cw = httpx.NewChunkedWriter(dst)
 		w = cw
 	}
-	buf := make([]byte, 32<<10)
+	bp := getCopyBuf() // D1: 32 KiB mỗi response trước phase 9
+	defer putCopyBuf(bp)
+	buf := *bp
 	for {
 		n, rerr := src.Read(buf)
 		if n > 0 {

@@ -73,7 +73,16 @@ type pooledConn struct {
 	uses      int
 }
 
-func (pc *pooledConn) close() { pc.c.Close() }
+// close đóng connection và trả bufio về pool (D3). Chỉ chủ duy nhất gọi;
+// gọi lần hai là no-op (trả hai lần = hai người cầm chung một buffer).
+func (pc *pooledConn) close() {
+	pc.c.Close()
+	if pc.br != nil {
+		putReader(pc.br)
+		putWriter(pc.bw)
+		pc.br, pc.bw = nil, nil
+	}
+}
 
 // countReader đếm byte đọc được từ upstream. Reset về 0 đầu mỗi exchange.
 type countReader struct {
@@ -142,7 +151,7 @@ func (p *pool) dialNew() (*pooledConn, error) {
 	}
 	p.dials.Add(1)
 	in := &countReader{r: c}
-	return &pooledConn{p: p, c: c, raw: raw, in: in, br: bufio.NewReaderSize(in, 8<<10), bw: bufio.NewWriterSize(c, 8<<10), uses: 1}, nil
+	return &pooledConn{p: p, c: c, raw: raw, in: in, br: getReader(in), bw: getWriter(c), uses: 1}, nil
 }
 
 func (p *pool) pop() *pooledConn {

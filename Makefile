@@ -9,7 +9,7 @@
 	lblab lblab-skew lblab-flap lblab-recover lblab-nodefense \
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab tlslab-nodefense tlslab-rtt \
-	perflab bench-vs-nginx epolllab \
+	perflab perflab-nodefense perf-bins idlelab l4l7lab pproflab bench-vs-nginx epolllab \
 	rtt-up rtt-down
 
 all: fmt vet test
@@ -354,16 +354,51 @@ tlslab-rtt:
 # ---------------------------------------------------------------------------
 # Phase 9: performance
 # ---------------------------------------------------------------------------
+perf-bins:
+	go build -o bin/edgegate ./cmd/edgegate
+	go build -tags nodefense9 -o bin/edgegate-nodefense9 ./cmd/edgegate
+	go build -o bin/epolllab ./cmd/epolllab
+	go build -o bin/perflab ./cmd/perflab
+	go build -o bin/rpbaseline ./cmd/rpbaseline
+
+# G1: allocs/op, B/op, ns/op trước (nodefense9) / sau — XEN KẼ, 3 lượt, ghim core 0-3.
 perflab:
-	go test ./internal/... -run '^$$' -bench . -benchmem -count=5 | tee bench/perf-$$(date +%F).txt
-	@echo "== ghi allocs/op TRƯỚC và SAU sync.Pool vào diary/phase9.md =="
+	@for r in 1 2 3; do for tag in nodefense9 ""; do echo "== lượt $$r tags=$${tag:-mặc định}"; \
+	  taskset -c 0-3 go test ./internal/proxy -run '^$$' -bench 'ProxyKeepAlive|ProxyLarge' -benchmem -count 2 -benchtime 2s -tags "$$tag" | grep Benchmark; done; done
 
-# Giá phải trả của L7: io.Copy (splice) vs parse-and-reserialize, payload 10MB
-epolllab:
-	go run ./cmd/epolllab -mode netpoller -conns 10000 -report-rss
-	go run ./cmd/epolllab -mode epoll     -conns 10000 -report-rss -reuseport
+# Phản chứng D4: bản TRƯỚC phải đỏ đúng hai test (idle cầm bufio, không splice).
+perflab-nodefense:
+	! go test ./internal/proxy -run 'TestIdleReleasesBufio|TestSpliceBody$$' -count=1 -v -tags nodefense9
 
-bench-vs-nginx:
+# G3: RSS mỗi connection rỗi của edgegate, trước / sau (D2).
+IDLE_CONNS ?= 10000
+idlelab: perf-bins
+	@for b in edgegate-nodefense9 edgegate edgegate-nodefense9 edgegate; do \
+	  ./bin/perflab -mode idle -conns $(IDLE_CONNS) -label $$b -up "taskset -c 2 bin/epolllab -impl epoll -loops 1" \
+	    -spawn "taskset -c 0-1 bin/$$b -config config/bench.json" 2>&1 | grep -v 'epolllab:\|edgegate:'; done
+
+# G4: giá của L7 — body 10 MiB, proxy ghim core 0, upstream core 2, client core 3.
+L4L7_N ?= 100
+l4l7lab: perf-bins
+	@for r in 1 2 3; do for i in direct l4splice l4copy edgegate edgegate-splice; do \
+	  taskset -c 3 ./bin/perflab -mode l4l7 -impl $$i -n $(L4L7_N) -proxy-cpus 0 -up-cpus 2 2>&1 | grep -v 'epolllab:\|edgegate:'; done; done
+
+# G5: profile CPU 30 s của edgegate dưới open-loop, trước / sau. Profile lưu bench/.
+PPROF_RATE ?= 8000
+pproflab: perf-bins
+	./scripts/pproflab.sh $(PPROF_RATE)
+
+# G6 (RSS mỗi conn rỗi) + G7 (rps closed-loop): epoll tự viết vs netpoller.
+epolllab: perf-bins
+	@for i in epoll netpoller epoll netpoller; do \
+	  ./bin/perflab -mode idle -conns $(IDLE_CONNS) -label $$i -addr 127.0.0.1:18100 \
+	    -spawn "taskset -c 0-2 bin/epolllab -impl $$i -loops 3" 2>&1 | grep -v 'epolllab:'; done
+	@for i in epoll netpoller epoll netpoller epoll netpoller; do \
+	  taskset -c 3-5 ./bin/perflab -mode rps -conns 256 -duration 10s -label $$i -addr 127.0.0.1:18100 \
+	    -spawn "env GOMAXPROCS=3 taskset -c 0-2 bin/epolllab -impl $$i -loops 3" 2>&1 | grep -v 'epolllab:'; done
+
+# G8: EdgeGate / nginx / httputil.ReverseProxy — cần docker + image nginx:1.25-alpine.
+bench-vs-nginx: perf-bins
 	./scripts/bench-vs-nginx.sh    # 3 cột: EdgeGate / nginx / httputil.ReverseProxy
 
 check: fmt vet test

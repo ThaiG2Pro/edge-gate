@@ -1,0 +1,6 @@
+    phase9_test.go:47: 20 connection rỗi: bufio đang cầm 40 (base 0)
+    phase9_test.go:49: connection rỗi cầm 40 bufio, muốn 0
+--- FAIL: TestIdleReleasesBufio (0.53s)
+    phase9_test.go:99: splice: 0 response, 0 byte; pool {Dials:1 Reuses:3 Puts:4 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}; request sau: 200
+    phase9_test.go:101: muốn 2 response splice, 0 byte (≤ tổng body)
+--- FAIL: TestSpliceBody (0.01s)

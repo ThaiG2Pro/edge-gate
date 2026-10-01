@@ -85,6 +85,10 @@ type Config struct {
 	HandshakeTimeout time.Duration
 	UpstreamTLS      *UpstreamTLSConfig
 
+	// SpliceBody (phase 9 D5): body response CL ≥ 64 KiB đi bằng splice(2)
+	// khi cả hai phía là TCP trần (không TLS). Mặc định tắt.
+	SpliceBody bool
+
 	Logf func(format string, args ...any)
 }
 
@@ -180,6 +184,13 @@ type Server struct {
 	vhosts     []*vhostRT
 	tlsCfg     *tls.Config
 	upTLSCache tls.ClientSessionCache
+	// Phase 9 D5: body response đi bằng splice — số response và số byte.
+	spliced, splicedBytes atomic.Int64
+}
+
+// SpliceStats (phase 9 D5): số response có body đi bằng splice, và số byte.
+func (s *Server) SpliceStats() (responses, bytes int64) {
+	return s.spliced.Load(), s.splicedBytes.Load()
 }
 
 // New panic khi cấu hình LB sai (algo lạ, không upstream) — lỗi khởi động,
@@ -368,6 +379,8 @@ type connState struct {
 	// Close đóng nó cùng connection client — không thì handler đang chờ
 	// upstream treo giữ Close (và Drain) tới UpstreamHeaderTimeout/BodyTimeout.
 	up atomic.Pointer[net.Conn]
+	// pre: byte đầu đọc lúc rỗi khi không cầm bufio (phase 9 D2).
+	pre prefixReader
 }
 
 func (s *Server) track(c net.Conn) *connState {
@@ -402,22 +415,53 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 		c = tc
 	}
 	lim := s.cfg.Limits
-	br := bufio.NewReaderSize(c, 8<<10)
-	bw := bufio.NewWriterSize(c, 8<<10)
+	// D2: bufio chỉ cầm khi có request. Rỗi ⇒ trả pool, chờ byte đầu bằng Read
+	// 1 byte vào st.pre. nodefense9: cầm suốt đời connection (Peek).
+	var br *bufio.Reader
+	var bw *bufio.Writer
+	defer func() {
+		if br != nil {
+			putReader(br)
+			putWriter(bw)
+		}
+	}()
+	st.pre.r = c
 	for {
 		// Rỗi: chờ byte đầu của request kế tiếp trong IdleTimeout. Hết hạn hay
 		// client đóng (io.EOF) đều là kết thúc bình thường, không trả gì.
 		c.SetReadDeadline(time.Now().Add(lim.IdleTimeout))
 		// D8: đánh dấu rỗi RỒI mới đọc draining (cặp Dekker với Drain).
 		st.idle.Store(true)
-		if s.closeIdle.Load() && br.Buffered() == 0 {
+		pipelined := br != nil && br.Buffered() > 0
+		if s.closeIdle.Load() && !pipelined {
 			return
 		}
-		_, err := br.Peek(1)
+		switch {
+		case pipelined:
+			// Byte request kế đã nằm trong br (pipelining): KHÔNG trả br — trả
+			// là mất byte (I1). Không chờ gì.
+		case releaseIdleBufio:
+			if br != nil {
+				putReader(br)
+				putWriter(bw) // đã Flush ở cuối response
+				br, bw = nil, nil
+			}
+			if n, _ := c.Read(st.pre.first[:]); n == 0 {
+				st.idle.Store(false)
+				return
+			}
+			st.pre.has = true
+			br, bw = getReader(&st.pre), getWriter(c)
+		default:
+			if br == nil {
+				br, bw = getReader(c), getWriter(c)
+			}
+			if _, err := br.Peek(1); err != nil {
+				st.idle.Store(false)
+				return
+			}
+		}
 		st.idle.Store(false)
-		if err != nil {
-			return
-		}
 		// Có byte đầu: đồng hồ Slowloris bắt đầu. Toàn bộ head phải xong trong
 		// HeaderTimeout tính từ ĐÂY, không phải từ mỗi byte.
 		if headerTimeoutOn {

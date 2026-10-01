@@ -75,6 +75,7 @@ type fileConfig struct {
 	DrainTimeoutMs     int     `json:"drain_timeout_ms"`
 	DrainIdleGraceMs   *int    `json:"drain_idle_grace_ms"` // nil ⇒ 1000 (D8′); 0 ⇒ đóng connection rỗi ngay
 	ReusePort          bool    `json:"reuse_port"`
+	SpliceBody         bool    `json:"splice_body"` // phase 9 D5
 	// Phase 8: listener TLS thứ hai, vhost theo SNI (D2/D10). Mỗi vhost dùng
 	// thuật toán/health/outlier của khối lb ở trên. SIGHUP ⇒ đọc lại cert.
 	TLS *struct {
@@ -97,7 +98,12 @@ func main() {
 	nodelay := flag.Bool("nodelay", true, "SetNoDelay(true) trên mọi socket; false CHỈ để đo G4")
 	pool := flag.Bool("pool", true, "pool connection tới upstream; false = dial mỗi request (phase 3-4)")
 	algo := flag.String("algo", "", "ghi đè lb.algo: rr|leastconn|p2c|chash")
+	pprofAddr := flag.String("pprof", "", "listener admin net/http/pprof (phase 9 D10), vd 127.0.0.1:6061; rỗng = tắt")
+	splice := flag.Bool("splice", false, "bật splice_body (phase 9 D5) bất kể config")
 	flag.Parse()
+	if *pprofAddr != "" {
+		startPprof(*pprofAddr)
+	}
 
 	var fc fileConfig
 	if b, err := os.ReadFile(*path); err != nil {
@@ -142,6 +148,7 @@ func main() {
 		Shed:        proxy.ShedConfig{MaxInflight: fc.Shed.MaxInflight, MaxQueue: fc.Shed.MaxQueue, QueueTimeout: ms(fc.Shed.QueueTimeoutMs)},
 		RetryBudget: proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
 		ReusePort:   fc.ReusePort,
+		SpliceBody:  fc.SpliceBody || *splice,
 		DrainIdleGrace: func() time.Duration {
 			if fc.DrainIdleGraceMs == nil {
 				return time.Second // phase 7 turn 2: đóng ngay mất ~99 % request kế của connection rỗi (G8 b)
