@@ -1,0 +1,43 @@
+Thu Oct  1 10:42:38 +07 2026
+ 10:42:38 up  1:17,  1 user,  load average: 4.00, 3.92, 4.09
+$ go test ./internal/proxy -count=1 -v -run "TestDeadline|TestRateLimitPerIP|TestShedQueue|TestRetryBudget|TestDrain|TestMaxConnsBlocksAccept|TestNoGoroutineLeak|TestDirtyConnNotPooled|TestLBKillRevive"
+--- PASS: TestLBKillRevive (1.42s)
+--- PASS: TestDeadline (4.80s)
+--- PASS: TestRateLimitPerIP (0.02s)
+--- PASS: TestShedQueue (0.20s)
+--- PASS: TestRetryBudget (0.02s)
+--- PASS: TestDrainInflightAndIdle (0.61s)
+--- PASS: TestDrainTimeoutForces (0.25s)
+--- PASS: TestMaxConnsBlocksAccept (0.36s)
+--- PASS: TestDrainLazyIdle (0.30s)
+--- PASS: TestDirtyConnNotPooled (0.02s)
+--- PASS: TestDrainOnUpstreamDown (0.00s)
+    proxy_test.go:415: G6: goroutine trước 6, sau 6 (chờ 20ms)
+--- PASS: TestNoGoroutineLeak (0.18s)
+ok  	github.com/thaivro/edgegate/internal/proxy	8.205s
+$ go test ./internal/limit ./internal/lb -count=1 -v -run "TestLimiterMemory|TestRetryBudget|TestBreakerHalfOpen|TestOutlierEjectBackoffAndCap"
+    limit_test.go:85: 1e6 khoá: giữ 10000 khoá, đuổi 990000, heap tăng 1.4 MiB (148 B/khoá giữ)
+--- PASS: TestLimiterMemory (0.80s)
+    limit_test.go:110: 10 000 request trong 10 s, mỗi cái muốn retry: cho 1100 (11.0 %)
+--- PASS: TestRetryBudget (0.00s)
+ok  	github.com/thaivro/edgegate/internal/limit	0.807s
+--- PASS: TestOutlierEjectBackoffAndCap (0.17s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 1 (state half-open, probes 1)
+--- PASS: TestBreakerHalfOpen (0.62s)
+ok  	github.com/thaivro/edgegate/internal/lb	0.804s
+$ make ratelab-nodefense breakerlab-nodefense
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 500 / 500 (kỳ vọng 260 ± 5 %), 429 = 0
+    limit_test.go:85: 1e6 khoá: giữ 1000000 khoá, đuổi 0, heap tăng 144.7 MiB (152 B/khoá giữ)
+    limit_test.go:88: heap tăng 144.7 MiB > 5 MiB — map per-IP không trần là rò rỉ attacker điều khiển được
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 8 (state closed, probes 0)
+make exit=0
+$ go test ./internal/proxy -count=1 -tags nodefense7 -run "TestDeadline/header|TestRateLimitPerIP|TestRetryBudget"
+--- FAIL: TestDeadline (3.01s)
+    --- FAIL: TestDeadline/header-408 (3.01s)
+--- FAIL: TestRateLimitPerIP (0.00s)
+--- FAIL: TestRetryBudget (0.01s)
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	3.022s
+FAIL
+$ grep net/http trên data path
+(rỗng)

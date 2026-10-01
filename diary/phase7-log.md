@@ -112,3 +112,14 @@ $ go test ./internal/limit -count=1 -v -tags nodefense7 -run TestLimiterMemory
   `-grace 1s`, `slowlab` thêm lượt hiệu chuẩn `-target null`.
 - 10:40-10:40 viết `phase7.md` turn 2 (nhật ký, giả thuyết sai, số đo). Rà số với output: sửa "8-180 ms" →
   8-175 ms, "~105x" → ~100x.
+
+## §3 Turn 3 — 2026-10-01 10:41 → 10:45
+
+- 10:41 song song: agent đọc Finagle `RetryBudget.scala` + docs.kernel.org `tcp_migrate_req`. D6 đúng tham
+  số Finagle (ttl 10 s, 10/s, **0.2** — ROADMAP "10 %" chặt hơn mặc định của họ). `tcp_migrate_req = 0` ⇒
+  accept queue của listener đóng bị abort ⇒ G8 (c) có thể xảy ra; 0/10 lượt vì queue rỗng lúc đóng.
+- 10:42 chạy lại lệnh bảng invariant (`bench/p7-invariants.txt`, load 4.00): xanh hết; ba phản chứng
+  proxy + `ratelab-nodefense` + `breakerlab-nodefense` đỏ đúng dòng; grep `net/http` rỗng.
+- Viết Rút ra 8 câu. Rà lại câu chữ: bỏ "cách nginx làm" (chưa đọc nguồn nginx), đánh dấu "~160 ms phía
+  proxy" là ước tính, thành phần 152 B/khoá là suy luận.
+- `docs/debts.md`: P7-1..P7-6; P6-1 trả một phần (công cụ loadgen có, chưa đo lại lblab). ROADMAP/README hàng 7 ✅.

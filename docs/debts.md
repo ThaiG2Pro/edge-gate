@@ -132,7 +132,7 @@ cho mẫu 25/50 khi tắt probe; với probe là 0/50 nhưng cửa sổ probe→
 upstream đóng rỗi ngẫu nhiên 1-50 ms sau response, 10k POST, đếm 502. Nếu > 0.1 %: buffer body
 ≤ 64 KiB để replay đúng một lần — đổi I2 có điều kiện, đăng ký D trước khi code.
 
-### 📏 P6-1 · Bench LB closed-loop không biến capacity bỏ phí thành p99
+### 📏 P6-1 · Bench LB closed-loop không biến capacity bỏ phí thành p99 — **trả một phần (phase 7)**
 
 `-flap -recover`: P2C tau 30 s cho b2 hồi phục **0.0 %** tải nửa sau (least-conn 25.0 %), nhưng p99
 nửa sau bằng nhau (4.43 vs 4.13 ms) vì 3 node còn lại dư sức và client tự gửi chậm lại. Cần open-loop
@@ -142,6 +142,9 @@ nửa sau bằng nhau (4.43 vs 4.13 ms) vì 3 node còn lại dư sức và clie
 # thêm -rate R vào cmd/lblab: lịch gửi cố định, latency tính từ giờ HẸN, không từ lúc gửi
 go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -rate 1200 -n 20000 -conns 64
 ```
+
+Phase 7 dựng xong công cụ: `internal/loadgen` (open-loop, latency từ giờ hẹn, `loadgen.Print`). Còn
+lại: nối `cmd/lblab` vào nó và đo lại `-flap -recover` ở ~85 % capacity.
 
 ### 🔧 P6-2 · P2C chia lệch 20.3-31.7 % trên 4 node giống hệt nhau
 
@@ -169,6 +172,58 @@ outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D tr�
 
 ```bash
 go test ./internal/proxy -run 'TestLBKillRevive' -count=3 -v
+```
+
+### 🔧 P7-1 · D9 chọn lại CHÍNH backend vừa dial lỗi ⇒ 2× DialTimeout
+
+`TestDeadline/dial-502`: một backend không route ⇒ 502 sau **602-610 ms** với `DialTimeout` 300 ms. D9
+"Pick lại một lần" không loại backend vừa lỗi. Sửa: `lb.PickExcept(key, b)`; không còn ai ⇒ 502 ngay.
+
+```bash
+go test ./internal/proxy -run 'TestDeadline/dial' -v      # đòi el ≤ DialTimeout + 150 ms
+```
+
+### 🔧 P7-2 · Không có trần connection theo IP — HeaderTimeout không giới hạn SỐ connection
+
+`bench/p7-slowlab.txt`: attacker một IP nối lại mỗi 10 s (1 500 reconnect) ⇒ proxy giữ 500 connection
+suốt bài, 20.7 KiB mỗi cái. Thêm `MaxConnsPerIP` (khoá = **peer**, không XFF — trước khi đọc head thì chưa
+có XFF), vượt ⇒ đóng ngay sau Accept. Test fail trước: slowlab đòi proxy giữ ≤ trần từ `127.0.0.2`, probe
+từ `127.0.0.1` 100 %.
+
+```bash
+go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 32
+```
+
+### ⏳ P7-3 · Trần eject 50 % + half-open: hành vi nảy ra, chưa đăng ký
+
+chaoslab seed 1: node `probes 586 / reopens 582 / ejections 6` — thử hỏng, `tryEject` bị trần từ chối ⇒
+node ở lại half-open ⇒ một request thử mỗi lượt. Có thể là đúng ý ("cụm xấu thì mỗi node xấu một
+request một lúc"), nhưng không test nào nói thế. Quyết định + test `TestBreakerUnderEjectCap` khi có
+ngữ cảnh phase 9 (tải thật).
+
+### 📏 P7-4 · chaoslab thiên về hại ⇒ status mix không có nghĩa
+
+4/6 hành động là hại (kill/slow/err50/hang), 2/6 chữa ⇒ 26-36 % 503 vì không còn backend. Invariant vẫn
+đúng, nhưng tỉ lệ status không so được giữa các lần. Thêm `-heal-weight`, đo một lượt cân (chữa ≥ hại),
+và một seed giữ backend "treo" ≥ 5 s để chạm deadline client.
+
+```bash
+go run ./cmd/chaoslab -duration 60s -rate 500 -heal-weight 3 -seed 3
+```
+
+### 📏 P7-5 · Half-open (G5) chỉ đo ở mức `lb`
+
+`TestBreakerHalfOpen` gọi `Pick/Done` trực tiếp. Thiếu bài qua proxy: 32 connection closed-loop, b0 trả
+5xx, đếm 5xx client thấy mỗi lần hết hạn eject — đòi 1 (nodefense7: ≈ 8).
+
+### 📏 P7-6 · Retry budget chưa đo ở kịch bản nó có giá trị
+
+`bench/p7-retrylab.txt`: retry luôn thành công (connection mới không bị đóng) ⇒ budget chỉ đổi 25 % lỗi
+lấy 0.37x tải. Kịch bản cần đo: backend quá tải thật (`SetConcurrency` thấp + mọi request mới cũng lỗi),
+retry mù đẩy tải lên ~2x đúng lúc cụm đang chết; budget phải giữ goodput cao hơn.
+
+```bash
+go run ./cmd/chaoslab -scenario overload -duration 20s -rate 2000      # (scenario chưa có)
 ```
 
 ### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`

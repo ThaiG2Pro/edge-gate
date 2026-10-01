@@ -1,8 +1,8 @@
 # Phase 7 — Resiliency: timeout, Slowloris, rate limit, circuit breaker, retry budget, shed, drain
 
-- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** _(turn 3 điền)_
-- **Bắt đầu:** 2026-10-01 09:48 · **Kết thúc:** _______
-- **Trạng thái:** 🟡 turn 2 xong 10:40 (đo xong, G1-G9 đã chấm: **6/9 sai một vế, 0 sai hẳn**; thêm D8′ drain lười) — còn turn 3 — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
+- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~1 giờ làm việc, một buổi (turn 1 09:48-10:14, turn 2 10:19-10:40, turn 3 10:41-10:45)
+- **Bắt đầu:** 2026-10-01 09:48 · **Kết thúc:** 2026-10-01 10:45
+- **Trạng thái:** ✅ xong — **6/9 giả thuyết sai một vế** (G1 dial, G2 số conn, G3 b, G6 502, G7 504, G8 b/c), 0 sai hẳn; G4/G5/G9 đúng. Thêm D8′ drain lười (đăng ký giữa turn 2, trước khi đo) — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
 - **Commit:** _______ (commit nền `40e8cbb`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase7-log.md`](phase7-log.md). File này là bản biên tập.
@@ -362,21 +362,138 @@ Không giả thuyết nào sai hẳn — nhưng ba vế sai (G2 số conn, G7 50
 
 ## Invariant + lệnh kiểm chứng
 
-_(turn 3)_
+Chạy lại 2026-10-01 10:42 (load 4.00), output `bench/p7-invariants.txt`; số lab lấy từ turn 2.
+
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **I3 — mọi chỗ đọc/ghi socket có deadline**, cả hai connection (7 chỗ) | `proxy.go:serveConn` (Idle, Header), `forward.go:exchange` (body client đọc + ghi, upstream head/body), `proxy.go:poolFor` (`DialTimeout`) | `make deadlinelab`; phản chứng `-tags nodefense7 -run TestDeadline/header` | 7/7 fire 301-310 ms (dial = 2×, P7-1); nodefense treo tới deadline client 3 s |
+| **Close/Drain cưỡng bức đóng CẢ upstream đang dùng** (vá bug phase 3) | `proxy.go:Close` qua `connState.up`; `forward.go:roundTrip` đặt/xoá `st.up` quanh `exchange` | `TestDrainTimeoutForces` | `Drain(200 ms)` với upstream treo: 0.25 s (trước sửa 4.95 s) |
+| **Shed theo request**: slot giành sau khi xong head ⇒ connection chưa xong head không chiếm gì | `resilience.go:admit` gọi từ `forward.go:roundTrip` sau `ReadRequest` | `slowlab -max-inflight 64` vs `-max-conns 256` | probe 100 % vs 78.4 % (nodefense: 0 %) |
+| **I7 — slot shed, hàng chờ, token trả trên mọi đường ra** | `admit` trả `release` ⇒ `defer release()` trong `roundTrip`; `queued.Add(-1)` ở cả hai nhánh `select` | `TestShedQueue` | 2×200 + 8×503 rồi `Inflight 0, Queued 0` |
+| **I6 — khoá rate limit = IP sau ranh giới tin cậy** | `resilience.go:rateKey` (`clientIP` từ `forward.go:forwardedHeaders`); `internal/limit` không đọc header | `TestRateLimitPerIP`; `make ratelab-nodefense` PHẢI đỏ | spoof 5/20 qua (bucket chung); nodefense 500/500 |
+| **Bộ nhớ limiter có trần** bất kể số IP attacker gửi | `limit.go:KeyedLimiter.Allow` (LRU, `MaxKeys`) | `TestLimiterMemory`; nodefense PHẢI đỏ | 1e6 khoá: +1.4 MiB vs +144.7 MiB |
+| **Half-open cho đúng một request thử** | `balancer.go:Pick` (CAS `probing`), `backend.go:available`, `outlier.go:resolveProbe` | `TestBreakerHalfOpen`; `make breakerlab-nodefense` PHẢI đỏ | 1/32 vs 8/32 |
+| **Retry ≤ budget** (D4 cùng backend **và** D9 đổi backend) | `resilience.go:allowRetry` ở hai nhánh retry của `forward.go:roundTrip`; `limit.go:RetryBudget` | `TestRetryBudget` (limit + proxy); nodefense PHẢI đỏ | 1 100 / 10 000 = 11 %; proxy 11×200 / 9×502, nodefense 20×200 |
+| **Drain không mất request**: in-flight xong kèm `Connection: close`; rỗi được grace; khe "response trước khi draining bật" đóng bằng `closeIdle` | `resilience.go:Drain`; `proxy.go:serveConn` (cặp `idle` / `closeIdle`) | `TestDrainInflightAndIdle`, `TestDrainLazyIdle`; `drainlab -grace 1s` | 0 mất / 3 lượt × 22 000 (đóng ngay: 548-1 031) |
+| **I8 — không rò goroutine / connection** dưới chaos | toàn bộ đường trên + `fixture.Sim` hang chờ `ctx.Done()` | `TestNoGoroutineLeak`; `make chaoslab` | 6 → 6; chaos 60 s ×2: goroutine 1=1, fd 7=7, 0 treo |
+| **Data path không `net/http`** | `internal/{proxy,lb,limit,loadgen}`, `cmd/edgegate` | `grep -rln '"net/http"' … \| grep -v _test.go` | rỗng |
 
 ## Đọc gì
 
-- ROADMAP phase 7; Envoy circuit breaking / outlier detection; Finagle `RetryBudget`
-  (`ttl`, `minRetriesPerSec`, `percentCanRetry`); Slowloris (RSnake 2009); `SO_REUSEPORT` (`socket(7)`).
-  _(turn 3: ghi số mục và những gì đã kiểm từ nguồn)_
+- ROADMAP phase 7; Envoy outlier detection (`max_ejection_percent`); Slowloris (RSnake 2009);
+  `SO_REUSEPORT` (`socket(7)`).
+- **Finagle `RetryBudget`**, đọc nguồn turn 3 (`finagle-core/.../service/RetryBudget.scala`, nhánh `develop`):
+  `DefaultTtl = 10.seconds`, `DefaultMinRetriesPerSec = 10`, `apply()` dùng `percentCanRetry` **0.2** — D6 ghi
+  đúng tham số; ROADMAP "≤ 10 % (cách Finagle làm)" là **chặt hơn** mặc định Finagle (20 %). Cài đặt của họ
+  là token bucket "leaky" số nguyên: mỗi `deposit()` +1000, mỗi retry −1000/percent (5000 ở 0.2), dự trữ
+  `minRetriesPerSec × ttl × withdrawal` — cùng ngữ nghĩa với cửa sổ 10 xô của ta, khác cách tính. Docs
+  Clients guide: "share a single instance of `RetryBudget` between both `RetryFilter` and `RequeueFilter`
+  to prevent retry storms" — đúng chỗ ta làm: một budget cho cả D4 và D9.
+- **Linux `tcp_migrate_req`** (docs.kernel.org ip-sysctl): "When a listener is closed, in-flight request
+  sockets during the handshake and established sockets in the accept queue are aborted"; mặc định **0**;
+  bật thì con được chuyển sang listener khác cùng nhóm `SO_REUSEPORT`. Máy này 0 ⇒ G8 (c) **đúng là có
+  thể** xảy ra; đo 0/10 lượt vì accept loop rút queue nhanh hơn 2 000 rps — không phải vì kernel cứu.
 
 ## Rút ra
 
-_(turn 3)_
+**1. "Mọi connection đều có deadline" là bảy deadline, và một trong số đó đã nằm sai chỗ từ phase 3.**
+Phía client: rỗi chờ request kế (`IdleTimeout` ⇒ đóng im lặng, không byte nào — không có request thì
+không có gì để trả lời), head (`HeaderTimeout` tính từ **byte đầu**, không phải từ mỗi byte ⇒ 408), body
+request (`BodyTimeout` ⇒ 408), và **ghi** response cho client đọc chậm (`BodyTimeout` trên `SetWriteDeadline`
+⇒ đóng, connection upstream dở body bị bỏ chứ không về pool). Phía upstream: dial (`DialTimeout` ⇒ 502),
+head (`UpstreamHeaderTimeout` ⇒ 504), body (`UpstreamBodyTimeout` ⇒ đóng giữa body — head đã đi, không còn
+response thứ hai để gửi). Cả bảy fire trong 1-10 ms của cấu hình. Trước phase này chỉ 504 có test; một
+deadline chưa từng fire trong test là một deadline chưa có bằng chứng. Hai thứ lộ ra: dial fire **hai lần**
+khi chỉ có một backend (D9 "chọn lại" chọn đúng nó, P7-1), và `Close()` "cưỡng bức" chỉ cưỡng bức được phía
+client — handler đang chờ upstream treo giữ `Close` thêm tới 5 s, bug có từ phase 3 mà không test nào chạm
+tới vì không test nào đóng server **trong lúc** upstream treo.
+
+**2. Slowloris không giết Go — một trần connection mới giết Go.** Slowloris giết Apache prefork vì mỗi
+connection giữ một **worker** trong pool có hạn (`MaxClients`); 500 connection gửi một byte mỗi 10 s là đủ
+chiếm hết, và request thật xếp hàng ngoài. Proxy Go goroutine-per-connection không có pool đó: tắt hẳn
+HeaderTimeout, 500 connection Slowloris, probe vẫn **100 %**, p99 3.72 ms. ROADMAP nói "trước khi có
+HeaderTimeout thì không" — sai với kiến trúc này. Cái giá thật là bộ nhớ và fd: **20.7 KiB mỗi connection**
+treo (8 KiB `br` + 8 KiB `bw` cấp phát ngay ở `serveConn` + stack), nghĩa là 100 000 connection ≈ 2 GiB, và
+mỗi cái một fd. Và HeaderTimeout **không** giảm số đó khi attacker chịu nối lại: 1 500 lần reconnect trong
+30 s, proxy vẫn giữ 500 suốt bài. Nó chỉ đảm bảo connection **im lặng** chết (0 vs 500 sau 12 s). Go chết khi
+ta thêm thứ giống worker pool: `MaxConns 256` ⇒ **100 %** probe treo khi không có HeaderTimeout, 21.6 % ngay
+cả khi có. Nên câu trả lời là: phòng Slowloris bằng **không** đặt trần connection toàn cục, shed theo
+request, và giới hạn **số connection mỗi IP** (chưa có, P7-2) — HeaderTimeout là điều kiện cần, không đủ.
+
+**3. Rate limit: IP nào, và trần bộ nhớ đổi lấy gì.** IP sau ranh giới tin cậy của phase 4, không bao giờ
+`X-Forwarded-For` thô. Bằng số: một peer không tin gửi XFF ngẫu nhiên mỗi request được **259/500** — đúng
+một bucket 50/s burst 10 trong 5 s; đổi khoá sang XFF thô (`nodefense7`) thì **500/500** và limiter nhớ 520
+khoá — mỗi request giả một "người dùng" mới đầy token. Đặt limiter ở đâu cũng vô nghĩa nếu khoá do client
+chọn. Map per-IP không dọn là rò rỉ attacker điều khiển được: **152 B mỗi khoá** (đo; thành phần — string,
+entry, phần tử list, slot map — là suy luận, không profile), 1 000 000 IP giả qua một proxy tin ⇒ **+144.7 MiB**; trần LRU 10 000 ⇒ +1.4 MiB. Trần đổi
+lấy một điều: khoá bị đuổi quay lại với bucket **đầy**. Ai lợi? Chỉ chính khoá đó — attacker xoay vòng đủ IP
+để đuổi một nạn nhân thì làm nạn nhân **được** thêm burst, không bị mất. Chấp nhận được; cái không chấp nhận
+được là attacker xoay vòng được IP **qua ranh giới tin cậy** — đó là cấu hình `trusted_proxies`, không phải
+limiter.
+
+**4. Circuit breaker khác outlier ở một trạng thái, và trạng thái đó là toàn bộ điểm.** Outlier phase 6
+có hai trạng thái: dùng được / bị eject tới `ejectedUntil`. Hết hạn là dùng lại ngay cho **mọi** Pick — và 32
+request đang chờ thì ¼ số đó (**8**) rơi vào node vừa hết hạn mà vẫn hỏng, cả 8 thành 5xx client thấy, mỗi
+lần hết hạn. Đó là "mở lại hết đúng lúc backend vừa hồi". Half-open chen giữa: hết hạn ⇒ chỉ **một** Pick
+giành được lượt thử (CAS), mọi Pick khác coi node như vẫn đóng; thử tốt ⇒ closed, thử hỏng ⇒ open lại với
+backoff kế tiếp, không chờ đủ 5 lỗi. Đo: **1/32**. Hai điều phase này học được mà chưa đăng ký: (a) nhận ra
+"đâu là request thử" mà không đổi API `Pick/Done` dựa vào thời điểm bắt đầu ≥ `probeAt` — đúng với proxy,
+nhưng chính test của tôi đã mắc khi đo latency từ trước `Pick`; caller khác của `lb` sẽ mắc tương tự; (b)
+khi trần eject 50 % từ chối mở lại, node xấu ở lại half-open và nhận đúng một request mỗi lượt (582 lần thử
+trong chaoslab) — có lẽ đúng ý, nhưng là hành vi nảy ra từ hai cơ chế, không phải thiết kế (P7-3).
+
+**5. Retry khuếch đại thế nào, và budget đổi gì lấy gì.** Retry của phase 5/6 đã an toàn theo nghĩa
+**đúng đắn** (chỉ khi 0 byte response, chỉ một lần, lần hai dial mới). Nhưng an toàn đúng đắn không phải
+an toàn **tải**: cụm đóng 50 % connection dùng lại ⇒ upstream nhận **1.494x** request; retry "3 lần" mù thì
+2x, 3x, 4x — đúng lúc cụm đang yếu. Budget 10 % + sàn 10/s cắt về **1.120x**. Trần là tỉ lệ vì cụm phục vụ
+1 000 rps chịu được 100 retry/s mà cụm 100 000 rps cũng chịu được 10 000 — một con số tuyệt đối thì hoặc vô
+dụng ở tải cao hoặc chặn hết ở tải thấp; sàn để client vừa khởi động vẫn retry được. Finagle mặc định 20 %
+và khuyên dùng **một** budget cho mọi loại retry — ta làm thế (D4 + D9). Cái tôi đoán sai: ở kịch bản đo,
+retry luôn thành công (connection mới không bị đóng), nên budget **đổi 25 % lỗi 502 lấy 0.37x tải** — một
+trao đổi tệ khi retry rẻ. Budget có giá trị khi retry **không** cứu được gì (backend quá tải thật) — kịch
+bản đó chưa đo (P7-6). Bài học: budget là bảo hiểm cho sự cố, không phải tối ưu cho ngày thường.
+
+**6. Load shedding: ai chịu quá tải, và vì sao hàng không trần làm hại cả request "đáng được phục vụ".**
+2x capacity, không shed: p99 tăng **1.15 s mỗi giây chạy**, tới 11.6 s; có shed: 55 % nhận 503 trong 0.7 ms,
+request **được nhận** p99 **33 ms** phẳng suốt bài — 352x. Goodput như nhau (1 441 vs 1 471/s): shed không phục
+vụ ít hơn, nó chỉ chọn **ai** chờ. Không shed thì hàng đợi là FIFO không trần, và request thứ N phải chờ mọi
+request trước nó — kể cả những cái client đã bỏ cuộc. Mỗi giây quá tải cộng thêm một giây chờ cho **mọi
+người** về sau. Ai chịu? Tôi đoán upstream (504 sau 5 s) — sai: hàng nằm ở **client** (generator 256 worker),
+phía proxy mỗi request chỉ thấy cỡ
+~160 ms (ước tính, không đo: ≤ 256 request trong proxy, 16 chạy, 240 chờ ở backend / 1 600 rps), nên không deadline nào fire, và một dashboard đo latency ở proxy sẽ
+**không thấy gì bất thường** trong khi người dùng chờ 11 s. Đây là lý do shedding phải đo bằng open-loop từ
+phía client. Và shed **theo request**, không theo connection: shed theo connection chính là trần Slowloris
+cần (câu 2).
+
+**7. Graceful drain: request nào vẫn mất, và ai vá được.** Request đang chạy lúc drain: **0** mất —
+response mang `Connection: close`, client biết mà đóng. Cái mất là ở connection **rỗi**: đóng nó ngay (bản
+đầu của tôi) mất **548-1 031** request / 20 restart — gần như **mỗi** connection rỗi bị đóng
+làm rơi đúng request kế của nó. Tôi đã đăng ký đây là "cửa sổ hẹp, ≥ 1": sai bậc. Không hẹp, vì client
+**không đọc khi rỗi** nên không thấy FIN; lần ghi kế tiếp đi vào connection đã đóng — đúng bài FIN-trong-kernel
+phase 5, lần này ở phía client. Client có thể vá (retry idempotent khi 0 byte ⇒ 0 mất), nhưng server vá
+**tốt hơn**: drain lười — không đóng connection rỗi, để request kế của nó tới và trả lời kèm `Connection:
+close` (grace 1 s) ⇒ client được báo trước khi connection chết. Còn 4/22 000 mất là khe race của chính tôi
+(response ghi trước khi cờ drain bật không mang close, rồi bị đóng lúc về rỗi) — tách cờ `closeIdle` ⇒ **0**
+trong 5 lượt. Cái server **không** vá được: connection nằm trong accept queue của listener cũ lúc nó đóng —
+kernel abort chúng (`tcp_migrate_req = 0` mặc định). Đo 0/10 lượt vì accept loop rút queue nhanh; dưới tải
+lớn hơn tốc độ accept thì nó là thật, và cách vá là `tcp_migrate_req = 1` hoặc truyền fd listener sang tiến
+trình mới (không đóng listener).
+
+**8. Bốn invariant của chaoslab và cái nào dễ vỡ nhất.** (a) không panic: tới được dòng cuối; (b) goroutine
+về nền: `runtime.NumGoroutine` sau `Close` proxy so với trước mọi thứ (1 = 1); (c) connection về nền: đếm
+`/proc/self/fd` (7 = 7) — đo fd của chính tiến trình thay vì `ss | grep ESTAB` cả máy, vì máy có session
+khác; và nền phải đo **sau** khi netpoller đã mở epoll + eventfd, không thì lệch 2 tuỳ lượt; (d) không treo:
+0 request quá deadline client = tổng chuỗi deadline của proxy + dư. Dự đoán (b) dễ vỡ nhất — goroutine đọc
+upstream treo mà không ai đóng. Nó không vỡ trong chaoslab, nhưng **đúng là** chỗ đó: `TestDrainTimeoutForces`
+lộ chính handler đó giữ `Close` 4.95 s. Chaos không bắt được vì nó dừng proxy **sau** khi tải xong, lúc không
+còn handler nào chờ upstream; bug chỉ lộ khi đóng **giữa** lúc treo. Bài học cho phase sau: invariant "về nền"
+phải được kiểm cả lúc dừng **trong** sự cố, không chỉ sau nó.
 
 ## Nợ kỹ thuật
 
-_(turn 3 chốt và chép vào `docs/debts.md`)_ Phát sinh turn 2:
+Chi tiết + lệnh trả trong `docs/debts.md`. P6-1 trả **một phần**: `internal/loadgen` open-loop đã có, chưa
+đo lại `lblab -recover` với nó.
+
 
 - [ ] **P7-1** 🔧 D9 "chọn backend khác" chọn lại chính backend vừa dial lỗi khi picker cho ⇒ 2× DialTimeout
   (G1). Loại backend vừa lỗi khỏi lượt chọn lại; chỉ một backend ⇒ 502 ngay.
