@@ -53,7 +53,7 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | 5 | Upstream connection pool | ✅ [`diary/phase5.md`](diary/phase5.md) — pool LIFO + probe `MSG_PEEK` + retry một lần; phản chứng connection bẩn đỏ 20/20; RTT 0: 5.34x / 0.96 ms, RTT 20 ms: 1.37x / 17.9 ms — tỉ số ngược ROADMAP, khoản tiết kiệm mới đúng |
 | 6 | Load balancing + health | ✅ [`diary/phase6.md`](diary/phase6.md) — **4/7 giả thuyết sai**; p99 chỉ giảm khi node chậm < 1 % tải (least-conn 4.3 % ⇒ 0.98x, P2C 0.6 % ⇒ 3.4x); P2C thua khi node **hồi phục** (tau 30 s: 0.0 % vs least-conn 25 %); phản chứng EWMA decay theo request đỏ 0/200 |
 | 7 | Resiliency | ✅ [`diary/phase7.md`](diary/phase7.md) — **6/9 giả thuyết sai một vế**; Slowloris không giết Go, trần connection mới giết; shed p99 352x; drain lười 0 mất; chaoslab 4/4 invariant |
-| 8 | TLS + SNI | ⬜ |
+| 8 | TLS + SNI | ✅ [`diary/phase8.md`](diary/phase8.md) — **2/8 giả thuyết sai một vế**; 421 chặn domain fronting; resumption cắt 0 RTT ở TLS 1.3; pool upstream TLS tiết kiệm 2 RTT; reload 0 lỗi |
 | 9 | Performance & epoll | ⬜ |
 | 10 | HTTP/2 h2c (tùy chọn) | ⬜ |
 

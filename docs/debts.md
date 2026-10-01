@@ -226,6 +226,32 @@ retry mù đẩy tải lên ~2x đúng lúc cụm đang chết; budget phải gi
 go run ./cmd/chaoslab -scenario overload -duration 20s -rate 2000      # (scenario chưa có)
 ```
 
+### 📏 P8-1 · CPU handshake (G6) đo trên máy ồn, hai phía cùng tiến trình
+
+`bench/p8-tlslab-handshake-cpu2.txt`: cùng biến thể lệch tới 2x giữa lượt (load 3-10, session khác). Chỉ tỉ số
+cùng lượt là chấm được. Cần: máy yên, proxy và client hai tiến trình ghim core riêng để CPU **server** (cái proxy
+thật trả tiền) đo riêng — RSA lúc đó phải đắt hơn rõ (+~1.2 ms ký).
+
+```bash
+uptime   # < 1
+taskset -c 4,5 go run ./cmd/tlslab -mode handshake -n 2000 -kex x25519
+```
+
+### ⏳ P8-3 · Health check active với upstream TLS
+
+`lb/health.go:probe` gửi `GET Path` HTTP thường; upstream TLS ⇒ handshake hỏng ⇒ fail ⇒ unhealthy. Mặc định `Path`
+rỗng (chỉ TCP) nên chưa lộ. Cần probe TLS khi `UpstreamTLS` bật + test `TestHealthTLSUpstream`.
+
+### 📏 P8-4 · Bộ nhớ connection TLS treo
+
+Phase 7: 20.7 KiB / connection plaintext treo. TLS thêm buffer record (tới 16 KiB) + trạng thái handshake. Thêm
+`-tls` vào slowlab (ClientHello nhỏ giọt và connection rỗi sau handshake), hiệu chuẩn `-target null` như phase 7.
+
+### 📖 P8-5 · Ba mục RFC chưa đọc được nguyên văn
+
+RFC 9110 §15.5.20 (421 — hành vi retry của client), RFC 8446 §4.6.1 (thời điểm NewSessionTicket) và §8
+(anti-replay 0-RTT): công cụ fetch cắt trang ở turn 3. Đọc và trích vào `diary/phase8.md` Đọc gì.
+
 ### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`
 
 `pgrep -a -x upstream` lúc 16:00 phase 5 thấy `./bin/upstream -addr :8081` pid 146978 từ phase 3.
@@ -271,6 +297,13 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P8-2 · SNI lạ ⇒ alert `internal_error` — trả 2026-10-01 (phase 8 turn 3)
+
+`crypto/tls` (`handshake_server_tls13.go:pickCertificate`) chỉ gửi `unrecognized_name(112)` cho sentinel nội bộ
+`errNoCertificates`; lỗi từ `GetCertificate` ⇒ `internal_error`. `tlsx/store.go:ServerConfig` thêm
+`GetConfigForClient` trả config không cert cho SNI lạ ⇒ 112 đúng RFC 6066 §3. `TestTLSSNIRouting` đòi chuỗi
+"unrecognized name": đỏ trước sửa, xanh sau.
 
 ### ✅ P5-2 · Con quá `MaxIdleTime` ở đáy stack — trả 2026-09-04 (phase 6 turn 1)
 

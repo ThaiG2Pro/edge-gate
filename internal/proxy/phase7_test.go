@@ -257,7 +257,13 @@ func TestShedQueue(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	// Slot trả trong defer của roundTrip — SAU khi response đã ghi cho client ⇒
+	// client có thể đọc xong trước khi slot về. Chờ tối đa 1 s; rò thật (I7 vỡ)
+	// thì không bao giờ về 0. Bản đầu đọc một lần: đỏ dưới -race (phase 8 turn 3).
 	rs := s.ResilienceStats()
+	for t0 := time.Now(); (rs.Inflight != 0 || rs.Queued != 0) && time.Since(t0) < time.Second; rs = s.ResilienceStats() {
+		time.Sleep(time.Millisecond)
+	}
 	t.Logf("10 request cùng lúc: %v (503 < 100 ms: %d), stats %+v", st, fast, rs)
 	if st[200] != 2 || st[503] != 8 || rs.ShedQueueFull != 6 || rs.ShedTimeout != 2 {
 		t.Fatalf("muốn 2×200, 8×503 (6 hàng đầy + 2 hết giờ)")

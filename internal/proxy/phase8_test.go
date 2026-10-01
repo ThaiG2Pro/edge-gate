@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -129,6 +130,10 @@ func TestTLSSNIRouting(t *testing.T) {
 	t.Logf("SNI lạ: %v; không SNI: %v; handshake hỏng phía proxy %d", errC, errNo, l.s.ResilienceStats().HandshakeFail)
 	if errC == nil || errNo == nil || l.simA.Served()+l.simB.Served() != 1000 {
 		t.Fatal("SNI lạ / không SNI phải hỏng handshake, không request nào tới upstream")
+	}
+	// P8-2: alert phải là unrecognized_name (RFC 6066 §3), không phải internal_error.
+	if !strings.Contains(errC.Error(), "unrecognized name") {
+		t.Fatalf("SNI lạ: muốn alert unrecognized_name, được %v", errC)
 	}
 }
 

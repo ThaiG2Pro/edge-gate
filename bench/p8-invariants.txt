@@ -1,0 +1,44 @@
+Thu Oct  1 12:02:00 +07 2026
+ 12:02:00 up  2:36,  1 user,  load average: 1.83, 1.63, 1.72
+$ go test ./... -count=1 -race
+ok  	github.com/thaivro/edgegate/internal/frame	2.331s
+ok  	github.com/thaivro/edgegate/internal/httpx	1.486s
+ok  	github.com/thaivro/edgegate/internal/lb	5.029s
+ok  	github.com/thaivro/edgegate/internal/limit	7.502s
+--- FAIL: TestShedQueue (0.20s)
+    phase7_test.go:261: 10 request cùng lúc: map[200:2 503:8] (503 < 100 ms: 8), stats {RateLimited:0 ShedQueueFull:6 ShedTimeout:2 Inflight:1 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:10 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0}
+    phase7_test.go:266: slot/hàng không về 0 sau khi xong: {RateLimited:0 ShedQueueFull:6 ShedTimeout:2 Inflight:1 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:10 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0}
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	26.370s
+ok  	github.com/thaivro/edgegate/internal/tlsx	1.051s
+FAIL
+$ go test ./internal/proxy -run "TestTLS" -count=1 -v
+    phase8_test.go:130: SNI lạ: remote error: tls: unrecognized name; không SNI: remote error: tls: unrecognized name; handshake hỏng phía proxy 3
+--- PASS: TestTLSSNIRouting (0.36s)
+    phase8_test.go:151: SNI a.test, Host b.test: 421 (X-Sim ""), B phục vụ 0
+--- PASS: TestTLSDomainFronting (0.00s)
+--- PASS: TestTLSALPN (0.01s)
+    phase8_test.go:242: 20 reload dưới 32 connection: 8939 request ok, 0 lỗi; serial đầu 1001, connection cũ 1001, mới nhất 1041, connection mới thấy 1041
+--- PASS: TestTLSHotReload (1.25s)
+    phase8_test.go:278: ClientHello nhỏ giọt: proxy đóng sau 301ms (gửi 2 byte)
+--- PASS: TestTLSHandshakeTimeout (0.30s)
+    phase8_test.go:324: (b) +20 request cách 100 ms, upstream idle 50 ms: {Dials:21 Reuses:19 Puts:40 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:20 Idle:1}
+--- PASS: TestTLSUpstreamProbe (2.06s)
+$ go test ./internal/tlsx -count=1 -v
+--- PASS: TestLookup (0.00s)
+    store_test.go:75: reload hỏng: tlsx: vhost [a.test]: tls: private key does not match public key
+--- PASS: TestReloadKeepsOldOnError (0.00s)
+$ make tlslab-nodefense
+--- FAIL: TestTLSDomainFronting (0.02s)
+--- FAIL: TestTLSHandshakeTimeout (2.00s)
+make exit=0
+$ go test ./internal/proxy -run "TestNoGoroutineLeak|TestDirtyConnNotPooled|TestDeadline" -count=1
+ok  	github.com/thaivro/edgegate/internal/proxy	4.377s
+$ grep net/http
+(rỗng)
+ok  	github.com/thaivro/edgegate/internal/frame	2.283s
+ok  	github.com/thaivro/edgegate/internal/httpx	1.375s
+ok  	github.com/thaivro/edgegate/internal/lb	4.647s
+ok  	github.com/thaivro/edgegate/internal/limit	6.096s
+ok  	github.com/thaivro/edgegate/internal/proxy	27.450s
+ok  	github.com/thaivro/edgegate/internal/tlsx	1.055s

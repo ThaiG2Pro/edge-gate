@@ -159,10 +159,22 @@ func (s *CertStore) Loads() int64 { return s.loads.Load() }
 
 // ServerConfig: tls.Config cho listener — GetCertificate từ store, ALPN
 // http/1.1 (D5, móc cho phase 10), TLS ≥ 1.2.
+//
+// SNI lạ (P8-2, phase 8 turn 3): GetConfigForClient trả một config KHÔNG có cert
+// nào ⇒ crypto/tls đi nhánh errNoCertificates ⇒ alert unrecognized_name(112)
+// đúng RFC 6066 §3. Trả lỗi từ GetCertificate thì Go luôn gửi internal_error
+// (handshake_server_tls13.go: pickCertificate) — client thấy "internal error"
+// cho một chuyện không phải lỗi nội bộ.
 func (s *CertStore) ServerConfig() *tls.Config {
 	return &tls.Config{
 		GetCertificate: s.GetCertificate,
-		NextProtos:     []string{"http/1.1"},
-		MinVersion:     tls.VersionTLS12,
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			if s.cur.Load().lookup(hello.ServerName) == nil {
+				return &tls.Config{NextProtos: []string{"http/1.1"}, MinVersion: tls.VersionTLS12}, nil
+			}
+			return nil, nil // nil ⇒ dùng config gốc
+		},
+		NextProtos: []string{"http/1.1"},
+		MinVersion: tls.VersionTLS12,
 	}
 }

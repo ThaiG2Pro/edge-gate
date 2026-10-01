@@ -1,8 +1,8 @@
 # Phase 8 — TLS termination + SNI routing
 
-- **Thời lượng dự kiến:** 1-2 ngày · **thực tế:** _(turn 3 điền)_
-- **Bắt đầu:** 2026-10-01 10:52 · **Kết thúc:** _______
-- **Trạng thái:** 🟡 turn 2 xong 11:36 (đo xong, G1-G8 đã chấm: **2/8 sai một vế**, 0 sai hẳn) — còn turn 3 — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
+- **Thời lượng dự kiến:** 1-2 ngày · **thực tế:** ~50 phút làm việc (turn 1 10:52-11:07, turn 2 11:08-11:36 gồm 11:22-11:35 chờ người dùng tháo netem, turn 3 bắt đầu trước 12:02 — mốc `date` đầu tiên — tới 12:05)
+- **Bắt đầu:** 2026-10-01 10:52 · **Kết thúc:** 2026-10-01 12:04
+- **Trạng thái:** ✅ xong — **2/8 giả thuyết sai một vế** (G6 resumed + RSA; G7 tuyệt đối +1 RTT), 0 sai hẳn; G1-G5, G8 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
 - **Commit:** _______ (commit nền `46cd0f3`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase8-log.md`](phase8-log.md). File này là bản biên tập.
@@ -270,24 +270,125 @@ RTT 20 ms: netem `delay 10ms` trên `lo` (ping 20.1-22.1 ms), đo bằng TCP con
 
 ## Invariant + lệnh kiểm chứng
 
-_(turn 3)_
+Chạy lại 2026-10-01 12:02 (load 1.83), output `bench/p8-invariants.txt`; số lab lấy từ turn 2.
+
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **Một connection TLS = một vhost = vhost của SNI**; `Host` lệch ⇒ 421, không bao giờ tới nhóm khác (I1 cho routing) | `tls.go:balancerFor` (`sniPinsVHost`), gọi từ `forward.go:roundTrip` trước `Pick` | `TestTLSDomainFronting`; `make tlslab-nodefense` PHẢI đỏ; curl `-H 'Host: b.test'` | 421, B 0; nodefense 200 từ B dưới cert A; curl 421 |
+| **Cert và vhost cùng một luật lookup** (đúng tên → wildcard → mặc định) | `tlsx/store.go:certSet.lookup` dùng cho cả `GetCertificate` và `VHostOf` | `TestLookup`, `TestTLSSNIRouting` | 8 tên đúng; 0/1000 lệch |
+| **SNI lạ bị từ chối bằng alert đúng** (RFC 6066 §3, fatal `unrecognized_name`) | `tlsx/store.go:ServerConfig` — `GetConfigForClient` trả config rỗng ⇒ nhánh `errNoCertificates` | `TestTLSSNIRouting` (đòi chuỗi "unrecognized name") | trước sửa `internal error` (đỏ), sau `unrecognized name` |
+| **I3 chỗ thứ 8 — handshake có deadline riêng** | `tls.go:handshake` (`explicitHandshake`), gọi đầu `proxy.go:serveConn` | `TestTLSHandshakeTimeout`; nodefense PHẢI đỏ | 301-302 ms; nodefense 2.001 s |
+| **Reload không đứt, hỏng thì giữ cũ** | `tlsx/store.go:load` — dựng bộ mới đủ rồi mới `cur.Store`; lỗi ⇒ return trước khi swap | `TestTLSHotReload`, `TestReloadKeepsOldOnError`; `tlslab -mode reload` | 0 lỗi / 20 reload; 96 reload × 64 conn, 98 151 request, 0 lỗi; serial giữ khi hỏng |
+| **Probe FIN (phase 5) vẫn chạy với upstream TLS** — đọc fd TCP bên dưới | `pool.go:get` → `probeIdle(pc.raw)`; `tls.go:dialUpstream` trả `(tls.Conn, raw)` | `TestTLSUpstreamProbe` | (a) DeadOnProbe 0; (b) 20/20 bắt, Retries 0 |
+| **Dial lỗi không thành lỗi client, ở MỌI lần thử** (vá khe D4 → dial refused) | `forward.go:roundTrip` nhánh dial lỗi: `!repicked && allowRetry()` | `TestLBKillRevive` dưới `-race` | 0/574 lỗi (trước sửa 1 × 502) |
+| **I4/I8 giữ nguyên** | không đổi `exchange`/`Close` | `TestDirtyConnNotPooled`, `TestNoGoroutineLeak`, `go test ./... -race` | xanh |
+| **Data path không `net/http`** | `crypto/tls` (stdlib) | `grep -rln '"net/http"' internal/proxy internal/tlsx cmd/edgegate cmd/tlslab cmd/gencert \| grep -v _test.go` | rỗng |
 
 ## Đọc gì
 
-- ROADMAP phase 8; RFC 8446 (TLS 1.3) §2 (handshake 1-RTT, PSK, 0-RTT), §4.6.1 (NewSessionTicket);
-  RFC 9110 §15.5.20 (421); RFC 7301 (ALPN); RFC 6066 §3 (SNI). _(turn 3: ghi những gì đã kiểm từ nguồn)_
+- ROADMAP phase 8; RFC 7301 (ALPN, chưa đọc lại turn 3).
+- **RFC 6066 §3** (đọc nguyên văn turn 3): server không nhận ra tên "SHOULD … either abort the handshake by
+  sending a fatal-level unrecognized_name(112) alert or continue the handshake"; "NOT RECOMMENDED to send a
+  warning-level unrecognized_name(112) alert". Thêm: "MUST NOT accept the request to resume the session if the
+  server_name extension contains a different name".
+- **RFC 8446** (nguyên văn turn 3): §1.2 "A zero round-trip time (0-RTT) mode was added, saving a round trip at
+  connection setup for some application data, at the cost of certain security properties"; §2.2 PSK "used to
+  bootstrap the cryptographic state instead of a full handshake", Figure 3 vẫn cùng một vòng ClientHello/
+  ServerHello. Câu "resumption không cắt RTT nếu không có early data" là **suy từ hình**, RFC không viết một câu.
+  §4.6.1 và §8 (anti-replay): **chưa đọc được nguyên văn** (công cụ cắt trang) — không trích.
+- **RFC 9110 §15.5.20 (421): chưa đọc được** nguyên văn ở turn 3 (công cụ cắt trang) — D3 dùng 421 theo tên mã;
+  ghi nợ đọc lại.
+- **Mã nguồn Go 1.26.2** (`$(go env GOROOT)/src/crypto/tls`, đọc trực tiếp):
+  `handshake_server_tls13.go:409` — early data chỉ được nhận khi `c.quic != nil` ⇒ **server TLS trên TCP không
+  bao giờ nhận 0-RTT** (G7 resumed = +1 RTT là đúng thiết kế, không phải đo sai);
+  `pickCertificate` (`:487-494`) — `errNoCertificates` ⇒ `alertUnrecognizedName`, mọi lỗi khác ⇒
+  `alertInternalError` (nguồn của P8-2); `go doc crypto/tls.Config.CurvePreferences` — "From Go 1.24, the
+  default includes the X25519MLKEM768 hybrid post-quantum key exchange".
 
 ## Rút ra
 
-_(turn 3)_
+**1. SNI chọn cert, Host chọn vhost — lệch nhau là domain fronting, và chỉ một bên được thắng.** TLS cho
+proxy hai lời khai về "client muốn ai": SNI trong ClientHello (dùng để chọn cert, trước cả khi có mã hoá) và
+`Host` trong request (dùng để chọn nội dung). Nếu proxy chọn cert theo SNI rồi route theo `Host`, client có
+thể bắt tay với `a.test` — được cert của A, mà mọi hộp ở giữa (CDN, firewall, log) đều tin là A — rồi lấy nội
+dung của B. Phản chứng cho thấy đúng thế: `nodefense8` trả **200 từ B dưới cert của A**. Luật đúng: connection
+TLS **gắn** với vhost của SNI một lần lúc handshake; `Host` chỉ được phép **xác nhận**, lệch ⇒ **421
+Misdirected Request** (mã dành cho "connection này không phục vụ authority đó"; hành vi retry của client theo
+RFC 9110 §15.5.20 chưa đọc lại nguyên văn — P8-5). Connection vẫn giữ được: request kế với `Host: A.TEST:443` (hoa + port) vẫn
+200 từ A. Plaintext không có SNI nên `Host` là nguồn duy nhất — cùng một nguyên tắc phase 4: quyết định routing
+phải có **một** nguồn sự thật.
+
+**2. SNI lạ hay không SNI: từ chối, và từ chối bằng đúng alert.** Trả cert mặc định cho SNI lạ (như nginx
+`default_server`) có hai giá: mọi scanner hỏi một tên vô nghĩa sẽ nhận cert — tức là danh sách tên — của vhost
+mặc định; và client hợp lệ gõ sai tên nhận cert sai rồi hỏng verify muộn, khó hiểu. Ta mặc định **từ chối**
+(D4), có `default_vhost` cho ai cần. Turn 2 lộ ra từ chối "đúng hành vi, sai thông điệp": `crypto/tls` biến
+mọi lỗi từ `GetCertificate` thành alert `internal_error` — client thấy "tls: internal error" cho một chuyện
+không phải lỗi nội bộ. RFC 6066 §3 đòi fatal `unrecognized_name(112)`. Đọc `pickCertificate` của Go thấy
+alert 112 chỉ gửi cho sentinel nội bộ `errNoCertificates` — không export được, nhưng **tạo ra được**:
+`GetConfigForClient` trả một config **không có cert nào** cho SNI lạ. Test đòi chuỗi "unrecognized name": đỏ
+trước sửa, xanh sau. Không SNI (client nối bằng IP) cũng rơi vào đây.
+
+**3. TLS 1.3 tốn 1 RTT; resumption ở 1.3 tốn cũng 1 RTT.** Đo ở RTT 20.4 ms, so với plaintext trên connection
+mới: TLS 1.3 full **+1 RTT**, TLS 1.3 resumed **+1 RTT** (4.11 vs 4.11 ÷ RTT), TLS 1.2 full **+2 RTT**, TLS 1.2
+resumed **+1 RTT**. Lý do: 1.2 full cần hai vòng (hello/cert rồi key exchange/finished); 1.2 resumed bỏ được
+một vòng nhờ server nhớ session. 1.3 đã gộp key exchange vào ClientHello nên full chỉ còn một vòng — và một
+vòng là tối thiểu khi client còn phải chờ ServerHello trước khi gửi dữ liệu. Thứ duy nhất cắt được vòng đó là
+**0-RTT** (early data trong ClientHello), mà RFC 8446 nói là "at the cost of certain security properties" —
+không chống replay, không forward secrecy. Go **không nhận** 0-RTT trên TCP (`handshake_server_tls13.go:409`:
+chỉ khi `c.quic != nil`). Vậy câu ROADMAP "session resumption cắt được bao nhiêu" có hai đáp án: ở 1.2 cắt
+**1 RTT**; ở 1.3 cắt **0 RTT**, chỉ cắt CPU. "+1 RTT ở mọi ô" so với đăng ký là bài học nhỏ khác: chặng proxy →
+upstream cũng qua `lo` có netem — một proxy luôn là **hai** chặng mạng.
+
+**4. CPU handshake: mật mã chỉ là phần nhỏ.** Một handshake TLS 1.3 ECDSA đầy đủ tốn 2-3 ms CPU (hai phía cộng
+lại, cùng tiến trình), mà các phép mật mã đo riêng chỉ là X25519 (~0.23 ms) + ký/verify ECDSA (~0.23 ms) — 20-30 %.
+Phần còn lại là x509 (parse, dựng chuỗi), accept/dial, cấp phát, goroutine. Hệ quả đo được: resumption (bỏ cert +
+chữ ký, vẫn ECDHE) chỉ nhanh hơn **1.3-1.5x**, và RSA-2048 chỉ đắt hơn ECDSA **1-2.5x** dù chữ ký RSA đắt gấp
+~6 lần — vì (kiến thức chung, **chưa đo tách** ký và verify) RSA đắt ở **ký** (server) nhưng rẻ ở verify
+(client), ECDSA ngược lại, và ta đo cả hai phía. Ở
+một proxy thật chỉ phía server tính tiền: RSA sẽ đắt hơn rõ (+1.2 ms/handshake theo microbench) — nợ P8-1 đo
+tách tiến trình. Phát hiện không đăng ký: Go 1.26 mặc định cho TLS 1.3 key exchange lai hậu lượng tử
+**X25519MLKEM768**, thêm ~0.25 ms (ML-KEM-768 keygen + encaps + decaps) vào mọi handshake 1.3 — làm 1.3 full
+đắt hơn 1.2 full 1.27-2.0x; ép X25519 thì 0.9-1.26x. Ta giữ mặc định: 0.25 ms CPU là giá của việc ghi lại hôm nay
+không đọc được bằng máy lượng tử ngày mai. Và mỗi request một connection TLS chỉ được **0.20-0.29** rps của
+plaintext — lý do phía client cũng phải keep-alive.
+
+**5. Hot-reload: `atomic.Pointer` đủ vì bộ cert bất biến.** `CertStore` không bao giờ sửa `certSet` đang dùng; reload
+dựng một bộ **mới** hoàn chỉnh (đọc, parse, kiểm khớp key) rồi mới `Store` con trỏ. Reader (`GetCertificate`
+trong mỗi handshake) chỉ `Load` — không khoá, không thấy bộ dở dang. Một file hỏng (key không khớp cert) làm
+`load` return **trước** khi swap ⇒ bộ cũ tiếp tục phục vụ, lỗi được log (`SIGHUP reload HỎNG, giữ cert cũ`).
+Connection đã handshake giữ đúng cert nó đã thoả thuận — TLS không có khái niệm "đổi cert giữa connection" —
+nên reload không đứt gì: 96 reload trong 10 s dưới 64 connection, 98 151 request, **0 lỗi**; connection mở trước
+reload vẫn thấy serial cũ, connection mới thấy serial mới ngay handshake kế. Bản test đầu sai đúng chỗ này dưới
+`-race` (không có barrier, connection dial **sau** reload đầu ghi đè "serial cũ") — test, không phải code.
+
+**6. Handshake là chỗ đọc socket thứ 8 cần deadline.** Phase 7 đếm 7; `tls.Conn` thêm ClientHello. Go bắt tay
+**lười** ở lần `Read` đầu, nên nếu không làm gì, handshake chạy dưới deadline `IdleTimeout` của `Peek` — một
+Slowloris tầng TLS (ClientHello nhỏ giọt) được giữ connection tới hết IdleTimeout (đo: **2.001 s** = IdleTimeout
+của test) thay vì `HandshakeTimeout` (**301-302 ms**). Gọi `HandshakeContext` tường minh với deadline riêng còn
+cho thêm một thứ: biết SNI **trước** request đầu, để gắn vhost (câu 1). Giá bộ nhớ của connection TLS treo (khác
+plaintext 20.7 KiB phase 7) chưa đo — nợ.
+
+**7. Pool tới upstream TLS tiết kiệm 2 RTT, và probe FIN phải nhìn xuyên `tls.Conn`.** Đo ở RTT 20 ms: pool tiết
+kiệm **0.97-1.17 RTT** với upstream thường (TCP) và **2.03-2.14 RTT** với upstream TLS (TCP + TLS 1.3) — tỉ số
+1.8-2.1x, đúng câu ROADMAP "2, không phải 1". Ở RTT 0 tỉ số còn lớn hơn (**3.9-4.6x**) vì handshake là CPU. Bật
+pool rồi thì upstream TLS tốn **đúng bằng** upstream thường (41.09 vs 41.08 ms) — cái giá TLS chỉ còn ở lần dial.
+Nhưng pool chỉ an toàn nếu probe FIN (phase 5) còn chạy: probe cần fd TCP thật, `tls.Conn` không có ⇒ bản cũ
+**lặng lẽ tắt** probe (`known=false`) cho mọi upstream TLS. Giữ conn TCP bên dưới (`pooledConn.raw`) và probe
+trên nó: upstream đóng rỗi (close_notify + FIN) ⇒ probe bắt **20/20**, Retries 0. Nỗi lo đã đăng ký — TLS 1.3
+gửi `NewSessionTicket` **sau** handshake, có thể nằm lại trên fd làm probe báo "bẩn" — không xảy ra
+(DeadOnProbe 0 khi keep-alive đều), vì ticket tới trước response đầu và được `tls.Conn` đọc cùng nó.
 
 ## Nợ kỹ thuật
 
-_(turn 3 chốt và chép vào `docs/debts.md`)_ Phát sinh turn 2:
+Chi tiết + lệnh trả trong `docs/debts.md`.
+
 
 - [ ] **P8-1** 📏 G6 đo trên máy ồn (load 3-10, cùng biến thể lệch 2x giữa lượt). Chạy lại lúc `uptime` < 1, ghim
   core (`taskset`), tách client/proxy hai tiến trình để CPU server đo riêng (`scripts/linux-baseline.sh`).
-- [ ] **P8-2** 🔧 SNI lạ ⇒ alert `internal_error` thay vì `unrecognized_name` (RFC 6066 §3): `crypto/tls` không cho
-  chọn alert từ `GetCertificate`. Thử `GetConfigForClient` trả lỗi có kiểu `tls.AlertError(112)`.
+- [x] **P8-2** — trả turn 3: `GetConfigForClient` trả config rỗng ⇒ `errNoCertificates` ⇒ alert 112 (cách ghi
+  ở turn 2, "trả `tls.AlertError(112)`", là sai: đọc nguồn thấy chỉ sentinel nội bộ mới ra 112).
 - [ ] **P8-3** ⏳ Health check active với upstream TLS: probe `GET Path` nói HTTP thường vào cổng TLS ⇒ fail. Cần
   probe TLS (hoặc chỉ TCP) khi `UpstreamTLS` bật — chưa có test.
+- [ ] **P8-4** 📏 Bộ nhớ một connection TLS treo (handshake dở / rỗi) chưa đo — slowlab chế độ TLS, so với 20.7 KiB
+  plaintext của phase 7.
+- [ ] **P8-5** 📖 RFC 9110 §15.5.20 (421), RFC 8446 §4.6.1 và §8 chưa đọc được nguyên văn (công cụ cắt trang).

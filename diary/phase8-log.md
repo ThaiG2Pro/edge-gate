@@ -59,3 +59,18 @@
 - 11:35 G4 dưới tải: 96 reload / 64 conn / 10 s, 98 151 request, 0 lỗi.
 - G7 đọc lần đầu: "plaintext 3 RTT, sai" — rồi thấy mọi ô +1 đúng bằng nhau ⇒ chặng proxy → upstream qua `lo` cũng
   bị delay; hiệu số khớp đăng ký từng ô.
+
+## §3 Turn 3 — 2026-10-01 (trước 12:02) → 12:05
+
+- Song song: agent đọc RFC (6066 §3 và 8446 §1.2/§2.2 nguyên văn; 9110 §15.5.20, 8446 §4.6.1/§8 **không** — công cụ cắt
+  trang ⇒ P8-5, không trích). Đọc thẳng `$(go env GOROOT)/src/crypto/tls`: early data chỉ khi `c.quic != nil`
+  (`handshake_server_tls13.go:409`); `pickCertificate` 112 chỉ cho `errNoCertificates`.
+- P8-2 trả: `GetConfigForClient` trả config rỗng cho SNI lạ. Cách ghi ở turn 2 ("trả `tls.AlertError(112)`") sai —
+  đọc nguồn mới biết. Fail-trước: stash bản sửa ⇒ `TestTLSSNIRouting` đỏ "được remote error: tls: internal error";
+  bỏ stash ⇒ xanh "unrecognized name".
+- 12:02 lệnh bảng invariant (`bench/p8-invariants.txt`, load 1.83). `-race` toàn bộ: **`TestShedQueue` đỏ** —
+  `Inflight 1` ngay sau khi client nhận xong: slot trả trong defer của roundTrip SAU khi response ghi xong; test đọc
+  một lần. Sửa test: chờ ≤ 1 s cho về 0 (rò thật không bao giờ về). 10/10 xanh dưới race; toàn bộ xanh.
+- Viết Rút ra 7 câu. Rà câu chữ: bỏ mốc "11:59" (đoán, không từ `date`); "client đúng chuẩn mở connection mới khi
+  421" là nội dung RFC 9110 chưa đọc ⇒ đánh dấu P8-5; "RSA đắt ký / rẻ verify" là kiến thức chung chưa đo tách ⇒ ghi rõ.
+- `docs/debts.md`: P8-1, P8-3, P8-4, P8-5; P8-2 sang Đã trả. ROADMAP/README hàng 8 ✅.
