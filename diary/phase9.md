@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~80 phút làm việc (turn 1 14:08-14:29, turn 2 14:33-15:08, turn 3 15:34-15:40)
 - **Bắt đầu:** 2026-10-01 14:08 · **Kết thúc:** 2026-10-01 15:40
 - **Trạng thái:** ✅ xong — **3/8 giả thuyết sai** (G1 vế ns/op, G5 vế GC, G8 cả bốn vế); G2-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
-- **Commit:** (turn 3, ghi ở commit kế) (turn 1 `c569eb4`, turn 2 `7762a46`; commit nền `4f89247`)
+- **Commit:** `ee6751e` (turn 1 `c569eb4`, turn 2 `7762a46`; commit nền `4f89247`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase9-log.md`](phase9-log.md). File này là bản biên tập.
 >
