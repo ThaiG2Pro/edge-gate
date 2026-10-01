@@ -1,0 +1,30 @@
+
+Thu Oct  1 10:28:57 +07 2026
+ 10:28:57 up  1:03,  1 user,  load average: 2.38, 3.56, 4.22
+$ ./bin/chaoslab -scenario retry -duration 10s -rate 1000 -drop 0.5
+chaoslab: scenario=retry duration=10s rate=1000 tick=300ms seed=1 drop=0.50 client-timeout=7s
+  nền (trước proxy): goroutine 5, fd 11 (trước cả backend: 1 / 7)
+  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)
+retry          n=10000 200:74.7% 502:25.3%
+               200: p50 3.78ms p90 5.62ms p99 19.91ms p99.9 33.47ms max 44.94ms · goodput 746/s
+               127.0.0.1:37725 picks 2662 fails 685 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:38713 picks 2549 fails 656 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:33027 picks 2585 fails 645 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:44029 picks 2204 fails 540 ejections 0 probes 0 reopens 0 state closed healthy true
+               proxy: retry cho 1200 / từ chối 2526, shed 0+0, no-available 0, eject-refused 0
+               upstream nhận 11200 lần gửi cho 10000 request client ⇒ khuếch đại 1.120x; backend đóng 3726 connection dùng lại; 502 = 25.3 %
+
+Thu Oct  1 10:29:08 +07 2026
+ 10:29:08 up  1:04,  1 user,  load average: 2.48, 3.54, 4.20
+$ ./bin/chaoslab-nd -scenario retry -duration 10s -rate 1000 -drop 0.5
+chaoslab: scenario=retry duration=10s rate=1000 tick=300ms seed=1 drop=0.50 client-timeout=7s
+  nền (trước proxy): goroutine 5, fd 11 (trước cả backend: 1 / 7)
+  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)
+retry          n=10000 200:100.0%
+               200: p50 4.06ms p90 6.27ms p99 22.55ms p99.9 73.54ms max 98.37ms · goodput 999/s
+               127.0.0.1:42399 picks 2565 fails 0 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:38781 picks 2493 fails 0 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:35531 picks 2842 fails 0 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:40461 picks 2100 fails 0 ejections 0 probes 0 reopens 0 state closed healthy true
+               proxy: retry cho 4942 / từ chối 0, shed 0+0, no-available 0, eject-refused 0
+               upstream nhận 14942 lần gửi cho 10000 request client ⇒ khuếch đại 1.494x; backend đóng 4942 connection dùng lại; 502 = 0.0 %

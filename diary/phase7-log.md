@@ -79,3 +79,36 @@ $ go test ./internal/limit -count=1 -v -tags nodefense7 -run TestLimiterMemory
   listener — sửa: chờ goroutine signal. Binary thật: curl `/slow?ms=1500` + SIGTERM ⇒ 200 sau 1.50 s.
 - `go test ./... -race` xanh; `go vet -tags nodefense7 ./...` sạch; `make breakerlab-nodefense`,
   `make ratelab-nodefense` đỏ đúng dòng (`bench/p7-turn1-nodefense.txt`).
+
+## §2 Turn 2 — 2026-10-01 10:19 → 10:40
+
+- 10:19 commit nền `0ed7a23`, load **5.43** trên 6 core: `ps` thấy indexer codegraph (~95 % một core) và
+  chroma-mcp (~35 %) — không phải của bài đo, không tắt. Ghi `uptime` đầu mỗi file bench; chấm bằng tỉ số.
+- 10:20 G1 `bench/p7-deadline.txt` (×3): 6/7 deadline fire trong 301-309 ms; **dial 602-610 ms** = 2×
+  DialTimeout — một backend ⇒ D9 chọn lại CHÍNH backend chết. Vế dial của G1 sai.
+- 10:20 G4 `bench/p7-ratelab.txt`: đúng cả bốn vế. 10:21 G5 `bench/p7-breaker.txt`: 1/32 ×5, nodefense 8/32 ×3.
+- 10:21-10:26 G2/G3 slowlab (5 lượt). Bộ nhớ "39.4 KiB/conn" gộp attacker ⇒ thêm `-target null` (attacker
+  nối vào listener chỉ accept rồi giữ) để hiệu chuẩn: attacker 18.6-18.8 KiB ⇒ proxy **20.6-20.9 KiB/conn**.
+- 10:29 G6 `bench/p7-retrylab.txt`, G7 `bench/p7-shedlab.txt`.
+- 10:30 G8 `bench/p7-drainlab.txt` ×2: noretry mất 795 / 991 `io-nohead` (≈ 99 % số connection rỗi bị
+  đóng), retry 0; dial lỗi 0. **RST backlog (G8 c) không tách được khỏi idle-close**: kernel bắt tay xong
+  rồi mới RST ⇒ client thấy dial OK rồi đọc lỗi = `io-nohead`. Retry chỉ cứu connection REUSED, mà lượt
+  retry mất 0 ⇒ connection mới không mất lần nào ⇒ (c) không xảy ra trong 2 × 20 restart.
+- **Biến thể D8′ "drain lười"** (đăng ký trước khi code, 10:31): `Config.DrainIdleGrace` — lúc drain,
+  connection rỗi KHÔNG bị đóng ngay mà được chờ tối đa grace để gửi request kế, request đó nhận response
+  kèm `Connection: close`; hết grace mới đóng phần còn rỗi. **G8′:** grace 1 s, cùng drainlab (2000 rps,
+  64 worker ⇒ mỗi connection dùng lại mỗi ~32 ms ≪ 1 s): noretry `io-nohead` **≤ 1 %** của bản đóng ngay
+  (≤ 10 / 20 restart); giá: drain lâu nhất tăng tới ≈ grace chỉ khi có connection rỗi không bao giờ gửi
+  (ở drainlab: không có ⇒ drain lâu nhất vẫn < 200 ms).
+- 10:31-10:35 D8′: `DrainIdleGrace` + `TestDrainLazyIdle` (xanh ×3 dưới race). drainlab grace 1 s ×2:
+  **4 / 4** mất (từ 548 / 943) — G8′ (≤ 10) đúng, nhưng 4 ≠ 0: khe race của chính tôi — response ghi
+  TRƯỚC khi `draining` bật (không mang `Connection: close`) rồi `serveConn` thấy `draining` lúc về rỗi
+  ⇒ đóng ⇒ request kế mất. Tách cờ `closeIdle` (Drain bật lúc quét) khỏi `draining`; `serveConn` chỉ
+  thoát sau roundTrip khi response đã mang close. Đo lại: **0** (3 lượt × 2 run). `cmd/edgegate` mặc định
+  `drain_idle_grace_ms` 1000.
+- 10:36-10:38 G9 chaoslab 60 s seed 1 + 2: PASS cả hai. Quan sát: node `probes 586 / reopens 582 /
+  ejections 6` — thử hỏng nhưng `tryEject` bị trần 50 % từ chối ⇒ ở lại half-open ⇒ thử lại.
+- 10:39 `go test ./... -race` xanh, `go vet -tags nodefense7 ./...` sạch. Makefile: `drainlab` thêm lượt
+  `-grace 1s`, `slowlab` thêm lượt hiệu chuẩn `-target null`.
+- 10:40-10:40 viết `phase7.md` turn 2 (nhật ký, giả thuyết sai, số đo). Rà số với output: sửa "8-180 ms" →
+  8-175 ms, "~105x" → ~100x.

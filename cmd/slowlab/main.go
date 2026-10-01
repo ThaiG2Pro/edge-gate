@@ -42,6 +42,7 @@ func main() {
 	headerTO := flag.Duration("header-timeout", 10*time.Second, "Limits.HeaderTimeout")
 	maxConns := flag.Int("max-conns", 0, "Config.MaxConns (D3) — 0 = không trần")
 	inflight := flag.Int("max-inflight", 0, "Shed.MaxInflight (D7) — 0 = tắt")
+	target := flag.String("target", "proxy", "proxy | null — null: attacker nối vào listener chỉ accept rồi giữ (không goroutine, không buffer) ⇒ hiệu chuẩn phần bộ nhớ của CHÍNH attacker")
 	flag.Parse()
 
 	up, stop, err := fixture.ListenAndServe("127.0.0.1:0")
@@ -59,6 +60,27 @@ func main() {
 	}
 	go srv.Serve(ln)
 	addr := ln.Addr().String()
+	atkAddr := addr
+	var parked []net.Conn
+	var pmu sync.Mutex
+	if *target == "null" {
+		nl, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			fatal(err)
+		}
+		go func() {
+			for {
+				c, err := nl.Accept()
+				if err != nil {
+					return
+				}
+				pmu.Lock()
+				parked = append(parked, c)
+				pmu.Unlock()
+			}
+		}()
+		atkAddr = nl.Addr().String()
+	}
 	fmt.Printf("slowlab: conns=%d byte-every=%s src=%s duration=%s hold=%s probe=%.0f rps header-timeout=%s (áp dụng: %v) max-conns=%d max-inflight=%d\n",
 		*conns, *every, *src, *dur, *hold, *rate, *headerTO, headerTimeoutApplied(), *maxConns, *inflight)
 	fmt.Println("  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)")
@@ -100,7 +122,7 @@ func main() {
 				}
 				first = false
 				d := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(*src)}, Timeout: 5 * time.Second}
-				c, err := d.Dial("tcp", addr)
+				c, err := d.Dial("tcp", atkAddr)
 				if err != nil {
 					dialErr.Add(1)
 					time.Sleep(100 * time.Millisecond)
@@ -137,6 +159,11 @@ func main() {
 	}
 	time.Sleep(2 * time.Second) // để attacker nối đủ
 	c1 := srv.ResilienceStats().ConnsActive
+	if *target == "null" {
+		pmu.Lock()
+		c1 = int64(len(parked))
+		pmu.Unlock()
+	}
 	m1 := mem()
 	fmt.Printf("attack:        proxy giữ %d connection (trước %d); bộ nhớ tiến trình +%.1f MiB ⇒ %.1f KiB / connection (gồm cả phía attacker)\n",
 		c1, c0, float64(int64(m1)-int64(m0))/(1<<20), float64(int64(m1)-int64(m0))/1024/float64(max(c1-c0, 1)))

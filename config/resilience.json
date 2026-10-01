@@ -16,5 +16,6 @@
   "shed": { "max_inflight": 1024, "max_queue": 1024, "queue_timeout_ms": 50 },
   "retry_budget_percent": 10,
   "drain_timeout_ms": 30000,
+  "drain_idle_grace_ms": 1000,
   "reuse_port": false
 }

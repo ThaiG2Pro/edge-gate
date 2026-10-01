@@ -34,6 +34,7 @@ func main() {
 	workers := flag.Int("workers", 64, "connection tối đa của generator")
 	service := flag.Duration("service", 5*time.Millisecond, "service time upstream")
 	runs := flag.String("runs", "noretry,retry", "lượt, phẩy")
+	grace := flag.Duration("grace", 0, "Config.DrainIdleGrace (D8′): 0 = đóng connection rỗi ngay")
 	flag.Parse()
 
 	sim := fixture.NewSim("up", *service, 0)
@@ -42,7 +43,7 @@ func main() {
 		fatal(err)
 	}
 	defer stop()
-	fmt.Printf("drainlab: restarts=%d every=%s drain=%s rate=%.0f workers=%d service=%s\n", *restarts, *every, *drain, *rate, *workers, *service)
+	fmt.Printf("drainlab: restarts=%d every=%s drain=%s grace=%s rate=%.0f workers=%d service=%s\n", *restarts, *every, *drain, *grace, *rate, *workers, *service)
 	fmt.Println("  (open-loop, loopback, SO_REUSEPORT, mọi instance cùng tiến trình)")
 
 	for _, run := range strings.Split(*runs, ",") {
@@ -51,7 +52,7 @@ func main() {
 			if err != nil {
 				fatal(err)
 			}
-			s := proxy.New(proxy.Config{Listen: addr, Upstream: up, Logf: func(string, ...any) {}})
+			s := proxy.New(proxy.Config{Listen: addr, Upstream: up, DrainIdleGrace: *grace, Logf: func(string, ...any) {}})
 			go s.Serve(ln)
 			return s, ln.Addr().String()
 		}
@@ -79,14 +80,18 @@ func main() {
 		wg.Wait()
 		cur.Close()
 		sum := loadgen.Summarize(ss)
-		closes := 0
+		closes, lostNew := 0, 0
 		for _, s := range ss {
 			if s.Close {
 				closes++
 			}
+			if s.Kind == "io-nohead" && !s.Reused {
+				lostNew++ // connection VỪA dial mà không có byte nào: RST từ backlog listener cũ (G8 c)
+			}
 		}
 		fmt.Println()
 		loadgen.Print(os.Stdout, run, sum, dur)
+		fmt.Printf("%-14s io-nohead trên connection vừa dial (backlog RST): %d\n", "", lostNew)
 		fmt.Printf("%-14s mất: io-nohead %d, io-body %d, dial %d, timeout %d · retried %d · response mang Connection: close %d · drain: idle đóng %d, cưỡng bức %d, lâu nhất %s\n", "",
 			sum.ByKind["io-nohead"], sum.ByKind["io-body"], sum.ByKind["dial"], sum.ByKind["timeout"], sum.Retried, closes,
 			drainedIdle, forced, drainMax.Round(time.Millisecond))

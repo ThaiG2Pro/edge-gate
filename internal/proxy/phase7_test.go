@@ -382,3 +382,31 @@ func TestMaxConnsBlocksAccept(t *testing.T) {
 		t.Fatalf("nhả một chỗ ⇒ thứ ba được phục vụ: %v", err)
 	}
 }
+
+// D8′ — drain lười: connection rỗi lúc drain KHÔNG bị đóng ngay; request nó
+// gửi trong grace nhận đủ response kèm Connection: close. Hết grace mà vẫn
+// rỗi thì bị đóng.
+func TestDrainLazyIdle(t *testing.T) {
+	s, p := startProxyS(t, startFixture(t), func(c *Config) { c.DrainIdleGrace = 300 * time.Millisecond })
+	busy := dialRaw(t, p) // sẽ gửi request trong grace
+	busy.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+	quiet := dialRaw(t, p) // rỗi suốt grace
+	quiet.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+	done := make(chan int)
+	t0 := time.Now()
+	go func() { done <- s.Drain(2 * time.Second) }()
+	time.Sleep(100 * time.Millisecond)
+	resp, _ := busy.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+	t.Logf("request trên connection rỗi, 100 ms sau drain: %d Connection=%q", resp.Status, resp.Header.Get("Connection"))
+	if resp.Status != 200 || !resp.Close {
+		t.Fatal("muốn 200 + Connection: close")
+	}
+	b, el, _ := readUntilClose(quiet.c)
+	if f := <-done; f != 0 {
+		t.Fatalf("cưỡng bức %d", f)
+	}
+	t.Logf("connection rỗi suốt grace: %d byte, bị đóng sau %s; Drain xong sau %s", len(b), (el + 100*time.Millisecond).Round(10*time.Millisecond), time.Since(t0).Round(10*time.Millisecond))
+	if len(b) != 0 || time.Since(t0) < 300*time.Millisecond {
+		t.Fatal("connection rỗi phải bị đóng im lặng SAU grace")
+	}
+}

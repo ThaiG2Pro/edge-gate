@@ -1,0 +1,19 @@
+Thu Oct  1 10:21:07 +07 2026
+$ go test ./internal/lb -run TestBreakerHalfOpen -count=5 -v
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 1 (state half-open, probes 1)
+--- PASS: TestBreakerHalfOpen (0.62s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 1 (state half-open, probes 1)
+--- PASS: TestBreakerHalfOpen (0.63s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 1 (state half-open, probes 1)
+--- PASS: TestBreakerHalfOpen (0.62s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 1 (state half-open, probes 1)
+--- PASS: TestBreakerHalfOpen (0.62s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 1 (state half-open, probes 1)
+--- PASS: TestBreakerHalfOpen (0.62s)
+$ make breakerlab-nodefense
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 8 (state closed, probes 0)
+--- FAIL: TestBreakerHalfOpen (0.21s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 8 (state closed, probes 0)
+--- FAIL: TestBreakerHalfOpen (0.21s)
+    lb_test.go:418: hết hạn eject, 32 Pick cùng lúc: b0 nhận 8 (state closed, probes 0)
+--- FAIL: TestBreakerHalfOpen (0.21s)

@@ -1,0 +1,48 @@
+
+Thu Oct  1 10:32:38 +07 2026
+ 10:32:38 up  1:07,  1 user,  load average: 4.52, 3.65, 4.08
+$ ./bin/drainlab -restarts 20 -every 500ms -grace 0   # lần 1
+noretry        n=22000 200:97.5% io-nohead:548
+               200: p50 45.2ms p90 205.11ms p99 307.09ms p99.9 346.44ms max 374.54ms · goodput 1950/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 548, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 668 · drain: idle đóng 610, cưỡng bức 0, lâu nhất 175ms
+retry          n=22000 200:100.0% retried:766
+               200: p50 14.58ms p90 71.8ms p99 145.57ms p99.9 181.19ms max 220.86ms · goodput 2000/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 766 · response mang Connection: close 514 · drain: idle đóng 783, cưỡng bức 0, lâu nhất 180ms
+
+Thu Oct  1 10:33:00 +07 2026
+ 10:33:00 up  1:07,  1 user,  load average: 6.42, 4.20, 4.25
+$ ./bin/drainlab -restarts 20 -every 500ms -grace 0   # lần 2
+noretry        n=22000 200:95.7% io-nohead:943
+               200: p50 6.66ms p90 19.85ms p99 74.05ms p99.9 101.92ms max 137.72ms · goodput 1914/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 943, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 337 · drain: idle đóng 960, cưỡng bức 0, lâu nhất 51ms
+retry          n=22000 200:100.0% retried:1028
+               200: p50 6.37ms p90 7.62ms p99 14.21ms p99.9 44.35ms max 60.56ms · goodput 2000/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 1028 · response mang Connection: close 252 · drain: idle đóng 1039, cưỡng bức 0, lâu nhất 15ms
+
+Thu Oct  1 10:33:22 +07 2026
+ 10:33:22 up  1:08,  1 user,  load average: 5.32, 4.09, 4.22
+$ ./bin/drainlab -restarts 20 -every 500ms -grace 1s   # lần 1
+noretry        n=22000 200:100.0% io-nohead:4
+               200: p50 6.27ms p90 7.18ms p99 8.6ms p99.9 22.14ms max 33.17ms · goodput 2000/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 4, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 1276 · drain: idle đóng 0, cưỡng bức 0, lâu nhất 34ms
+retry          n=22000 200:100.0% retried:5
+               200: p50 6.37ms p90 7.59ms p99 14.1ms p99.9 21.65ms max 26.56ms · goodput 2000/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 5 · response mang Connection: close 1275 · drain: idle đóng 0, cưỡng bức 0, lâu nhất 36ms
+
+Thu Oct  1 10:33:44 +07 2026
+ 10:33:44 up  1:08,  1 user,  load average: 4.31, 3.93, 4.16
+$ ./bin/drainlab -restarts 20 -every 500ms -grace 1s   # lần 2
+noretry        n=22000 200:100.0% io-nohead:4
+               200: p50 6.29ms p90 7.22ms p99 10.48ms p99.9 61.32ms max 74.01ms · goodput 2000/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 4, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 1276 · drain: idle đóng 0, cưỡng bức 0, lâu nhất 34ms
+retry          n=22000 200:100.0% retried:6
+               200: p50 6.28ms p90 7.23ms p99 9.04ms p99.9 15.82ms max 25.81ms · goodput 2000/s
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 6 · response mang Connection: close 1274 · drain: idle đóng 0, cưỡng bức 0, lâu nhất 39ms

@@ -200,8 +200,8 @@ func Listen(addr string, reusePort bool) (net.Listener, error) {
 // request nhận response kèm `Connection: close` rồi đóng; chờ tối đa timeout
 // rồi Close cưỡng bức. Trả số connection bị đóng cưỡng bức.
 //
-// Thứ tự với serveConn là kiểu Dekker trên hai atomic: Drain ghi draining rồi
-// đọc idle; serveConn ghi idle rồi đọc draining. Một connection vừa rỗi đúng
+// Thứ tự với serveConn là kiểu Dekker trên hai atomic: Drain ghi closeIdle rồi
+// đọc idle; serveConn ghi idle rồi đọc closeIdle. Một connection vừa rỗi đúng
 // lúc Drain quét thì một trong hai bên chắc chắn thấy bên kia.
 func (s *Server) Drain(timeout time.Duration) int {
 	s.draining.Store(true)
@@ -209,6 +209,22 @@ func (s *Server) Drain(timeout time.Duration) int {
 	if s.ln != nil {
 		s.ln.Close()
 	}
+	s.mu.Unlock()
+	done := make(chan struct{})
+	go func() { s.wg.Wait(); close(done) }()
+	deadline := time.After(timeout)
+	// D8′: cho connection rỗi một khoảng grace để gửi request kế — request đó
+	// nhận Connection: close (exchange/writeErrorH thấy draining) rồi đóng.
+	// Connection về rỗi SAU khi drain bắt đầu thì đã nhận response kèm close
+	// ⇒ serveConn tự thoát (kiểm draining trước Peek).
+	if g := s.cfg.DrainIdleGrace; g > 0 {
+		select {
+		case <-done:
+		case <-time.After(min(g, timeout)):
+		}
+	}
+	s.closeIdle.Store(true) // trước khi quét: cặp Dekker với serveConn (idle rồi closeIdle)
+	s.mu.Lock()
 	for c, st := range s.conns {
 		if st.idle.Load() {
 			s.res.drainedIdle.Add(1)
@@ -216,12 +232,10 @@ func (s *Server) Drain(timeout time.Duration) int {
 		}
 	}
 	s.mu.Unlock()
-	done := make(chan struct{})
-	go func() { s.wg.Wait(); close(done) }()
 	forced := 0
 	select {
 	case <-done:
-	case <-time.After(timeout):
+	case <-deadline:
 		s.mu.Lock()
 		forced = len(s.conns)
 		s.mu.Unlock()

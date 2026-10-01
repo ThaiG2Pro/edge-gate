@@ -2,7 +2,7 @@
 
 - **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** _(turn 3 điền)_
 - **Bắt đầu:** 2026-10-01 09:48 · **Kết thúc:** _______
-- **Trạng thái:** 🟡 turn 1 xong 10:14 (code + test xanh + phản chứng đỏ, **chưa đo**) — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
+- **Trạng thái:** 🟡 turn 2 xong 10:40 (đo xong, G1-G9 đã chấm: **6/9 sai một vế, 0 sai hẳn**; thêm D8′ drain lười) — còn turn 3 — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
 - **Commit:** _______ (commit nền `40e8cbb`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase7-log.md`](phase7-log.md). File này là bản biên tập.
@@ -131,7 +131,7 @@ make ratelab-nodefense                                        # PHẢI đỏ: sp
 go test ./internal/limit -run TestLimiterMemory -v            # G4 bộ nhớ
 make breakerlab-nodefense                                     # PHẢI đỏ (G5)
 make shedlab               | tee bench/p7-shedlab.txt         # G7
-make drainlab              | tee bench/p7-drainlab.txt        # G8
+make drainlab              | tee bench/p7-drainlab.txt        # G8 + D8′ (-grace 1s)
 make chaoslab              | tee bench/p7-chaoslab.txt        # G9
 ```
 
@@ -168,13 +168,197 @@ tới deadline client 3 s thay vì 408; spoof XFF **500/500** lọt; map không 
 tắt ⇒ b0 nhận **8/32**; retry mù ⇒ 19/19 retry. `go test ./... -race` xanh; không package data-path/lab
 nào import `net/http`.
 
+### 2026-10-01 10:19-10:40 — Turn 2: đo, chấm G1-G9, thêm D8′ drain lười
+
+Output thô và thứ tự làm: [`phase7-log.md` §2](phase7-log.md). Commit nền `0ed7a23`. Load **2.3-10.1** trên
+6 core suốt bài: indexer codegraph (~95 % một core) + chroma-mcp (~35 %) chạy nền, không phải của bài đo —
+`uptime` ở đầu mỗi file bench. Mọi số: **open-loop, latency từ giờ hẹn; loopback; proxy + backend +
+generator cùng tiến trình, không ghim core.**
+
+**(1) G1 — bảy deadline ×3** (`bench/p7-deadline.txt`):
+
+```console
+$ go test ./internal/proxy -run TestDeadline -count=3 -v      # (gộp theo dòng, sort | uniq -c)
+      3 head dở: "HTTP/1.1 408 Request Timeout" sau 301-303ms (EOF)
+      3 body dở: "HTTP/1.1 408 Request Timeout" sau 302-306ms (EOF)
+      3 không gửi gì: 0 byte sau 301ms (EOF)
+      3 dial không route: 502 sau 602-610ms (DialTimeout 300ms)
+      3 upstream không trả head: 504 sau 301-306ms
+      3 upstream dừng giữa body: 43 byte, "HTTP/1.1 200 OK" sau 302-309ms (EOF)
+      3 client không đọc 64 MiB: goroutine proxy thoát sau 302-307ms; pool {... DropDirty:1 ... Idle:0}
+```
+
+**Đọc kết quả:** 6/7 fire trong +1..+9 ms của 300 ms. Dial là **2×**: chỉ một backend, D9 đổi backend
+"nếu picker cho" — picker cho lại chính nó.
+
+**(2) G2/G3 — Slowloris** (`bench/p7-slowlab.txt`, `bench/p7-slowlab-nodefense.txt`, `bench/p7-slowlab-calib.txt`):
+
+```console
+$ ./bin/slowlab -conns 500 -byte-every 10s
+baseline       n=250 200:100.0%      200: p50 1.59ms p90 2.53ms p99 3.79ms ...
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.3 MiB ⇒ 39.4 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 200:100.0%     200: p50 1.59ms p90 2.17ms p99 4.71ms p99.9 9.82ms ...
+               attacker: reconnect 1500, dial lỗi 0; proxy giữ 500 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 0 connection
+$ ./bin/slowlab-nd -conns 500 -byte-every 10s      # -tags nodefense7: KHÔNG HeaderTimeout
+probe/attack   n=1500 200:100.0%     200: p50 1.42ms p90 2.12ms p99 3.72ms ...
+               attacker: reconnect 0, dial lỗi 0; proxy giữ 500 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 500 connection
+$ ./bin/slowlab -conns 500 -byte-every 10s -max-conns 256
+probe/attack   n=1500 200:78.4% timeout:324      200: p50 5.45ms p90 4.01393s p99 6.11091s ...
+$ ./bin/slowlab-nd -conns 500 -byte-every 10s -max-conns 256
+probe/attack   n=1500 timeout:1500
+$ ./bin/slowlab -conns 500 -byte-every 10s -max-inflight 64
+probe/attack   n=1500 200:100.0%     200: p50 1.48ms p90 2.21ms p99 5.14ms ...
+$ ./bin/slowlab -conns 500 -target null -duration 5s -hold 1s     # ×3: chỉ attacker
+attack:        ... ⇒ 18.6 / 18.8 / 18.7 KiB / connection
+$ ./bin/slowlab -conns 500 -duration 5s -hold 1s                  # ×3: attacker + proxy
+attack:        ... ⇒ 39.4 / 39.5 / 39.3 KiB / connection
+```
+
+**Đọc kết quả:** ROADMAP nói "trước khi có HeaderTimeout thì không [phục vụ được]" — **sai với Go**: tắt
+HeaderTimeout, 500 connection Slowloris, probe vẫn **100 %**, p99 3.72 ms. Không có worker pool thì không có
+gì để cạn. Cái giá là bộ nhớ: **20.6-20.9 KiB/connection** phía proxy (8 KiB `br` + 8 KiB `bw` + stack) ⇒
+500 conn ≈ 10 MiB, 100 000 conn ≈ 2 GiB. HeaderTimeout không giảm con số đó khi attacker nối lại (1 500
+reconnect, vẫn 500 conn); nó chỉ đảm bảo connection **im lặng** chết (hold: 0 vs 500). Go chết khi có
+**trần connection**: MaxConns 256 + không HeaderTimeout ⇒ **100 %** probe treo; có HeaderTimeout vẫn 21.6 %
+treo. Shed theo request (MaxInflight 64) ⇒ 100 %: conn Slowloris không bao giờ xong head nên không giành slot.
+
+**(3) G4 — rate limit** (`bench/p7-ratelab.txt`):
+
+```console
+$ ./bin/ratelab -ips 20 -rate 50 -burst 10 -per-ip 100 -duration 5s
+ip-that        mỗi IP 200: min 253 max 258 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 259 / 500 (kỳ vọng 260 ± 5 %), 429 = 241
+$ ./bin/ratelab-nd ...      # -tags nodefense7: khoá = XFF thô
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 500 / 500 (kỳ vọng 260 ± 5 %), 429 = 0
+proxy          rate-limited 4840, khoá đang nhớ 520
+$ go test ./internal/limit -run TestLimiterMemory -count=3 -v
+    limit_test.go:85: 1e6 khoá: giữ 10000 khoá, đuổi 990000, heap tăng 1.4 / 1.3 / 1.4 MiB
+$ go test ./internal/limit -run TestLimiterMemory -count=1 -v -tags nodefense7
+    limit_test.go:85: 1e6 khoá: giữ 1000000 khoá, đuổi 0, heap tăng 144.8 MiB (152 B/khoá giữ)
+```
+
+**(4) G5 — half-open** (`bench/p7-breaker.txt`): 32 Pick cùng lúc lúc hết hạn eject ⇒ b0 nhận **1** (5/5 lần);
+`nodefense7` ⇒ **8** (3/3). Chỉ ở mức `lb` — chưa có bài proxy-level (nợ P7-5).
+
+**(5) G6 — khuếch đại retry** (`bench/p7-retrylab.txt`; 4 backend đóng 50 % connection dùng lại trước byte nào):
+
+```console
+$ ./bin/chaoslab -scenario retry -duration 10s -rate 1000 -drop 0.5
+retry          n=10000 200:74.7% 502:25.3%
+               proxy: retry cho 1200 / từ chối 2526
+               upstream nhận 11200 lần gửi cho 10000 request client ⇒ khuếch đại 1.120x; ... 502 = 25.3 %
+$ ./bin/chaoslab-nd -scenario retry -duration 10s -rate 1000 -drop 0.5      # retry mù
+retry          n=10000 200:100.0%
+               upstream nhận 14942 lần gửi cho 10000 request client ⇒ khuếch đại 1.494x; ... 502 = 0.0 %
+```
+
+**Đọc kết quả:** khuếch đại đúng đoán (1.12x vs 1.49x). 1 200 retry > trần lý thuyết 1 100 vì cửa sổ trượt:
+xô của giây đầu rơi khỏi cửa sổ ở t = 10 s cùng với retry của nó. Phần 502 ngược đoán — xem Giả thuyết sai.
+Ở kịch bản này retry **rẻ và luôn thành công**, nên budget chỉ đổi 25 % lỗi lấy 0.37x tải; budget có giá
+trị khi retry **không** thành công (backend quá tải thật) — kịch bản đó chưa đo (nợ P7-6).
+
+**(6) G7 — shedding 2x capacity** (`bench/p7-shedlab.txt`):
+
+```console
+$ ./bin/shedlab -x 2 -duration 10s
+shedlab: 4 backend × conc 4 × 10ms ⇒ capacity 1600 rps; tải 3200 rps (2.0x) trong 10s; shed inflight=16 queue=16 queue-timeout=50ms; generator 256 worker
+noshed         n=32000 200:100.0%
+               200: p50 5.80686s p90 10.53345s p99 11.63283s p99.9 11.73658s max 11.74865s · goodput 1471/s
+               bắn xong lịch sau 21.747s (lịch 10s)
+               p99 200 theo giây: s0:1.169s s1:2.307s s2:3.448s s3:4.586s s4:5.796s s5:6.965s s6:8.174s s7:9.364s s8:10.522s s9:11.737s
+shed           n=32000 200:45.1% 503:54.9%
+               200: p50 21.57ms p90 24.1ms p99 33.08ms p99.9 48.7ms max 62.59ms · goodput 1441/s
+               503: p50 710µs p99 8.58ms
+               p99 200 theo giây: s0:37ms s1:32ms s2:25ms s3:24ms s4:24ms s5:26ms s6:49ms s7:38ms s8:28ms s9:27ms
+```
+
+**Đọc kết quả:** không shed, p99 tăng **≈ 1.15 s mỗi giây chạy** — đúng tốc độ hàng đợi phình (thừa 1 600
+rps ⇒ thêm 1 s chờ mỗi giây). Shed: p99 của request **được nhận** 33 ms, phẳng theo thời gian — **352x**.
+Goodput gần như bằng nhau (1 441 vs 1 471/s): shed không phục vụ ít hơn, nó chỉ thôi bắt **mọi** người chờ.
+
+**(7) G8 — rolling restart, rồi D8′** (`bench/p7-drainlab.txt`, `-grace.txt`, `-closeidle.txt`): 20 restart / lượt,
+2 000 rps, 64 worker.
+
+| Drain | Lượt | Mất `io-nohead` (không retry) | Có client retry | Backlog RST | Drain lâu nhất |
+|---|---|---|---|---|---|
+| D8 đóng rỗi ngay | 4 | **795 / 991 / 548 / 943** | 0 (retried 766-1 029) | 0 | 8-175 ms |
+| D8′ grace 1 s | 2 | **4 / 4** | 0 (retried 5-6) | 0 | 34-39 ms |
+| D8′ + sửa `closeIdle` | 3 | **0 / 0 / 0** | 0 (retried 0) | 0 | 37-86 ms |
+
+**Đọc kết quả:** đóng connection rỗi ngay làm mất gần như **mỗi** request kế của nó — client không biết vì
+không đọc khi rỗi (đúng bài FIN phase 5, giờ ở phía client). Drain lười để request kế tới, trả nó kèm
+`Connection: close` ⇒ client tự đóng có báo trước. Bốn cái còn mất là khe race của chính tôi (response ghi
+trước khi `draining` bật) — tách cờ `closeIdle` ⇒ 0 trong 5 × 22 000. `cmd/edgegate` mặc định grace 1 s.
+
+**(8) G9 — chaoslab 60 s × 2 seed** (`bench/p7-chaoslab.txt`):
+
+```console
+$ ./bin/chaoslab -duration 60s -rate 500 -tick 300ms -seed 1
+chaos          n=30000 200:57.6% 502:5.2% 503:36.2% 504:1.0%
+               200 hành động chaos: map[err50:37 hang:31 heal:26 kill:32 revive:37 slow:37]
+               127.0.0.1:32945 picks 10579 fails 4134 ejections 6 probes 586 reopens 582 state closed healthy false
+               proxy: retry cho 1291 / từ chối 31, shed 0+339, no-available 8903, eject-refused 1173
+invariant (c'): connection client còn mở ở proxy 500 ms sau tải: 0 (ngay khi tải xong: 0)
+invariant (b): goroutine sau Close proxy + kill backend: 1 (nền trước mọi thứ 1, ±2)
+invariant (c): fd sau Close proxy + kill backend: 7 (nền trước mọi thứ 7, ±0)
+invariant (d): treo quá 7s: 0; đóng không trả gì (io-nohead): 0; body cụt (io-body): 0; dial lỗi: 0
+PASS
+$ ./bin/chaoslab -duration 60s -rate 500 -tick 300ms -seed 2
+chaos          n=30000 200:66.6% 502:1.8% 503:26.0% 504:5.7%
+               proxy: retry cho 521 / từ chối 0, shed 0+1028, no-available 5287, eject-refused 886
+invariant (b) 1 / 1 · (c) 7 / 7 · (d) treo 0, io-nohead 0, io-body 0, dial 0 · PASS
+```
+
+**Đọc kết quả:** bốn invariant giữ cả hai seed. Status mix không phải "đẹp" (26-36 % 503 vì 4/6 hành động
+là hại, chỉ `heal`/`revive` chữa) — nhưng mỗi request có **đúng một** status, không cái nào treo. Một
+tương tác lạ: node `32945` có `probes 586 / reopens 582` mà `ejections 6` — thử hỏng, `tryEject` bị **trần
+50 %** từ chối ⇒ node ở lại half-open ⇒ thử lại ⇒ hỏng ⇒ … Trần eject + half-open biến thành "một request
+thử mỗi lượt" cho node xấu khi cụm đang xấu — có lẽ là điều đúng, nhưng chưa có test nào nói thế (nợ P7-3).
+
+**Đang nghĩ gì:** câu 2 đổi đáp án (Go không chết vì Slowloris; chết vì trần connection). Câu 7 đổi đáp
+án: cửa sổ idle-close không hẹp — nó là **mọi** connection rỗi, và server vá được bằng drain lười, không
+cần chờ client retry.
+
+
 ## Giả thuyết sai
 
-_(turn 2/3)_
+| # | Tôi tưởng là | Thực tế là | Lệnh + output đã lật tẩy | Đã sửa thế nào |
+|---|---|---|---|---|
+| G1 vế dial | Dial không route ⇒ 502 sau `DialTimeout` ± 50 ms | **602-610 ms** = 2× — một backend, D9 "chọn backend khác" chọn lại **chính** backend vừa dial lỗi | `go test ./internal/proxy -run TestDeadline -count=3 -v` → `bench/p7-deadline.txt` | Chưa sửa — nợ P7-1 (re-pick loại backend vừa lỗi) |
+| G2 vế số conn | HeaderTimeout làm attacker phải giữ ít connection hơn | Attacker nối lại mỗi 10 s (**1 500** reconnect / 30 s) ⇒ proxy vẫn giữ **500** suốt bài. HeaderTimeout giới hạn **tuổi** một connection, không giới hạn **số** connection | `bench/p7-slowlab.txt` dòng "reconnect 1500 … proxy giữ 500" | Chưa sửa — nợ P7-2 (trần connection per-IP) |
+| G2 bộ nhớ | 39.4 KiB/conn là của proxy | Gộp attacker cùng tiến trình. Hiệu chuẩn `-target null`: attacker 18.6-18.8 KiB ⇒ proxy **20.6-20.9 KiB** | `bench/p7-slowlab-calib.txt` | Thêm `-target null` vào slowlab |
+| G3 vế (b) | MaxConns 256 + HeaderTimeout + attacker nối lại ⇒ ≥ 50 % probe hỏng | **21.6 %** treo (324/1 500), p99 6.1 s — mỗi 10 s cả loạt attacker bị cắt cùng lúc, probe chen vào backlog được 78 % | `bench/p7-slowlab.txt` lượt `-max-conns 256` | Không sửa: kết luận giữ (trần connection mở lại cửa); số nhỏ hơn đoán |
+| G6 vế 502 | Không budget ⇒ ~25 % 502, có budget ⇒ ~45 % | **Ngược**: không budget **0 %** (retry D4 luôn dial mới, connection mới không bị đóng ⇒ cứu hết), có budget **25.3 %** | `bench/p7-retrylab.txt` | Không sửa: budget đúng thiết kế; ghi "budget đổi lỗi lấy tải" vào Rút ra |
+| G7 vế 504 | Không shed ⇒ phần lớn thành 504 sau 5 s | **100 % 200**, 0 cái 504: hàng đợi nằm ở **generator** (256 worker), không ở proxy ⇒ phía proxy mỗi request chỉ chờ ~160 ms ⇒ deadline upstream không bao giờ fire | `bench/p7-shedlab.txt` | Không sửa: chính là bài học "quá tải nằm ở đâu" |
+| G8 (b) | Cửa sổ idle-close hẹp ⇒ ≥ 1 mất / 20 restart | **548-1 031** mất / 20 restart ≈ **99 %** số connection rỗi bị đóng: client không đọc khi rỗi ⇒ không thấy FIN ⇒ request kế **luôn** rơi | `bench/p7-drainlab.txt`, `bench/p7-drainlab-grace.txt` | **D8′ drain lười** (grace 1 s) ⇒ 4 ⇒ sửa khe race `closeIdle` ⇒ **0** (5 × 22 000) |
+| G8 (c) | Backlog listener cũ bị RST ⇒ ≥ 1 / 20 restart | **0** trong 10 lượt × 20 restart (đếm riêng `io-nohead` trên connection vừa dial) dù `tcp_migrate_req = 0` | `bench/p7-drainlab-grace.txt` dòng "backlog RST: 0" | Không sửa; ghi điều kiện (instance mới bind **trước** khi cũ đóng; accept loop rút queue nhanh ở 2 000 rps) |
+| D8 (bug) | Đóng connection khi về rỗi mà thấy `draining` là an toàn | Response ghi **trước** khi `draining` bật không mang `Connection: close` ⇒ đóng nó là mất request kế: còn **4** mất ở drain lười | `bench/p7-drainlab-grace.txt` (4/4) → `bench/p7-drainlab-closeidle.txt` (0) | Tách cờ `closeIdle` (bật khi Drain quét) khỏi `draining` |
 
 ## Số đo
 
-_(turn 2)_
+2026-10-01, commit `0ed7a23` + sửa turn 2 (D8′, `closeIdle`, `-target null`), máy `bench/env-GOTIT-00663.txt`
+(6 core WSL2), **open-loop (latency từ giờ hẹn), loopback RTT ≈ 0, mọi thành phần cùng tiến trình, không ghim
+core, load nền 2.3-10.1** (codegraph + chroma-mcp). Tỉ số là kết luận; số tuyệt đối không mang đi.
+
+| # | Đại lượng | Đo | Tỉ số / kết luận | Kỳ vọng |
+|---|---|---|---|---|
+| G1 | 7 deadline (300 ms) | 6 cái 301-309 ms; dial 602-610 ms | 6/7 ±10 ms; dial **2×** | 7/7 ±100 ms |
+| G2 | Probe dưới 500 conn Slowloris, có / không HeaderTimeout | 100 % / 100 % 200; p99 4.71 / 3.72 ms (nền 3.79 / 7.3) | p99 **1.24x** nền; **Go không chết** | 100 %, ≤ 1.5x; ≥ 99 % |
+| G2 | Bộ nhớ proxy / connection treo | 39.3-39.5 − 18.6-18.8 KiB | **20.6-20.9 KiB** | 16-32 KiB |
+| G2 | Proxy giữ sau 12 s attacker im, có / không HeaderTimeout | 0 / 500 | timeout giết conn im | 0 / 500 |
+| G3 | Probe hỏng: MaxConns 256 không / có HeaderTimeout; MaxInflight 64 | **100 %** / 21.6 % / 0 % | trần conn = cửa Slowloris; shed theo request miễn nhiễm | ≥ 90 / ≥ 50 / 0 |
+| G4 | 200 mỗi IP; spoof XFF thường / nodefense | 253-258; 259 / **500** of 500 | ±3 %; spoof bị chặn | 260 ± 13; 260 vs ≥ 95 % |
+| G4 | Heap 1e6 khoá, trần 10k / không trần | 1.3-1.4 / **144.8 MiB** | **~100x**; 152 B/khoá | ≤ 5 / ≥ 100 MiB |
+| G5 | Request vào node vừa hết hạn eject (32 song song) | **1** / 8 (nodefense) | 8x | 1 / ≥ 8 |
+| G6 | Khuếch đại; 502: budget / retry mù | **1.120x** / 1.494x; 25.3 % / 0 % | budget đổi 25 % lỗi lấy 0.37x tải | ≤ 1.12 / 1.5 |
+| G7 | p99 của 200: không shed / shed (2x capacity) | 11.63 s / **33.08 ms** | **352x**; 503 54.9 % (p50 0.71 ms); goodput 1 441 vs 1 471/s | ≥ 20x; 45-55 % |
+| G8 | Mất / 20 restart: đóng rỗi ngay / drain lười + closeIdle | 548-1 031 / **0** (3 lượt) | ∞ ; backlog RST 0 / 10 lượt | ≥ 1 vs 0 |
+| G9 | 60 s chaos ×2: goroutine / fd / treo / io-nohead | 1=1 / 7=7 / 0 / 0 | **4/4 invariant** | ±2 / ±0 / 0 |
+
+**Chấm G1-G9:** G4 ✅, G5 ✅ (mức `lb`), G9 ✅; G1, G2, G3, G6, G7, G8 ❌ **một vế** (bảng Giả thuyết sai).
+Không giả thuyết nào sai hẳn — nhưng ba vế sai (G2 số conn, G7 504, G8 b) là ba câu trả lời đổi hẳn.
 
 ## Invariant + lệnh kiểm chứng
 
@@ -192,4 +376,17 @@ _(turn 3)_
 
 ## Nợ kỹ thuật
 
-_(turn 3)_
+_(turn 3 chốt và chép vào `docs/debts.md`)_ Phát sinh turn 2:
+
+- [ ] **P7-1** 🔧 D9 "chọn backend khác" chọn lại chính backend vừa dial lỗi khi picker cho ⇒ 2× DialTimeout
+  (G1). Loại backend vừa lỗi khỏi lượt chọn lại; chỉ một backend ⇒ 502 ngay.
+- [ ] **P7-2** 🔧 HeaderTimeout không giới hạn **số** connection một IP giữ (500 Slowloris từ một IP).
+  Thêm `MaxConnsPerIP` (khoá = peer, không XFF); slowlab đòi attacker bị giới hạn, probe từ IP khác 100 %.
+- [ ] **P7-3** ⏳ Trần eject 50 % + half-open: node xấu ở lại half-open, mỗi lượt một request thử khi bị
+  từ chối mở lại (582 reopen). Hành vi chưa đăng ký, chưa có test.
+- [ ] **P7-4** 📏 chaoslab 4/6 hành động là hại ⇒ 26-36 % 503; đo thêm một tỉ lệ cân (heal ≥ hại) để status
+  mix có nghĩa, và một seed có backend "treo" kéo dài để thử deadline client.
+- [ ] **P7-5** 📏 G5 chỉ đo ở mức `lb`; thiếu bài qua proxy (32 conn closed-loop, đếm 5xx client thấy mỗi
+  lần hết hạn eject).
+- [ ] **P7-6** 📏 Retry budget chưa đo ở kịch bản nó **có** giá trị: retry không thành công (backend quá tải
+  thật, dial mới cũng hỏng) — khi đó retry mù là 2x tải lên cụm đang chết.

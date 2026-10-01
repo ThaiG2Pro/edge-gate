@@ -69,6 +69,7 @@ type fileConfig struct {
 	} `json:"shed"`
 	RetryBudgetPercent float64 `json:"retry_budget_percent"`
 	DrainTimeoutMs     int     `json:"drain_timeout_ms"`
+	DrainIdleGraceMs   *int    `json:"drain_idle_grace_ms"` // nil ⇒ 1000 (D8′); 0 ⇒ đóng connection rỗi ngay
 	ReusePort          bool    `json:"reuse_port"`
 }
 
@@ -130,6 +131,12 @@ func main() {
 		Shed:        proxy.ShedConfig{MaxInflight: fc.Shed.MaxInflight, MaxQueue: fc.Shed.MaxQueue, QueueTimeout: ms(fc.Shed.QueueTimeoutMs)},
 		RetryBudget: proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
 		ReusePort:   fc.ReusePort,
+		DrainIdleGrace: func() time.Duration {
+			if fc.DrainIdleGraceMs == nil {
+				return time.Second // phase 7 turn 2: đóng ngay mất ~99 % request kế của connection rỗi (G8 b)
+			}
+			return ms(*fc.DrainIdleGraceMs)
+		}(),
 	})
 	drainTO := ms(fc.DrainTimeoutMs)
 	if drainTO == 0 {

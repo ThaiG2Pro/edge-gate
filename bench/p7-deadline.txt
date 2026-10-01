@@ -1,0 +1,25 @@
+Thu Oct  1 10:20:03 +07 2026
+ 10:20:03 up 55 min,  1 user,  load average: 5.06, 4.75, 4.46
+$ go test ./internal/proxy -run TestDeadline -count=3 -v
+    phase7_test.go:71: head dở: "HTTP/1.1 408 Request Timeout" sau 302ms (EOF)
+    phase7_test.go:82: body dở: "HTTP/1.1 408 Request Timeout" sau 302ms (EOF)
+    phase7_test.go:92: không gửi gì: 0 byte sau 301ms (EOF)
+    phase7_test.go:112: dial không route: 502 sau 610ms (DialTimeout 300ms)
+    phase7_test.go:129: upstream không trả head: 504 sau 306ms
+    phase7_test.go:147: upstream dừng giữa body: 43 byte, "HTTP/1.1 200 OK" sau 303ms (EOF)
+    phase7_test.go:178: client không đọc 64 MiB: goroutine proxy thoát sau 307ms; pool {Dials:1 Reuses:0 Puts:0 Retries:0 DropDirty:1 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+    phase7_test.go:71: head dở: "HTTP/1.1 408 Request Timeout" sau 303ms (EOF)
+    phase7_test.go:82: body dở: "HTTP/1.1 408 Request Timeout" sau 306ms (EOF)
+    phase7_test.go:92: không gửi gì: 0 byte sau 301ms (EOF)
+    phase7_test.go:112: dial không route: 502 sau 603ms (DialTimeout 300ms)
+    phase7_test.go:129: upstream không trả head: 504 sau 302ms
+    phase7_test.go:147: upstream dừng giữa body: 43 byte, "HTTP/1.1 200 OK" sau 309ms (EOF)
+    phase7_test.go:178: client không đọc 64 MiB: goroutine proxy thoát sau 302ms; pool {Dials:1 Reuses:0 Puts:0 Retries:0 DropDirty:1 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+    phase7_test.go:71: head dở: "HTTP/1.1 408 Request Timeout" sau 301ms (EOF)
+    phase7_test.go:82: body dở: "HTTP/1.1 408 Request Timeout" sau 302ms (EOF)
+    phase7_test.go:92: không gửi gì: 0 byte sau 301ms (EOF)
+    phase7_test.go:112: dial không route: 502 sau 602ms (DialTimeout 300ms)
+    phase7_test.go:129: upstream không trả head: 504 sau 301ms
+    phase7_test.go:147: upstream dừng giữa body: 43 byte, "HTTP/1.1 200 OK" sau 302ms (EOF)
+    phase7_test.go:178: client không đọc 64 MiB: goroutine proxy thoát sau 303ms; pool {Dials:1 Reuses:0 Puts:0 Retries:0 DropDirty:1 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+ok  	github.com/thaivro/edgegate/internal/proxy	13.386s

@@ -1,0 +1,26 @@
+
+Thu Oct  1 10:24:14 +07 2026
+ 10:24:14 up 59 min,  1 user,  load average: 6.03, 5.87, 4.99
+$ ./bin/slowlab-nd -conns 500 -byte-every 10s    # -tags nodefense7: không HeaderTimeout
+slowlab: conns=500 byte-every=10s src=127.0.0.2 duration=30s hold=12s probe=50 rps header-timeout=10s (áp dụng: false) max-conns=0 max-inflight=0
+  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)
+baseline       n=250 200:100.0%
+               200: p50 1.73ms p90 2.83ms p99 7.3ms p99.9 11.12ms max 13.89ms · goodput 50/s
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.2 MiB ⇒ 39.4 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 200:100.0%
+               200: p50 1.42ms p90 2.12ms p99 3.72ms p99.9 6.19ms max 7.7ms · goodput 50/s
+               attacker: reconnect 0, dial lỗi 0; proxy giữ 500 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 500 connection
+
+Thu Oct  1 10:25:03 +07 2026
+ 10:25:03 up  1:00,  1 user,  load average: 3.72, 5.27, 4.83
+$ ./bin/slowlab-nd -conns 500 -byte-every 10s -max-conns 256   # -tags nodefense7: không HeaderTimeout
+slowlab: conns=500 byte-every=10s src=127.0.0.2 duration=30s hold=12s probe=50 rps header-timeout=10s (áp dụng: false) max-conns=256 max-inflight=0
+  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)
+baseline       n=250 200:100.0%
+               200: p50 1.4ms p90 2.07ms p99 2.98ms p99.9 3.26ms max 3.49ms · goodput 50/s
+attack:        proxy giữ 256 connection (trước 0); bộ nhớ tiến trình +14.2 MiB ⇒ 56.7 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 timeout:1500
+               200: p50 0s p90 0s p99 0s p99.9 0s max 0s · goodput 0/s
+               attacker: reconnect 0, dial lỗi 0; proxy giữ 256 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 256 connection

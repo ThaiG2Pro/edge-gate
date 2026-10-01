@@ -1,0 +1,17 @@
+Thu Oct  1 10:29:34 +07 2026
+ 10:29:34 up  1:04,  1 user,  load average: 2.57, 3.50, 4.17
+$ ./bin/shedlab -x 2 -duration 10s
+shedlab: 4 backend × conc 4 × 10ms ⇒ capacity 1600 rps; tải 3200 rps (2.0x) trong 10s; shed inflight=16 queue=16 queue-timeout=50ms; generator 256 worker
+  (OPEN-LOOP, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình, không ghim core)
+
+noshed         n=32000 200:100.0%
+               200: p50 5.80686s p90 10.53345s p99 11.63283s p99.9 11.73658s max 11.74865s · goodput 1471/s
+               bắn xong lịch sau 21.747s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:0 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0}
+               p99 200 theo giây: s0:1.169s s1:2.307s s2:3.448s s3:4.586s s4:5.796s s5:6.965s s6:8.174s s7:9.364s s8:10.522s s9:11.737s
+
+shed           n=32000 200:45.1% 503:54.9%
+               200: p50 21.57ms p90 24.1ms p99 33.08ms p99.9 48.7ms max 62.59ms · goodput 1441/s
+               bắn xong lịch sau 10.02s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:17563 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0}
+               503: p50 710µs p99 8.58ms
+               p99 200 theo giây: s0:37ms s1:32ms s2:25ms s3:24ms s4:24ms s5:26ms s6:49ms s7:38ms s8:28ms s9:27ms
+ 10:30:06 up  1:05,  1 user,  load average: 2.56, 3.39, 4.11

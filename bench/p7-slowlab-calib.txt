@@ -1,0 +1,11 @@
+Thu Oct  1 10:27:38 +07 2026
+$ ./bin/slowlab -conns 500 -byte-every 10s -target null -duration 5s -hold 1s   # hiệu chuẩn: chỉ attacker
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +9.1 MiB ⇒ 18.6 KiB / connection (gồm cả phía attacker)
+$ ./bin/slowlab -conns 500 -target null -duration 5s -hold 1s   # lần 2
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +9.2 MiB ⇒ 18.8 KiB / connection (gồm cả phía attacker)
+$ ./bin/slowlab -conns 500 -duration 5s -hold 1s   # proxy, lần 2
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.3 MiB ⇒ 39.5 KiB / connection (gồm cả phía attacker)
+$ ./bin/slowlab -conns 500 -target null -duration 5s -hold 1s   # lần 3
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +9.1 MiB ⇒ 18.7 KiB / connection (gồm cả phía attacker)
+$ ./bin/slowlab -conns 500 -duration 5s -hold 1s   # proxy, lần 3
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.2 MiB ⇒ 39.3 KiB / connection (gồm cả phía attacker)

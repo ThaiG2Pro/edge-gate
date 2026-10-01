@@ -1,0 +1,29 @@
+Thu Oct  1 10:20:34 +07 2026
+ 10:20:34 up 55 min,  1 user,  load average: 4.75, 4.73, 4.46
+$ ./bin/ratelab -ips 20 -rate 50 -burst 10 -per-ip 100 -duration 5s
+ratelab: ips=20 rate=50/s burst=10 per-ip=100 rps duration=5s ⇒ kỳ vọng mỗi IP ≈ 260 cái 200 / 500
+  (open-loop, loopback, proxy + generator cùng tiến trình)
+ip-that        mỗi IP 200: min 253 max 258 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 259 / 500 (kỳ vọng 260 ± 5 %), 429 = 241
+proxy          rate-limited 5141, khoá đang nhớ 21
+PASS
+exit=0
+$ ./bin/ratelab-nd ...   # -tags nodefense7
+ratelab: ips=20 rate=50/s burst=10 per-ip=100 rps duration=5s ⇒ kỳ vọng mỗi IP ≈ 260 cái 200 / 500
+  (open-loop, loopback, proxy + generator cùng tiến trình)
+ip-that        mỗi IP 200: min 257 max 259 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 500 / 500 (kỳ vọng 260 ± 5 %), 429 = 0
+proxy          rate-limited 4840, khoá đang nhớ 520
+FAIL: rate limit per-IP sai (ngoài ± 5 %) hoặc XFF giả lọt qua ranh giới tin cậy
+exit=1
+$ go test ./internal/limit -run TestLimiterMemory -count=3 -v
+    limit_test.go:85: 1e6 khoá: giữ 10000 khoá, đuổi 990000, heap tăng 1.4 MiB (145 B/khoá giữ)
+--- PASS: TestLimiterMemory (0.70s)
+    limit_test.go:85: 1e6 khoá: giữ 10000 khoá, đuổi 990000, heap tăng 1.3 MiB (140 B/khoá giữ)
+--- PASS: TestLimiterMemory (0.88s)
+    limit_test.go:85: 1e6 khoá: giữ 10000 khoá, đuổi 990000, heap tăng 1.4 MiB (148 B/khoá giữ)
+--- PASS: TestLimiterMemory (0.82s)
+$ go test ./internal/limit -run TestLimiterMemory -count=1 -v -tags nodefense7
+    limit_test.go:85: 1e6 khoá: giữ 1000000 khoá, đuổi 0, heap tăng 144.8 MiB (152 B/khoá giữ)
+    limit_test.go:88: heap tăng 144.8 MiB > 5 MiB — map per-IP không trần là rò rỉ attacker điều khiển được
+--- FAIL: TestLimiterMemory (1.82s)

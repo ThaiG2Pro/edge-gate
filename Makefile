@@ -265,6 +265,7 @@ deadlinelab:
 
 # G2 (a) + G3: Slowloris 500 conn × 1 byte/10 s từ 127.0.0.2, probe 50 rps từ 127.0.0.1.
 slowlab:
+	go run ./cmd/slowlab -conns 500 -byte-every 10s -target null -duration 5s -hold 1s   # hiệu chuẩn bộ nhớ attacker
 	go run ./cmd/slowlab -conns 500 -byte-every 10s
 	go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns 256
 	go run ./cmd/slowlab -conns 500 -byte-every 10s -max-inflight 64
@@ -301,6 +302,7 @@ shedlab:
 # G8: 20 rolling restart qua SO_REUSEPORT, không retry vs client retry khi 0 byte.
 drainlab:
 	go run ./cmd/drainlab -restarts 20 -every 500ms
+	go run ./cmd/drainlab -restarts 20 -every 500ms -grace 1s   # D8′ drain lười
 
 # G9: test quyết định. Thoát mã 1 nếu invariant vỡ.
 chaoslab:

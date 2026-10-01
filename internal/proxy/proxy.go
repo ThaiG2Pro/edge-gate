@@ -69,6 +69,11 @@ type Config struct {
 	MaxConns int
 	// ReusePort (D9): SO_REUSEPORT ở ListenAndServe — hai instance cùng port.
 	ReusePort bool
+	// DrainIdleGrace (D8′, phase 7 turn 2): lúc Drain, connection RỖI được chờ
+	// tối đa ngần này để gửi request kế (response kèm Connection: close) thay vì
+	// bị đóng ngay. 0 = đóng ngay (D8). Đóng ngay làm mất request client vừa ghi
+	// lên connection rỗi — client không thấy FIN khi không đọc (G8 b).
+	DrainIdleGrace time.Duration
 
 	Logf func(format string, args ...any)
 }
@@ -147,6 +152,11 @@ type Server struct {
 	// Phase 7: rate limit / shed / retry budget / trần connection (resilience.go).
 	res      resilience
 	draining atomic.Bool
+	// closeIdle: Drain đã quét connection rỗi (ngay, hoặc sau DrainIdleGrace).
+	// Từ lúc này connection về rỗi tự đóng. Tách khỏi draining: một response
+	// ghi TRƯỚC khi draining bật không mang Connection: close — đóng connection
+	// đó lúc nó về rỗi trong grace là làm mất request kế của client (D8′).
+	closeIdle atomic.Bool
 
 	// Phase 5-6: một pool cho mỗi backend (P5-3), tạo lười ở poolFor.
 	pmu   sync.Mutex
@@ -365,7 +375,7 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 		c.SetReadDeadline(time.Now().Add(lim.IdleTimeout))
 		// D8: đánh dấu rỗi RỒI mới đọc draining (cặp Dekker với Drain).
 		st.idle.Store(true)
-		if s.draining.Load() && br.Buffered() == 0 {
+		if s.closeIdle.Load() && br.Buffered() == 0 {
 			return
 		}
 		_, err := br.Peek(1)
@@ -385,7 +395,10 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 			s.replyReadError(c, bw, err)
 			return
 		}
-		if !s.roundTrip(c, st, br, bw, req) || s.draining.Load() {
+		// Đang drain thì response vừa rồi đã mang Connection: close ⇒ roundTrip
+		// trả false. true lúc draining = response ghi trước khi draining bật ⇒
+		// client chưa được báo ⇒ quay lại vòng rỗi (closeIdle quyết).
+		if !s.roundTrip(c, st, br, bw, req) {
 			return
 		}
 	}

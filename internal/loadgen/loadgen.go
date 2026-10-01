@@ -49,6 +49,7 @@ type Sample struct {
 	Kind    string // "ok" (có status) | "dial" | "io-nohead" (đóng trước khi có head) | "io-body" (đứt giữa body) | "timeout"
 	Close   bool   // response mang Connection: close
 	Retried bool
+	Reused  bool // lần gửi cuối đi trên connection dùng lại (false = vừa dial)
 }
 
 func (s Sample) Latency() time.Duration { return s.Done.Sub(s.Sched) }
@@ -144,6 +145,7 @@ func (w *worker) do(j job) Sample {
 			}
 		}
 		reused := w.reused
+		s.Reused = reused
 		w.c.SetDeadline(deadline)
 		status, closeResp, got, err := roundTrip(w.c, w.br, w.cfg.Request(j.i))
 		s.Done = time.Now()
