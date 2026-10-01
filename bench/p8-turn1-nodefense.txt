@@ -1,0 +1,9 @@
+    phase8_test.go:146: SNI a.test, Host b.test: 200 (X-Sim "B"), B phục vụ 1
+    phase8_test.go:148: domain fronting phải 421 và B nhận 0
+--- FAIL: TestTLSDomainFronting (0.01s)
+    phase8_test.go:263: ClientHello nhỏ giọt: proxy đóng sau 2.001s (gửi 19 byte)
+    phase8_test.go:265: muốn đóng sau ≈ HandshakeTimeout 300 ms
+--- FAIL: TestTLSHandshakeTimeout (2.00s)
+FAIL
+FAIL	github.com/thaivro/edgegate/internal/proxy	2.029s
+FAIL

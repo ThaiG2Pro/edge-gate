@@ -10,6 +10,7 @@ package proxy
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -75,6 +76,15 @@ type Config struct {
 	// lên connection rỗi — client không thấy FIN khi không đọc (G8 b).
 	DrainIdleGrace time.Duration
 
+	// Phase 8. TLS: listener nói TLS, cert theo SNI (nil = plaintext).
+	// VHosts: server_name → nhóm upstream + LB riêng, chỉ số trùng TLS.Store
+	// (D2). Upstreams/LB ở trên = vhost mặc định (không bắt buộc khi có VHosts).
+	// HandshakeTimeout (D6): mặc định 10 s. UpstreamTLS (D8): nói TLS tới upstream.
+	TLS              *TLSConfig
+	VHosts           []VHost
+	HandshakeTimeout time.Duration
+	UpstreamTLS      *UpstreamTLSConfig
+
 	Logf func(format string, args ...any)
 }
 
@@ -104,6 +114,9 @@ func (c *Config) withDefaults() {
 	}
 	if c.Upstream == "" && len(c.Upstreams) > 0 {
 		c.Upstream = c.Upstreams[0]
+	}
+	if c.HandshakeTimeout == 0 {
+		c.HandshakeTimeout = 10 * time.Second
 	}
 	if c.LB.Logf == nil {
 		c.LB.Logf = c.Logf
@@ -163,6 +176,10 @@ type Server struct {
 	pools map[string]*pool
 
 	lb *lb.Balancer // phase 6: chọn backend; Pick trước get, Done sau exchange
+	// Phase 8: vhost (D2), cấu hình TLS listener, cache session phía upstream.
+	vhosts     []*vhostRT
+	tlsCfg     *tls.Config
+	upTLSCache tls.ClientSessionCache
 }
 
 // New panic khi cấu hình LB sai (algo lạ, không upstream) — lỗi khởi động,
@@ -171,15 +188,18 @@ func New(cfg Config) *Server {
 	cfg.withDefaults()
 	s := &Server{cfg: cfg, conns: map[net.Conn]*connState{}, pools: map[string]*pool{}}
 	s.initResilience()
-	bl, err := lb.New(cfg.Upstreams, cfg.LB)
-	if err != nil {
-		panic("proxy: " + err.Error())
+	if len(cfg.Upstreams) > 0 || len(cfg.VHosts) == 0 {
+		bl, err := lb.New(cfg.Upstreams, cfg.LB)
+		if err != nil {
+			panic("proxy: " + err.Error())
+		}
+		s.lb = bl
+		// Active health (D6) chạy từ New, không từ Serve: Serve thường được gọi
+		// trong goroutine riêng nên mốc "goroutine nền" của test/ops phải tính
+		// sẵn checker. Close dừng nó.
+		s.lb.Start()
 	}
-	s.lb = bl
-	// Active health (D6) chạy từ New, không từ Serve: Serve thường được gọi
-	// trong goroutine riêng nên mốc "goroutine nền" của test/ops phải tính
-	// sẵn checker. Close dừng nó.
-	s.lb.Start()
+	s.initVHosts()
 	return s
 }
 
@@ -191,13 +211,7 @@ func (s *Server) poolFor(addr string) *pool {
 	if p, ok := s.pools[addr]; ok {
 		return p
 	}
-	p := newPool(s.cfg.Pool, func() (net.Conn, error) {
-		c, err := net.DialTimeout("tcp", addr, s.cfg.DialTimeout)
-		if err == nil {
-			s.setNoDelay(c)
-		}
-		return c, err
-	})
+	p := newPool(s.cfg.Pool, func() (net.Conn, net.Conn, error) { return s.dialUpstream(addr) })
 	if s.closed.Load() {
 		p.closed = true
 	}
@@ -238,7 +252,15 @@ func (s *Server) PoolStatsFor(addr string) PoolStats {
 }
 
 // LBStats: ảnh chụp balancer (phase 6): picks/inflight/EWMA/health mỗi backend.
-func (s *Server) LBStats() lb.Stats { return s.lb.Stats() }
+func (s *Server) LBStats() lb.Stats {
+	if s.lb == nil {
+		return lb.Stats{}
+	}
+	return s.lb.Stats()
+}
+
+// VHostStats (phase 8): balancer của vhost thứ i.
+func (s *Server) VHostStats(i int) lb.Stats { return s.vhosts[i].lb.Stats() }
 
 func (s *Server) ListenAndServe() error {
 	ln, err := Listen(s.cfg.Listen, s.cfg.ReusePort)
@@ -318,7 +340,12 @@ func (s *Server) Close() error {
 	// các handler vừa bị đóng ở trên chạy untrack — rồi Accept thấy listener đóng.
 	s.mu.Unlock()
 	s.wg.Wait()
-	s.lb.Close()
+	if s.lb != nil {
+		s.lb.Close()
+	}
+	for _, v := range s.vhosts {
+		v.lb.Close()
+	}
 	// Handler đã thoát hết ⇒ không ai đang cầm connection upstream; đóng idle.
 	// put sau thời điểm này (nếu có) cũng đóng vì pool.closed (D8).
 	s.pmu.Lock()
@@ -336,6 +363,7 @@ func (s *Server) Close() error {
 // connState: trạng thái một connection client mà Drain cần đọc (D8).
 type connState struct {
 	idle atomic.Bool // đang chờ byte đầu của request kế (vòng keep-alive)
+	tls  *tls.Conn   // phase 8: connection TLS (nil = plaintext) — vhost theo SNI
 	// up: connection upstream request hiện tại đang cầm (nil khi không có).
 	// Close đóng nó cùng connection client — không thì handler đang chờ
 	// upstream treo giữ Close (và Drain) tới UpstreamHeaderTimeout/BodyTimeout.
@@ -366,6 +394,13 @@ func (s *Server) untrack(c net.Conn) {
 // request N, nên KHÔNG BAO GIỜ đọc trực tiếp từ c (bẫy #3).
 func (s *Server) serveConn(c net.Conn, st *connState) {
 	s.setNoDelay(c)
+	if s.tlsCfg != nil {
+		tc, ok := s.handshake(c, st) // D6: chỗ đọc socket thứ 8 của I3
+		if !ok {
+			return
+		}
+		c = tc
+	}
 	lim := s.cfg.Limits
 	br := bufio.NewReaderSize(c, 8<<10)
 	bw := bufio.NewWriterSize(c, 8<<10)

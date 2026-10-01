@@ -13,6 +13,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8081", "địa chỉ lắng nghe")
+	name := flag.String("name", "", "phase 8: gắn header X-Upstream: <name> vào mọi response (curl thấy vhost nào phục vụ)")
 	flag.Parse()
 
 	h := fixture.Handler()
@@ -20,6 +21,9 @@ func main() {
 		Addr: *addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("%s %s %s CL=%d TE=%v", r.RemoteAddr, r.Method, r.URL.Path, r.ContentLength, r.TransferEncoding)
+			if *name != "" {
+				w.Header().Set("X-Upstream", *name)
+			}
 			h.ServeHTTP(w, r)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,

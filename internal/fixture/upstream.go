@@ -5,6 +5,7 @@ package fixture
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -308,4 +309,18 @@ func (ss *SimServer) Alive() bool {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	return ss.srv != nil
+}
+
+// ListenAndServeTLS (phase 8 G8): upstream nói TLS bằng cert cho sẵn — để đo
+// pool tới upstream TLS. idle > 0 ⇒ http.Server.IdleTimeout (upstream đóng
+// connection rỗi bằng close_notify + FIN).
+func ListenAndServeTLS(addr string, cert tls.Certificate, idle time.Duration) (string, func(), error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return "", nil, err
+	}
+	srv := &http.Server{Handler: Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: idle,
+		TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}}}
+	go srv.ServeTLS(ln, "", "")
+	return ln.Addr().String(), func() { srv.Close() }, nil
 }

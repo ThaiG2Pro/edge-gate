@@ -8,7 +8,7 @@
 	poollab poollab-rtt poollab-nodefense \
 	lblab lblab-skew lblab-flap lblab-recover lblab-nodefense \
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
-	tlslab \
+	tlslab tlslab-nodefense tlslab-rtt \
 	perflab bench-vs-nginx epolllab \
 	rtt-up rtt-down
 
@@ -313,13 +313,43 @@ chaoslab:
 # ---------------------------------------------------------------------------
 # Phase 8: TLS + SNI
 # ---------------------------------------------------------------------------
+# G1-G4 bằng binary thật + curl (cert sinh bằng cmd/gencert, không openssl, không key trong git).
+# Luật vận hành: build một dòng riêng rồi mới '&'; dọn bằng pkill -x.
 tlslab:
-	./scripts/gen-certs.sh
-	go run ./cmd/edgegate -config config/tls.json &
+	go run ./cmd/gencert -out bin/certs -names a.test,b.test -serial 1
+	go build -o bin/edgegate ./cmd/edgegate
+	go build -o bin/upstream ./cmd/upstream
+	./bin/upstream -addr 127.0.0.1:8081 -name A > bin/upstream-a.log 2>&1 &
+	./bin/upstream -addr 127.0.0.1:8082 -name B > bin/upstream-b.log 2>&1 &
+	./bin/edgegate -config config/tls.json > bin/edgegate-tls.log 2>&1 &
 	sleep 1
-	curl -sS -k --resolve a.test:8443:127.0.0.1 https://a.test:8443/ -w '\n%{ssl_verify_result}\n'
-	curl -sS -k --resolve b.test:8443:127.0.0.1 https://b.test:8443/
-	-pkill -f 'cmd/edgegate'
+	@echo "== G1: SNI a.test → A, b.test → B =="
+	curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 https://a.test:8443/hello -o /dev/null -w '%{http_code} %{header_json}\n' | grep -o '^[0-9]* \|"x-upstream":\["[AB]"\]' | tr -d '\n'; echo
+	curl -sS --cacert bin/certs/ca.crt --resolve b.test:8443:127.0.0.1 https://b.test:8443/hello -o /dev/null -w '%{http_code} %{header_json}\n' | grep -o '^[0-9]* \|"x-upstream":\["[AB]"\]' | tr -d '\n'; echo
+	@echo "== G1: SNI lạ c.test ⇒ handshake hỏng =="
+	-curl -sS --cacert bin/certs/ca.crt --resolve c.test:8443:127.0.0.1 https://c.test:8443/hello
+	@echo "== G2: SNI a.test + Host: b.test ⇒ 421 =="
+	curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 -H 'Host: b.test' https://a.test:8443/hello -o /dev/null -w '%{http_code}\n'
+	@echo "== G3: ALPN (curl đề nghị h2,http/1.1) =="
+	curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 --http2 https://a.test:8443/hello -o /dev/null -w 'http_version=%{http_version}\n'
+	@echo "== G4: cert mới + SIGHUP ⇒ log serial mới, curl vẫn chạy =="
+	go run ./cmd/gencert -out bin/certs -names a.test,b.test -serial 100 > /dev/null
+	-pkill -HUP -x edgegate
+	sleep 0.5
+	-curl -sS --cacert bin/certs/ca.crt --resolve a.test:8443:127.0.0.1 https://a.test:8443/hello -o /dev/null -w '%{http_code} (CA mới)\n'
+	grep -E 'TLS|SIGHUP' bin/edgegate-tls.log
+	-pkill -x edgegate
+	-pkill -x upstream
+	go run ./cmd/tlslab -mode handshake -n 500
+
+# Phản chứng G2/G5: route theo Host bỏ qua SNI; handshake lười dưới IdleTimeout. PHẢI đỏ.
+tlslab-nodefense:
+	! go test ./internal/proxy -run 'TestTLSDomainFronting|TestTLSHandshakeTimeout' -count=1 -tags nodefense8
+
+# G7/G8 cần RTT thật: make rtt-up RTT_TARGET_MS=20 trước, make rtt-down sau.
+tlslab-rtt:
+	go run ./cmd/tlslab -mode rtt -n 50
+	go run ./cmd/tlslab -mode upstream -n 100
 
 # ---------------------------------------------------------------------------
 # Phase 9: performance

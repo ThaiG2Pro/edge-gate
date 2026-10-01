@@ -1,4 +1,4 @@
-// edgegate: reverse proxy L7 từ socket trần. Phase 3-7: phòng tuyến smuggling
+// edgegate: reverse proxy L7 từ socket trần. Phase 3-8 (TLS + SNI, SIGHUP reload): phòng tuyến smuggling
 // + XFF trust, connection pool theo backend, load balancing + health, rate
 // limit / shedding / retry budget / graceful drain (SIGTERM).
 package main
@@ -9,11 +9,15 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/thaivro/edgegate/internal/lb"
 	"github.com/thaivro/edgegate/internal/proxy"
+	"github.com/thaivro/edgegate/internal/tlsx"
 )
 
 type fileConfig struct {
@@ -71,6 +75,19 @@ type fileConfig struct {
 	DrainTimeoutMs     int     `json:"drain_timeout_ms"`
 	DrainIdleGraceMs   *int    `json:"drain_idle_grace_ms"` // nil ⇒ 1000 (D8′); 0 ⇒ đóng connection rỗi ngay
 	ReusePort          bool    `json:"reuse_port"`
+	// Phase 8: listener TLS thứ hai, vhost theo SNI (D2/D10). Mỗi vhost dùng
+	// thuật toán/health/outlier của khối lb ở trên. SIGHUP ⇒ đọc lại cert.
+	TLS *struct {
+		Listen             string `json:"listen"`
+		HandshakeTimeoutMs int    `json:"handshake_timeout_ms"`
+		DefaultVHost       string `json:"default_vhost"` // tên trong vhosts; rỗng = SNI lạ bị từ chối (D4)
+		VHosts             []struct {
+			Names     []string `json:"names"`
+			Cert      string   `json:"cert"`
+			Key       string   `json:"key"`
+			Upstreams []string `json:"upstreams"`
+		} `json:"vhosts"`
+	} `json:"tls"`
 }
 
 func main() {
@@ -107,26 +124,20 @@ func main() {
 		fc.Pool.Disabled = true
 	}
 
-	srv := proxy.New(proxy.Config{
+	base := proxy.Config{
 		Listen:                fc.Listen,
 		Upstreams:             fc.Upstreams,
-		DialTimeout:           time.Duration(fc.DialTimeoutMs) * time.Millisecond,
-		UpstreamHeaderTimeout: time.Duration(fc.UpstreamHeaderTimeoutMs) * time.Millisecond,
-		UpstreamBodyTimeout:   time.Duration(fc.UpstreamBodyTimeoutMs) * time.Millisecond,
+		DialTimeout:           ms(fc.DialTimeoutMs),
+		UpstreamHeaderTimeout: ms(fc.UpstreamHeaderTimeoutMs),
+		UpstreamBodyTimeout:   ms(fc.UpstreamBodyTimeoutMs),
 		NoDelay:               nodelay,
 		TrustedProxies:        fc.TrustedProxies,
 		Pool: proxy.PoolConfig{
 			Disabled:    fc.Pool.Disabled,
 			MaxIdle:     fc.Pool.MaxIdle,
-			MaxIdleTime: time.Duration(fc.Pool.MaxIdleTimeMs) * time.Millisecond,
+			MaxIdleTime: ms(fc.Pool.MaxIdleTimeMs),
 		},
-		LB: lb.Config{
-			Algo: fc.LB.Algo, Tau: ms(fc.LB.TauMs), HashHeader: fc.LB.HashHeader, VNodes: fc.LB.VNodes,
-			Health: lb.HealthConfig{Disabled: fc.LB.Health.Disabled, Interval: ms(fc.LB.Health.IntervalMs),
-				Timeout: ms(fc.LB.Health.TimeoutMs), Path: fc.LB.Health.Path, Fall: fc.LB.Health.Fall, Rise: fc.LB.Health.Rise},
-			Outlier: lb.OutlierConfig{Disabled: fc.LB.Outlier.Disabled, Consecutive: fc.LB.Outlier.Consecutive,
-				BaseEject: ms(fc.LB.Outlier.BaseEjectMs), MaxEject: ms(fc.LB.Outlier.MaxEjectMs), MaxEjectPercent: fc.LB.Outlier.MaxEjectPercent},
-		},
+		LB:          lbCfg(fc),
 		RateLimit:   proxy.RateLimitConfig{Rate: fc.RateLimit.Rate, Burst: fc.RateLimit.Burst, MaxKeys: fc.RateLimit.MaxKeys},
 		Shed:        proxy.ShedConfig{MaxInflight: fc.Shed.MaxInflight, MaxQueue: fc.Shed.MaxQueue, QueueTimeout: ms(fc.Shed.QueueTimeoutMs)},
 		RetryBudget: proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
@@ -137,37 +148,101 @@ func main() {
 			}
 			return ms(*fc.DrainIdleGraceMs)
 		}(),
-	})
+	}
+	servers := []*proxy.Server{proxy.New(base)}
+
+	// Phase 8: listener TLS thứ hai (D10). Cùng mọi cấu hình của base, khác
+	// listener + vhost theo SNI. Không có vhost mặc định ⇒ SNI lạ bị từ chối (D4).
+	var store *tlsx.CertStore
+	if t := fc.TLS; t != nil {
+		var entries []tlsx.Entry
+		var vhosts []proxy.VHost
+		for _, v := range t.VHosts {
+			entries = append(entries, tlsx.Entry{Names: v.Names, CertFile: v.Cert, KeyFile: v.Key, Default: t.DefaultVHost != "" && slices.Contains(v.Names, t.DefaultVHost)})
+			vhosts = append(vhosts, proxy.VHost{Names: v.Names, Upstreams: v.Upstreams, LB: lbCfg(fc)})
+		}
+		var err error
+		if store, err = tlsx.NewCertStore(entries); err != nil {
+			log.Fatal(err)
+		}
+		tc := base
+		tc.Listen, tc.Upstreams, tc.Upstream = t.Listen, nil, ""
+		tc.TLS = &proxy.TLSConfig{Store: store}
+		tc.VHosts = vhosts
+		tc.HandshakeTimeout = ms(t.HandshakeTimeoutMs)
+		servers = append(servers, proxy.New(tc))
+		log.Printf("edgegate: TLS %s, %d vhost, serial %v", t.Listen, len(vhosts), store.Serials())
+	}
 	drainTO := ms(fc.DrainTimeoutMs)
 	if drainTO == 0 {
 		drainTO = 30 * time.Second
 	}
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		// D8: SIGTERM (rolling restart) ⇒ drain; SIGINT (Ctrl-C) ⇒ đóng ngay.
-		if s := <-sig; s == syscall.SIGTERM {
-			log.Printf("edgegate: SIGTERM ⇒ drain tối đa %s", drainTO)
-			forced := srv.Drain(drainTO)
-			log.Printf("edgegate: drain xong, %d connection bị đóng cưỡng bức", forced)
+		for s := range sig {
+			switch s {
+			case syscall.SIGHUP:
+				// D10: đọc lại cert; hỏng ⇒ giữ bộ cũ (tlsx D1). Connection đang mở không bị ảnh hưởng.
+				if store == nil {
+					log.Print("edgegate: SIGHUP nhưng không có khối tls")
+					continue
+				}
+				if err := store.Reload(); err != nil {
+					log.Printf("edgegate: SIGHUP reload HỎNG, giữ cert cũ %v: %v", store.Serials(), err)
+				} else {
+					log.Printf("edgegate: SIGHUP reload xong, serial %v", store.Serials())
+				}
+				continue
+			case syscall.SIGTERM:
+				// Phase 7 D8: rolling restart ⇒ drain mọi listener song song.
+				log.Printf("edgegate: SIGTERM ⇒ drain tối đa %s", drainTO)
+				var wg sync.WaitGroup
+				var forced atomic.Int64
+				for _, srv := range servers {
+					wg.Add(1)
+					go func() { defer wg.Done(); forced.Add(int64(srv.Drain(drainTO))) }()
+				}
+				wg.Wait()
+				log.Printf("edgegate: drain xong, %d connection bị đóng cưỡng bức", forced.Load())
+			default:
+				log.Print("edgegate: đóng")
+				for _, srv := range servers {
+					srv.Close()
+				}
+			}
 			return
 		}
-		log.Print("edgegate: đóng")
-		srv.Close()
 	}()
 
 	log.Printf("edgegate: %s → %v lb=%s (nodelay=%v, trusted_proxies=%v, pool=%v max_idle=%d max_idle_time=%dms, health=%v outlier=%v)",
 		fc.Listen, fc.Upstreams, orDefault(fc.LB.Algo, "rr"), *nodelay, fc.TrustedProxies, !fc.Pool.Disabled, fc.Pool.MaxIdle, fc.Pool.MaxIdleTimeMs,
 		!fc.LB.Health.Disabled, !fc.LB.Outlier.Disabled)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatal(err)
+	errc := make(chan error, len(servers))
+	for _, srv := range servers {
+		go func() { errc <- srv.ListenAndServe() }()
+	}
+	for range servers {
+		if err := <-errc; err != nil {
+			log.Fatal(err)
+		}
 	}
 	// Serve trả về NGAY khi Drain đóng listener — thoát ở đây là giết các
 	// request đang drain. Chờ goroutine signal làm xong.
 	<-stopped
+}
+
+func lbCfg(fc fileConfig) lb.Config {
+	return lb.Config{
+		Algo: fc.LB.Algo, Tau: ms(fc.LB.TauMs), HashHeader: fc.LB.HashHeader, VNodes: fc.LB.VNodes,
+		Health: lb.HealthConfig{Disabled: fc.LB.Health.Disabled, Interval: ms(fc.LB.Health.IntervalMs),
+			Timeout: ms(fc.LB.Health.TimeoutMs), Path: fc.LB.Health.Path, Fall: fc.LB.Health.Fall, Rise: fc.LB.Health.Rise},
+		Outlier: lb.OutlierConfig{Disabled: fc.LB.Outlier.Disabled, Consecutive: fc.LB.Outlier.Consecutive,
+			BaseEject: ms(fc.LB.Outlier.BaseEjectMs), MaxEject: ms(fc.LB.Outlier.MaxEjectMs), MaxEjectPercent: fc.LB.Outlier.MaxEjectPercent},
+	}
 }
 
 func ms(v int) time.Duration { return time.Duration(v) * time.Millisecond }

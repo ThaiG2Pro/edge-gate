@@ -61,11 +61,12 @@ type PoolStats struct {
 // connection, không theo request: byte thừa (nếu có) nằm trong br, và đó
 // chính là thứ D2 phải kiểm trước khi put.
 type pooledConn struct {
-	p  *pool // pool sở hữu — phase 6 có nhiều pool, release phải về đúng pool
-	c  net.Conn
-	in *countReader // đếm byte response đã tới — quyết retry (D4: 0 byte)
-	br *bufio.Reader
-	bw *bufio.Writer
+	p   *pool // pool sở hữu — phase 6 có nhiều pool, release phải về đúng pool
+	c   net.Conn
+	raw net.Conn     // TCP bên dưới — probe FIN cần fd thật (phase 8 D8); = c khi plaintext
+	in  *countReader // đếm byte response đã tới — quyết retry (D4: 0 byte)
+	br  *bufio.Reader
+	bw  *bufio.Writer
 
 	idleSince time.Time
 	reused    bool // lấy từ pool (không phải vừa dial) — điều kiện (a) của D4
@@ -89,7 +90,7 @@ func (cr *countReader) Read(p []byte) (int, error) {
 // pool: stack LIFO + mutex (D1). Không có goroutine nào của riêng nó (D9).
 type pool struct {
 	cfg  PoolConfig
-	dial func() (net.Conn, error)
+	dial func() (c, raw net.Conn, err error) // raw = conn TCP bên dưới (phase 8: c có thể là tls.Conn)
 
 	mu     sync.Mutex
 	idle   []*pooledConn // đỉnh = cuối slice = trẻ nhất
@@ -98,7 +99,7 @@ type pool struct {
 	dials, reuses, puts, retries, dropDirty, dropFull, dropExpired, deadOnProbe atomic.Int64
 }
 
-func newPool(cfg PoolConfig, dial func() (net.Conn, error)) *pool {
+func newPool(cfg PoolConfig, dial func() (c, raw net.Conn, err error)) *pool {
 	cfg.withDefaults()
 	return &pool{cfg: cfg, dial: dial}
 }
@@ -118,7 +119,7 @@ func (p *pool) get() (*pooledConn, error) {
 				continue
 			}
 			if *p.cfg.Probe {
-				if dead, known := probeIdle(pc.c); known && dead {
+				if dead, known := probeIdle(pc.raw); known && dead {
 					p.deadOnProbe.Add(1)
 					pc.close()
 					continue
@@ -135,13 +136,13 @@ func (p *pool) get() (*pooledConn, error) {
 
 // dialNew luôn dial (lần retry của D4 dùng thẳng hàm này).
 func (p *pool) dialNew() (*pooledConn, error) {
-	c, err := p.dial()
+	c, raw, err := p.dial()
 	if err != nil {
 		return nil, err
 	}
 	p.dials.Add(1)
 	in := &countReader{r: c}
-	return &pooledConn{p: p, c: c, in: in, br: bufio.NewReaderSize(in, 8<<10), bw: bufio.NewWriterSize(c, 8<<10), uses: 1}, nil
+	return &pooledConn{p: p, c: c, raw: raw, in: in, br: bufio.NewReaderSize(in, 8<<10), bw: bufio.NewWriterSize(c, 8<<10), uses: 1}, nil
 }
 
 func (p *pool) pop() *pooledConn {

@@ -15,6 +15,7 @@ var reasons = map[int]string{
 	408: "Request Timeout",
 	413: "Content Too Large",
 	429: "Too Many Requests",
+	421: "Misdirected Request",
 	431: "Request Header Fields Too Large",
 	500: "Internal Server Error",
 	501: "Not Implemented",

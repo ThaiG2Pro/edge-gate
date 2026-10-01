@@ -1,0 +1,17 @@
+{
+  "listen": "127.0.0.1:8080",
+  "upstream": "127.0.0.1:8081",
+  "dial_timeout_ms": 2000,
+  "upstream_header_timeout_ms": 5000,
+  "upstream_body_timeout_ms": 30000,
+  "lb": { "algo": "rr", "health": { "disabled": true } },
+  "tls": {
+    "listen": "127.0.0.1:8443",
+    "handshake_timeout_ms": 10000,
+    "default_vhost": "",
+    "vhosts": [
+      { "names": ["a.test"], "cert": "bin/certs/a.test.crt", "key": "bin/certs/a.test.key", "upstreams": ["127.0.0.1:8081"] },
+      { "names": ["b.test"], "cert": "bin/certs/b.test.crt", "key": "bin/certs/b.test.key", "upstreams": ["127.0.0.1:8082"] }
+    ]
+  }
+}

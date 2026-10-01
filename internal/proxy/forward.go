@@ -62,6 +62,14 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	if !ok {
 		return keep
 	}
+	// Phase 8 (D2/D3): vhost — TLS theo SNI và Host phải khớp, plaintext theo Host.
+	bl, status := s.balancerFor(st, req)
+	if bl == nil {
+		release()
+		keep := s.drain(c, req) && !req.Close
+		s.writeError(c, bw, status, "authority không thuộc vhost của connection này", keep)
+		return keep
+	}
 	defer release() // I7: slot trả trên MỌI đường ra
 	s.res.budget.Deposit(time.Now())
 
@@ -74,7 +82,7 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	repicked := false
 	for attempt := 0; ; attempt++ {
 		if attempt == 0 {
-			be = s.lb.Pick(key)
+			be = bl.Pick(key)
 			if be == nil {
 				// D8: không còn backend nào dùng được ⇒ 503 (không phải 502),
 				// chưa đụng body ⇒ drain, giữ client.
@@ -98,11 +106,14 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 		}
 		if err != nil {
 			s.cfg.Logf("proxy: dial %s: %v", be.Addr, err)
-			s.lb.Done(be, time.Since(start), true)
-			if !repicked && attempt == 0 && s.allowRetry() {
+			bl.Done(be, time.Since(start), true)
+			if !repicked && s.allowRetry() {
 				// D9: dial lỗi = chưa gửi byte nào ⇒ chọn backend khác đúng một
 				// lần, bất kể request có body (khác D4: body vẫn còn nguyên trong br).
-				// Phase 7 D6: chỉ khi còn retry budget.
+				// Phase 7 D6: chỉ khi còn retry budget. Phase 8 turn 1: cả khi dial
+				// lỗi ở lần THỨ HAI (D4: connection reused chết ⇒ dialNew cùng
+				// backend ⇒ backend vừa chết ⇒ refused) — trước đây trả 502 dù chưa
+				// byte nào đi đâu; lộ ra dưới -race ở TestLBKillRevive.
 				repicked = true
 				attempt = -1
 				continue
@@ -116,7 +127,7 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 		keep, retry, upFail := s.exchange(c, bw, req, up, pc)
 		st.up.Store(nil)
 		if !retry {
-			s.lb.Done(be, time.Since(start), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
+			bl.Done(be, time.Since(start), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
 			return keep
 		}
 		// D4 (a)(b)(c) đã thoả trong exchange. Chỉ một lần, cùng backend, và
@@ -126,7 +137,7 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 			s.cfg.Logf("proxy: %s đóng connection rỗi trước khi nhận request, retry một lần", be.Addr)
 			continue
 		}
-		s.lb.Done(be, time.Since(start), true)
+		bl.Done(be, time.Since(start), true)
 		keep = !req.Close // body rỗng (điều kiện (c)) ⇒ br sạch, client giữ được
 		s.writeError(c, bw, 502, "upstream đóng khi đang nhận request (đã retry)", keep)
 		return keep

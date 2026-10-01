@@ -193,7 +193,9 @@ func TestIdleClosedUpstream(t *testing.T) {
 		rc.do(t, method, raw) // warm-up: dial đầu, put về pool (FIN sẽ tới ngay sau)
 		ok := 0
 		for i := 0; i < n; i++ {
-			time.Sleep(3 * time.Millisecond) // FIN của upstream tới kernel proxy
+			// FIN của upstream tới kernel proxy. 3 ms (phase 5) hụt khi cả suite chạy
+			// song song dưới -race ở load ~7 (phase 8 turn 1: DeadOnProbe 41/50) ⇒ 20 ms.
+			time.Sleep(20 * time.Millisecond)
 			resp, b := rc.do(t, method, raw)
 			if resp.Status == wantStatus && (wantStatus != 200 || string(b) == wantBody) {
 				ok++
