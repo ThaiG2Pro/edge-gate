@@ -1,10 +1,10 @@
 # Phase 6 — Load balancing + health (kèm trả nợ phase 5)
 
-- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~4 giờ làm việc trong 3 buổi (turn 1 19:05-22:13,
+- **Thời lượng dự kiến:** 2-3 ngày · **thực tế:** ~3 giờ 33 phút làm việc trong 3 buổi (3:08 + 0:17 + 0:08) (turn 1 19:05-22:13,
   turn 2 17:41-17:58, turn 3 2026-10-01 09:38-09:46), trải 2026-09-04 → 2026-10-01
 - **Bắt đầu:** 2026-09-04 19:05 · **Kết thúc:** 2026-10-01
 - **Trạng thái:** ✅ xong — **4/7 giả thuyết sai**: G3 sai cả hai vế; G1 (p99), G2 (outlier), G5 (số dial lỗi) sai một vế; G4/G6/G7 đúng. (Turn 2 ghi "3 sai + 1 sai một vế" — đếm G1/G2 như sai hẳn; bảng chấm ở Số đo là chuẩn.) Giả thuyết bên dưới đăng ký **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (commit nền `a0a5e1a`)
+- **Commit:** `9df3e76` (turn 1 `d21bdb2`, turn 2 `6a38ca4`; commit nền `a0a5e1a`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase6-log.md`](phase6-log.md). File này là bản biên tập.
 >
