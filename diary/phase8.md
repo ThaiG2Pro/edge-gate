@@ -3,7 +3,7 @@
 - **Thời lượng dự kiến:** 1-2 ngày · **thực tế:** ~50 phút làm việc (turn 1 10:52-11:07, turn 2 11:08-11:36 gồm 11:22-11:35 chờ người dùng tháo netem, turn 3 bắt đầu trước 12:02 — mốc `date` đầu tiên — tới 12:05)
 - **Bắt đầu:** 2026-10-01 10:52 · **Kết thúc:** 2026-10-01 12:04
 - **Trạng thái:** ✅ xong — **2/8 giả thuyết sai một vế** (G6 resumed + RSA; G7 tuyệt đối +1 RTT), 0 sai hẳn; G1-G5, G8 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase.
-- **Commit:** _______ (commit nền `46cd0f3`)
+- **Commit:** `6d7c998` (turn 1 `4444954`, turn 2 `19f13ac`; commit nền `46cd0f3`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase8-log.md`](phase8-log.md). File này là bản biên tập.
 >
