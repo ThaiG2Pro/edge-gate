@@ -1,0 +1,31 @@
+ 02:39:57 up  5:07,  1 user,  load average: 0.60, 0.74, 0.54
+pin1@5000      n=50000 200:100.0%
+               200: p50 460µs p90 1.29ms p99 28.67ms p99.9 103.14ms max 120.45ms · goodput 5000/s
+               lag generator (Start−Sched, nằm trong latency): p50 180µs p99 10.5ms max 51.9ms
+               generator: 50000 request trong 10.003s ⇒ 4998/s, yêu cầu 5000/s, lệch -0.03 % · proxy CPU 3.64 s (72.8 µs/req)
+pin1@10000     n=100000 200:100.0%
+               200: p50 300µs p90 700µs p99 47.17ms p99.9 100.6ms max 116.81ms · goodput 10000/s
+               lag generator (Start−Sched, nằm trong latency): p50 80µs p99 28.64ms max 73.66ms
+               generator: 100000 request trong 10.002s ⇒ 9998/s, yêu cầu 10000/s, lệch -0.02 % · proxy CPU 8.05 s (80.5 µs/req)
+               lag generator p99 28.64ms ≥ ½ p99 latency 47.17ms: p99 dòng trên là của GENERATOR (P-env-2)
+               GENERATOR KHÔNG THEO NỔI: số latency dòng trên vô nghĩa (P-env-2)
+pin2@5000      n=50000 200:100.0%
+               200: p50 460µs p90 1.28ms p99 30.56ms p99.9 99.57ms max 111.11ms · goodput 5000/s
+               lag generator (Start−Sched, nằm trong latency): p50 180µs p99 5.9ms max 56.72ms
+               generator: 50000 request trong 10.003s ⇒ 4998/s, yêu cầu 5000/s, lệch -0.03 % · proxy CPU 3.47 s (69.4 µs/req)
+pin2@10000     n=100000 200:100.0%
+               200: p50 320µs p90 730µs p99 26.06ms p99.9 96.4ms max 108.69ms · goodput 10000/s
+               lag generator (Start−Sched, nằm trong latency): p50 80µs p99 16.63ms max 75.42ms
+               generator: 100000 request trong 10.003s ⇒ 9997/s, yêu cầu 10000/s, lệch -0.03 % · proxy CPU 8.40 s (84.0 µs/req)
+               lag generator p99 16.63ms ≥ ½ p99 latency 26.06ms: p99 dòng trên là của GENERATOR (P-env-2)
+               GENERATOR KHÔNG THEO NỔI: số latency dòng trên vô nghĩa (P-env-2)
+pin3@5000      n=50000 200:100.0%
+               200: p50 410µs p90 1.22ms p99 3.22ms p99.9 42.96ms max 53.35ms · goodput 5000/s
+               lag generator (Start−Sched, nằm trong latency): p50 140µs p99 1.16ms max 29.85ms
+               generator: 50000 request trong 10.005s ⇒ 4998/s, yêu cầu 5000/s, lệch -0.05 % · proxy CPU 4.36 s (87.2 µs/req)
+pin3@10000     n=100000 200:100.0%
+               200: p50 360µs p90 670µs p99 66.41ms p99.9 121.02ms max 141.68ms · goodput 10000/s
+               lag generator (Start−Sched, nằm trong latency): p50 80µs p99 42.24ms max 100.96ms
+               generator: 100000 request trong 10.004s ⇒ 9996/s, yêu cầu 10000/s, lệch -0.04 % · proxy CPU 9.01 s (90.1 µs/req)
+               lag generator p99 42.24ms ≥ ½ p99 latency 66.41ms: p99 dòng trên là của GENERATOR (P-env-2)
+               GENERATOR KHÔNG THEO NỔI: số latency dòng trên vô nghĩa (P-env-2)

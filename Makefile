@@ -420,6 +420,17 @@ epolllab: perf-bins
 	  taskset -c 3-5 ./bin/perflab -mode rps -conns 256 -duration 10s -label $$i -addr 127.0.0.1:18100 \
 	    -spawn "env GOMAXPROCS=3 taskset -c 0-2 bin/epolllab -impl $$i -loops 3" 2>&1 | grep -v 'epolllab:'; done
 
+# P-env-2: ba tiến trình ba nhóm core — upstream core 2, proxy core 0-1 (GOMAXPROCS=2),
+# generator core 3-5. perflab kiểm generator theo kịp rate (lệch > 2 % ⇒ exit 3, số vô
+# nghĩa). Chạy lúc `uptime` load < 1. Trên Linux thuần mới là số chốt; WSL2 chỉ tạm.
+PIN_RATES ?= 2000 5000 10000
+pinlab: perf-bins
+	@uptime
+	@for r in 1 2 3; do for rate in $(PIN_RATES); do \
+	  taskset -c 3-5 ./bin/perflab -mode open -rate $$rate -duration 10s -workers 256 -label pin$$r \
+	    -up "taskset -c 2 bin/epolllab -impl epoll -loops 1" \
+	    -spawn "env GOMAXPROCS=2 taskset -c 0-1 bin/edgegate -config config/bench.json" 2>&1 | grep -v 'epolllab:\|edgegate:'; done; done
+
 # G8: EdgeGate / nginx / httputil.ReverseProxy — cần docker + image nginx:1.25-alpine.
 bench-vs-nginx: perf-bins
 	./scripts/bench-vs-nginx.sh    # 3 cột: EdgeGate / nginx / httputil.ReverseProxy

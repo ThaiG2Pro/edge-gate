@@ -44,6 +44,7 @@ type Config struct {
 type Sample struct {
 	I       int
 	Sched   time.Time
+	Start   time.Time // worker bắt đầu xử lý (P-env-2: Start−Sched = độ trễ của GENERATOR, không phải proxy)
 	Done    time.Time
 	Status  int    // 0 nếu không có response
 	Kind    string // "ok" (có status) | "dial" | "io-nohead" (đóng trước khi có head) | "io-body" (đứt giữa body) | "timeout"
@@ -128,7 +129,7 @@ func (w *worker) dial(local string) error {
 }
 
 func (w *worker) do(j job) Sample {
-	s := Sample{I: j.i, Sched: j.sched}
+	s := Sample{I: j.i, Sched: j.sched, Start: time.Now()}
 	local := w.cfg.LocalIP
 	if w.cfg.LocalIPFor != nil {
 		local = w.cfg.LocalIPFor(j.i)
@@ -199,6 +200,10 @@ type Summary struct {
 	Retried  int
 	// Percentile của MỌI request có response, và riêng của 200.
 	All, OK Percentiles
+	// Lag (P-env-2): Start−Sched — worker nhận việc trễ bao lâu so với giờ hẹn.
+	// Nằm TRONG Latency. Lớn ⇒ generator (thiếu worker, thiếu CPU, time.Sleep
+	// thô) là cổ chai, số latency không nói về proxy.
+	Lag Percentiles
 }
 
 type Percentiles struct {
@@ -208,9 +213,12 @@ type Percentiles struct {
 
 func Summarize(ss []Sample) Summary {
 	sum := Summary{N: len(ss), ByStatus: map[int]int{}, ByKind: map[string]int{}}
-	var all, ok []time.Duration
+	var all, ok, lag []time.Duration
 	for _, s := range ss {
 		sum.ByKind[s.Kind]++
+		if !s.Start.IsZero() {
+			lag = append(lag, s.Start.Sub(s.Sched))
+		}
 		if s.Retried {
 			sum.Retried++
 		}
@@ -223,7 +231,7 @@ func Summarize(ss []Sample) Summary {
 			ok = append(ok, s.Latency())
 		}
 	}
-	sum.All, sum.OK = pcts(all), pcts(ok)
+	sum.All, sum.OK, sum.Lag = pcts(all), pcts(ok), pcts(lag)
 	return sum
 }
 
@@ -260,4 +268,8 @@ func Print(w io.Writer, name string, sum Summary, dur time.Duration) {
 	r := func(d time.Duration) string { return d.Round(10 * time.Microsecond).String() }
 	fmt.Fprintf(w, "\n%-14s 200: p50 %s p90 %s p99 %s p99.9 %s max %s · goodput %.0f/s\n", "",
 		r(sum.OK.P50), r(sum.OK.P90), r(sum.OK.P99), r(sum.OK.P999), r(sum.OK.Max), float64(sum.ByStatus[200])/dur.Seconds())
+	if sum.Lag.N > 0 {
+		fmt.Fprintf(w, "%-14s lag generator (Start−Sched, nằm trong latency): p50 %s p99 %s max %s\n", "",
+			r(sum.Lag.P50), r(sum.Lag.P99), r(sum.Lag.Max))
+	}
 }

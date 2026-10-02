@@ -411,9 +411,60 @@ func runRPS() {
 // ---------------------------------------------------------------------------
 // open (G8) — open-loop, latency từ giờ hẹn.
 
+// runOpen (G8; P-env-2): open-loop -rate trong -duration. Có -spawn/-up thì
+// proxy/upstream là tiến trình con (ghim core bằng taskset trong lệnh) và in
+// CPU-giây của proxy. Kiểm generator THEO KỊP: lịch hẹn n = rate×duration
+// request; nếu bắn xong trễ quá 2 % so với duration thì generator (không phải
+// proxy) là cổ chai ⇒ mọi số latency ở dòng đó VÔ NGHĨA — in rõ, exit 3.
 func runOpen() {
+	// os.Exit(3) ở dưới bỏ qua defer ⇒ dừng con tường minh: con sống sót
+	// giữ pipe stdout ⇒ `make pinlab | grep` treo (lộ ra lượt chạy đầu).
+	var kids []*child
+	stopAll := func() {
+		for i := len(kids) - 1; i >= 0; i-- {
+			kids[i].stop()
+		}
+	}
+	defer stopAll()
+	if *upCmd != "" {
+		kids = append(kids, start(*upCmd, *upAddr))
+	}
+	var srv *child
+	if *spawn != "" {
+		srv = start(*spawn, *addr)
+		kids = append(kids, srv)
+	}
 	req := reqLine()
+	var cpu0 float64
+	if srv != nil {
+		cpu0 = cpuSec(srv.pid)
+	}
+	t0 := time.Now()
 	ss := loadgen.Run(loadgen.Config{Addr: *addr, Rate: *rate, Duration: *duration, Workers: *workers,
 		Timeout: 5 * time.Second, Request: func(int) string { return req }})
-	loadgen.Print(os.Stdout, fmt.Sprintf("%s@%.0f", *label, *rate), loadgen.Summarize(ss), *duration)
+	el := time.Since(t0)
+	name := fmt.Sprintf("%s@%.0f", *label, *rate)
+	sum := loadgen.Summarize(ss)
+	loadgen.Print(os.Stdout, name, sum, *duration)
+	achieved := float64(len(ss)) / el.Seconds()
+	dev := (achieved - *rate) / *rate * 100
+	line := fmt.Sprintf("%-14s generator: %d request trong %s ⇒ %.0f/s, yêu cầu %.0f/s, lệch %+.2f %%", "", len(ss), el.Round(time.Millisecond), achieved, *rate, dev)
+	if srv != nil {
+		line += fmt.Sprintf(" · proxy CPU %.2f s (%.1f µs/req)", cpuSec(srv.pid)-cpu0, (cpuSec(srv.pid)-cpu0)/float64(max(len(ss), 1))*1e6)
+	}
+	fmt.Println(line)
+	// Hai cách generator hỏng số: (1) tổng rps lệch > 2 % (debt P-env-2);
+	// (2) rps đúng nhưng từng request nhận việc trễ — lag p99 ≥ p99 latency/2
+	// nghĩa là quá nửa cái "p99" là của generator.
+	bad := dev < -2 || dev > 2
+	if sum.OK.N > 0 && sum.Lag.P99*2 >= sum.OK.P99 && sum.Lag.P99 > time.Millisecond {
+		fmt.Printf("%-14s lag generator p99 %s ≥ ½ p99 latency %s: p99 dòng trên là của GENERATOR (P-env-2)\n", "",
+			sum.Lag.P99.Round(10*time.Microsecond), sum.OK.P99.Round(10*time.Microsecond))
+		bad = true
+	}
+	if bad {
+		fmt.Printf("%-14s GENERATOR KHÔNG THEO NỔI: số latency dòng trên vô nghĩa (P-env-2)\n", "")
+		stopAll()
+		os.Exit(3)
+	}
 }

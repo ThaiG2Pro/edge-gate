@@ -58,18 +58,21 @@ go run ./cmd/netlab -exp limits -duration 40s -dialers 1  -addr <eth0-ip>:9200
 go run ./cmd/netlab -exp limits -duration 40s -dialers 16 -addr <eth0-ip>:9201
 ```
 
-### 📏 P-env-2 · Generator và proxy dùng chung 6 core
+### 📏 P-env-2 · Generator và proxy dùng chung 6 core — công cụ xong 2026-10-03, số chốt cần Linux thuần
 
-`vegeta` ở rate cao ăn nhiều core; proxy chỉ còn phần còn lại. Số đo phản ánh cuộc tranh chấp
-CPU, không phản ánh proxy.
+`make pinlab`: upstream core 2, proxy core 0-1 (`GOMAXPROCS=2`), generator core 3-5; `perflab -mode open` nay
+nhận `-up`/`-spawn`, in CPU-giây proxy và **hai** kiểm tra generator: (1) rps đạt lệch > 2 % so với rate; (2) **lag**
+`Start−Sched` (loadgen ghi mốc worker nhận việc) p99 ≥ ½ p99 latency ⇒ "p99 là của generator". Vi phạm ⇒ in rõ, exit 3,
+dừng tiến trình con trước khi thoát (lượt đầu treo vì `os.Exit` bỏ qua defer — con giữ pipe của `grep`).
+
+WSL2 (`bench/p-env-2-pinlab-wsl2.txt`, load 0.6, 3 lượt × 5k/10k rps): rps lệch −0.02…−0.05 % — **tiêu chí (1) đạt
+mọi lượt**; nhưng lag p99 **1.2–10.5 ms** ở 5k, **16.6–42.2 ms** ở 10k, ≥ ½ p99 latency ở cả 3 lượt 10k ⇒ số p99 10k
+trên WSL2 là của generator, không phải proxy. CPU proxy 69-90 µs/req ổn định hơn latency nhiều. Trên Linux thuần:
 
 ```bash
-taskset -c 0,1,2 ./bin/edgegate &
-taskset -c 3,4,5 vegeta attack -rate=5000 -duration=30s -targets=t.txt | vegeta report
+uptime                      # load < 1
+make pinlab | tee bench/p-env-2-pinlab-linux.txt     # không dòng GENERATOR nào ⇒ số latency dùng được
 ```
-
-Đã ghim core vẫn chưa đủ: cần so `rps` đạt được với `rate` yêu cầu. Lệch > 2% nghĩa là
-generator không theo nổi ⇒ **số latency vô nghĩa**, không phải "proxy chậm".
 
 ### 📏 P4-2 · G4 đo trên WSL2 không phân giải được 5 %
 
