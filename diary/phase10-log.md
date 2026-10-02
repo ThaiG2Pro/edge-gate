@@ -118,3 +118,18 @@
   Số frame ≤ số update ⇒ không khuếch đại. Phòng tuyến cho rủi ro không tồn tại chỉ còn lại giá (chặn nhầm client
   window nhỏ) ⇒ không thêm. Viết lại test thành chốt bất biến "frame ≤ update + 64" (×2 nhịp flush, ×3 `-race`:
   2 822-3 350 frame). Suite `-race` xanh, `make h2-nodefense` đỏ 6.
+
+## §6 P10-4 — 2026-10-02 14:01 → 14:19: đo trước, có khuếch đại thật ⇒ sửa cấu trúc
+
+- Bài học P10-3 áp ngay: thêm `Stats.Flushes` + `h2lab -mode flood` đo TRƯỚC. Có khuếch đại thật (khác P10-3): ACK
+  PING/RST không gộp được bằng window ⇒ 100 PING trong một lần ghi = 100 Flush; SETTINGS lặp INITIAL_WINDOW_SIZE ×
+  mọi stream = 1.8-2.8 ms CPU mỗi frame (`bench/p10-flood-before.txt`).
+- Sửa (a) gộp Flush cho phản hồi của goroutine đọc, (b) SETTINGS cộng dồn. Hai lỗi của chính mình trên đường:
+  - Lần đầu kiểm "còn frame" bằng `Buffered() ≥ 9`: payload chưa tới thì ACK vẫn kẹt trong bufio ⇒ đổi sang trọn
+    frame (`frameBuffered`).
+  - Rồi `Peek(9)` khi có < 9 byte ⇒ **chặn đọc socket** ⇒ suite proxy đỏ. Sửa: kiểm `Buffered()` trước Peek.
+- `TestSettingsCollapse` đỏ lần đầu vì test giữ 100 stream = hết MAX_CONCURRENT_STREAMS ⇒ stream đo ngữ nghĩa bị
+  REFUSED ("0 byte") — giữ 99.
+- `TestIdleClosedUpstream` đỏ 2 lần trong full suite ⇒ không đổ lỗi, đo: riêng 10/10 xanh cả hai bản, full suite
+  3 + 3 lần sạch ⇒ chập chờn có sẵn (sleep 20 ms chờ FIN) ⇒ nợ P10-9.
+- Sau: PING 111 Flush / 100 000, SETTINGS 51-106 µs/frame; `make h2-nodefense` đỏ 8; h2spec 144/145.

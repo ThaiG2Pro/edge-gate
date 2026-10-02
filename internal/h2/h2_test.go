@@ -588,3 +588,100 @@ func TestTinyWindowUpdates(t *testing.T) {
 		}
 	}
 }
+
+// P10-4 (a): 10 000 PING gom 100 frame mỗi lần ghi ⇒ ACK gộp: Flush ≤ 0.1 / PING.
+// Trước P10-4 (và -tags nodefense10): một Flush = một syscall mỗi PING ⇒ ĐỎ.
+func TestControlFloodCoalesced(t *testing.T) {
+	s := startServer(t, Config{}, echo)
+	c := rawConn(t, s)
+	expect(t, c, FrameSettings, 0) // SETTINGS của server đã tới ⇒ đếm từ đây
+	const N = 10000
+	f0 := s.stats.Flushes.Load()
+	go func() {
+		for i := 0; i < N; i++ {
+			c.Fr.WritePing(false, [8]byte{byte(i)})
+			if i%100 == 99 {
+				c.Fr.Flush()
+			}
+		}
+	}()
+	got := 0
+	c.NC.SetReadDeadline(time.Now().Add(10 * time.Second))
+	for got < N {
+		f, err := c.Fr.ReadFrame()
+		if err != nil {
+			t.Fatalf("sau %d ACK: %v", got, err)
+		}
+		if f.Type == FramePing && f.Has(FlagAck) {
+			got++
+		}
+	}
+	fl := s.stats.Flushes.Load() - f0
+	t.Logf("%d PING ⇒ %d ACK, %d Flush phía server", N, got, fl)
+	if fl > N/10 {
+		t.Fatalf("PING flood: %d Flush cho %d PING (> %d) — mỗi ACK một syscall", fl, N, N/10)
+	}
+}
+
+// P10-4 (b): SETTINGS chứa 2 730 lần INITIAL_WINDOW_SIZE, 99 stream mở ⇒ áp
+// MỘT lần: số lần cộng window stream ≤ (frame × stream). Trước P10-4: frame ×
+// setting × stream = 10 × 2 730 × 99 ⇒ ĐỎ dưới nodefense10. Ngữ nghĩa kiểm thêm:
+// window cuối = giá trị CUỐI (stream nhận đúng 65 535 + 1 byte sau dãy lẻ/chẵn).
+func TestSettingsCollapse(t *testing.T) {
+	hold := make(chan struct{})
+	defer close(hold)
+	s := startServer(t, Config{}, func(w *Stream, r *Request) {
+		if r.Path == "/hold" {
+			<-hold
+			return
+		}
+		echo(w, r)
+	})
+	c := rawConn(t, s)
+	// 99 stream giữ (không phải 100): stream đo ngữ nghĩa ở cuối cần một slot
+	// MAX_CONCURRENT_STREAMS — bản đầu giữ 100 ⇒ stream 201 bị REFUSED ⇒ "0 byte".
+	for i := 0; i < 99; i++ {
+		c.Headers(uint32(2*i+1), true, GET("a", "/hold")...)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for s.stats.Streams.Load() < 99 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	ss := make([]Setting, 16384/6)
+	for i := range ss {
+		ss[i] = Setting{SettingInitialWindowSize, uint32(65535 + i%2)} // kết thúc ở 65 536
+	}
+	o0 := s.stats.SettingsStreamOps.Load()
+	for i := 0; i < 10; i++ {
+		c.Fr.WriteSettings(ss...)
+	}
+	c.Fr.Flush()
+	for acks := 0; acks < 10; {
+		if f := expect(t, c, FrameSettings, 0); f.Has(FlagAck) {
+			acks++
+		}
+	}
+	ops := s.stats.SettingsStreamOps.Load() - o0
+	t.Logf("10 frame × %d setting, 99 stream ⇒ %d lần cộng window", len(ss), ops)
+	if ops > 10*99 {
+		t.Fatalf("SETTINGS: %d lần cộng window > %d — O(setting × stream)", ops, 10*99)
+	}
+	// Stream mới mở sau dãy: window gửi = 65 536 (giá trị cuối) ⇒ response 70 000
+	// byte dừng đúng ở 65 536 khi client không WINDOW_UPDATE stream.
+	c.WindowUpdate(0, 1<<20)
+	c.Headers(201, true, GET("a", "/size/70000")...)
+	total := 0
+	c.NC.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		f, err := c.Fr.ReadFrame()
+		if err != nil {
+			break
+		}
+		if f.Type == FrameData && f.Stream == 201 {
+			total += len(f.Payload)
+		}
+	}
+	if total != 65536 {
+		t.Fatalf("window stream sau SETTINGS = %d byte, muốn 65 536 (giá trị cuối)", total)
+	}
+}

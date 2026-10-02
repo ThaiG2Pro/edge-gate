@@ -2,7 +2,7 @@
 
 package h2
 
-// Phase 10 D6. Build tag nodefense10 tắt cả bốn để bài phản chứng phải đỏ.
+// Phase 10 D6. Build tag nodefense10 tắt tất cả để bài phản chứng phải đỏ.
 const (
 	// holdSlotUntilExit (D6 a): slot MAX_CONCURRENT_STREAMS chỉ trả khi goroutine
 	// stream THOÁT. Tắt ⇒ trả lúc nhận RST_STREAM ⇒ Rapid Reset (CVE-2023-44487):
@@ -19,4 +19,10 @@ const (
 	// validateDowngrade (D6 c): ký tự cấm, header connection-specific, te,
 	// content-length ≠ tổng DATA ⇒ malformed (RFC 9113 §8.1.1, §8.2.1-8.2.2).
 	validateDowngrade = true
+	// coalesceCtl / collapseSettings (P10-4, trả 2026-10-02): phản hồi điều
+	// khiển của goroutine đọc chỉ Flush khi buffer đọc cạn; nhiều
+	// INITIAL_WINDOW_SIZE trong một SETTINGS áp một lần. Tắt ⇒ một Flush mỗi
+	// PING/RST và O(setting × stream) mỗi frame SETTINGS.
+	coalesceCtl      = true
+	collapseSettings = true
 )

@@ -430,10 +430,10 @@ h2spec: h2-bins
 	 ./bin/edgegate -config config/h2.json >/dev/null 2>&1 & PX=$$!; sleep 1; \
 	 $(H2SPEC) -h 127.0.0.1 -p 18093 -o 5 | tail -40; kill $$PX $$UP
 
-# Phản chứng D6: bản không phòng tuyến phải đỏ đúng 6 test.
+# Phản chứng D6 + P10-4: bản không phòng tuyến phải đỏ đúng 8 test.
 h2-nodefense:
 	! go test ./internal/h2 ./internal/proxy -count=1 -tags nodefense10 \
-	  -run 'TestMalformedStreamReset|TestContentLengthMismatch|TestRapidReset|TestContinuationFlood|TestH2Smuggle|TestH2RapidResetProxy' -v
+	  -run 'TestMalformedStreamReset|TestContentLengthMismatch|TestRapidReset|TestContinuationFlood|TestControlFloodCoalesced|TestSettingsCollapse|TestH2Smuggle|TestH2RapidResetProxy' -v
 
 check: fmt vet test
 	@echo "== nợ kỹ thuật chưa trả =="

@@ -307,15 +307,15 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
-### 🔧 P10-4 · Không trần tốc độ cho PING / SETTINGS / request malformed
+### 🔧 P10-9 · `TestIdleClosedUpstream` chập chờn khi cả suite chạy dưới tải
 
-Ghi đồng bộ dưới `wmu` (D3) chặn được hàng đợi ACK không trần (client không đọc ⇒ TCP backpressure), nhưng client
-**có** đọc thì một connection bơm PING/SETTINGS/HEADERS malformed vô hạn, mỗi cái tốn một lần encode + ghi + Flush
-(CVE-2019-9512/9515 họ CPU; RFC 9113 §10.5 "An invalid request … can cause a peer to send RST_STREAM"). D6 a′ chỉ đếm
-RST **của client**. Sửa: một bộ đếm chung "frame không sinh việc hữu ích" mỗi giây ⇒ GOAWAY ENHANCE_YOUR_CALM.
+2026-10-02 (lúc trả P10-4): đỏ 2 lần trong full suite `-race` (load ~5), `req 43: 502 … DeadOnProbe:48` — 1/50 request
+tới trước FIN. Chạy riêng 10/10 xanh trên cả code mới lẫn HEAD; full suite thêm 6 lần (3 mới, 3 HEAD) sạch. Nguyên
+nhân đã biết từ phase 8: test **ngủ cố định** 20 ms chờ FIN của upstream tới kernel proxy (3 → 20 ms ở phase 8). Sửa:
+thay sleep bằng chờ có điều kiện (poll `PoolStats` / đọc tới khi upstream báo đã đóng), không nới số.
 
 ```bash
-go test ./internal/h2 -run 'TestPingFlood|TestMalformedFlood' -v   # (chưa có) 100 000 PING ⇒ GOAWAY trước khi hết
+for i in $(seq 10); do go test ./... -count=1 -race 2>&1 | grep -E '^--- FAIL'; done   # phải không in gì
 ```
 
 ### ⏳ P10-5 · ALPN `h2` trên TLS
@@ -389,6 +389,20 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-4 · PING / SETTINGS / request malformed khuếch đại chi phí server — trả 2026-10-02
+
+Đo trước (`h2lab -mode flood`, `bench/p10-flood-before.txt`): client gom 100 frame mỗi lần ghi ⇒ server **100 001
+Flush** cho 100 000 PING (khuếch đại syscall 100x), 5.75 µs/frame; SETTINGS 2 730 × INITIAL_WINDOW_SIZE với 100 stream
+mở ⇒ **1.8-2.8 ms CPU mỗi frame 16 KiB** dưới `c.mu` (O(setting × stream)). Sửa cấu trúc, không ngưỡng, không chặn
+nhầm client hợp lệ: (a) `conn.go:writeCtl` — phản hồi của goroutine đọc chỉ Flush khi buffer đọc không còn TRỌN một
+frame (`frameBuffered`; Peek chỉ khi đủ 9 byte — Peek thiếu byte sẽ chặn đọc socket), `flushPending` trước khi có thể
+chặn đọc; (b) `onSettings` — nhiều INITIAL_WINDOW_SIZE trong một frame áp một lần (chênh lệch cuối; kiểm tràn bằng
+giá trị lớn nhất). Sau (`bench/p10-flood-after.txt`, xen kẽ với nodefense10 ×2): PING 100 000 → **111 Flush**,
+0.65 µs/frame; SETTINGS **51-106 µs/frame** (≈ 45x); malformed 90 Flush, 1.84-1.90 µs/frame. Phản chứng
+(`-tags nodefense10` ĐỎ): `TestControlFloodCoalesced` 10 000 vs 11-12 Flush, `TestSettingsCollapse` 2 436 731 vs
+≤ 990 lần cộng window (+ ngữ nghĩa: window = giá trị cuối 65 536). h2spec vẫn 144/145 (`bench/p10-h2spec-4.txt`).
+Không thêm trần tốc độ: sau (a)(b) chi phí server mỗi frame ≈ chi phí client gửi nó.
 
 ### ✅ P10-3 · WINDOW_UPDATE nhỏ giọt — đóng 2026-10-02 bằng số đo: KHÔNG phải lỗ (tiền đề của món nợ sai)
 

@@ -1,0 +1,8 @@
+flood: 100000 frame mỗi bài, client gom 1 frame / lần ghi
+  PING                                100000 frame client trong 100000 lần ghi ⇒ server  100000 Flush (1.00/frame), 1.192s = 11.92 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 100ms = 1.02 µs/setting, 2784 µs/frame
+  HEADERS malformed ⇒ RST             100000 frame client trong 100000 lần ghi ⇒ server  100002 Flush (1.00/frame), 1.192s = 11.92 µs/frame
+flood: 100000 frame mỗi bài, client gom 100 frame / lần ghi
+  PING                                100000 frame client trong 1000 lần ghi ⇒ server  100001 Flush (1.00/frame), 575ms = 5.75 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 64ms = 0.65 µs/setting, 1764 µs/frame
+  HEADERS malformed ⇒ RST             100000 frame client trong 1000 lần ghi ⇒ server  100001 Flush (1.00/frame), 682ms = 6.82 µs/frame

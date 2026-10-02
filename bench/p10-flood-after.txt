@@ -1,0 +1,36 @@
+== h2lab-nodefense10
+flood: 100000 frame mỗi bài, client gom 1 frame / lần ghi
+  PING                                100000 frame client trong 100000 lần ghi ⇒ server  100000 Flush (1.00/frame), 920ms = 9.20 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 138ms = 1.40 µs/setting, 3821 µs/frame
+2026/10/02 14:09:45 flood: chờ RST_STREAM: read tcp 127.0.0.1:40342->127.0.0.1:46349: i/o timeout sau 99900/100000
+flood: 100000 frame mỗi bài, client gom 100 frame / lần ghi
+  PING                                100000 frame client trong 1000 lần ghi ⇒ server  100000 Flush (1.00/frame), 534ms = 5.34 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 134ms = 1.37 µs/setting, 3733 µs/frame
+2026/10/02 14:10:46 flood: chờ RST_STREAM: read tcp 127.0.0.1:53368->127.0.0.1:38435: i/o timeout sau 99900/100000
+== h2lab
+flood: 100000 frame mỗi bài, client gom 1 frame / lần ghi
+  PING                                100000 frame client trong 100000 lần ghi ⇒ server   11531 Flush (0.12/frame), 298ms = 2.98 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 2ms = 0.02 µs/setting, 51 µs/frame
+  HEADERS malformed ⇒ RST             100000 frame client trong 100000 lần ghi ⇒ server     423 Flush (0.00/frame), 219ms = 2.19 µs/frame
+flood: 100000 frame mỗi bài, client gom 100 frame / lần ghi
+  PING                                100000 frame client trong 1000 lần ghi ⇒ server     111 Flush (0.00/frame), 66ms = 0.66 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 2ms = 0.02 µs/setting, 61 µs/frame
+  HEADERS malformed ⇒ RST             100000 frame client trong 1000 lần ghi ⇒ server      90 Flush (0.00/frame), 184ms = 1.84 µs/frame
+== h2lab-nodefense10
+flood: 100000 frame mỗi bài, client gom 1 frame / lần ghi
+  PING                                100000 frame client trong 100000 lần ghi ⇒ server  100000 Flush (1.00/frame), 946ms = 9.46 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 113ms = 1.15 µs/setting, 3150 µs/frame
+2026/10/02 14:11:48 flood: chờ RST_STREAM: read tcp 127.0.0.1:60430->127.0.0.1:36659: i/o timeout sau 99900/100000
+flood: 100000 frame mỗi bài, client gom 100 frame / lần ghi
+  PING                                100000 frame client trong 1000 lần ghi ⇒ server  100000 Flush (1.00/frame), 657ms = 6.57 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 169ms = 1.72 µs/setting, 4699 µs/frame
+2026/10/02 14:12:49 flood: chờ RST_STREAM: read tcp 127.0.0.1:36346->127.0.0.1:39801: i/o timeout sau 99900/100000
+== h2lab
+flood: 100000 frame mỗi bài, client gom 1 frame / lần ghi
+  PING                                100000 frame client trong 100000 lần ghi ⇒ server   10720 Flush (0.11/frame), 372ms = 3.72 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 3ms = 0.03 µs/setting, 87 µs/frame
+  HEADERS malformed ⇒ RST             100000 frame client trong 100000 lần ghi ⇒ server    7063 Flush (0.07/frame), 477ms = 4.77 µs/frame
+flood: 100000 frame mỗi bài, client gom 100 frame / lần ghi
+  PING                                100000 frame client trong 1000 lần ghi ⇒ server     111 Flush (0.00/frame), 65ms = 0.65 µs/frame
+  SETTINGS INITIAL_WINDOW_SIZE            36 frame × 2730 setting, 100 stream mở ⇒ 4ms = 0.04 µs/setting, 106 µs/frame
+  HEADERS malformed ⇒ RST             100000 frame client trong 1000 lần ghi ⇒ server      90 Flush (0.00/frame), 190ms = 1.90 µs/frame

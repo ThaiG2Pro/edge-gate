@@ -5,6 +5,7 @@
 //	-mode hol     G3: /slow 500 ms rồi /fast trên MỘT connection — h1 vs h2
 //	-mode flow    G4: một stream 8 MiB, client tự đặt window (65 535 vs 8 MiB)
 //	-mode tcphol  G5: 32 GET 64 KiB song song — h2 1 conn × 32 stream vs h1 32 conn
+//	-mode flood   P10-4: PING / SETTINGS / malformed — syscall ghi + thời gian server trên mỗi frame client
 //	-mode cpu     G8: CPU + context switch / request của bin/edgegate (tiến trình con) h2 vs h1
 package main
 
@@ -66,6 +67,8 @@ func main() {
 		runTCPHOL()
 	case "cpu":
 		runCPU()
+	case "flood":
+		runFlood()
 	default:
 		log.Fatalf("mode lạ %q", *mode)
 	}
@@ -542,4 +545,132 @@ func runCPU() {
 			}
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// P10-4: flood frame điều khiển. Server internal/h2 in-process (handler giữ
+// stream mở tới khi lab xong); client thô gom nhiều frame vào MỘT lần ghi.
+// Đo: Flush phía server (= syscall ghi) trên mỗi frame client, và thời gian
+// tới khi client nhận đủ phản hồi (ACK/RST) — chi phí server cho mỗi frame.
+
+func runFlood() {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatal(err)
+	}
+	hold := make(chan struct{})
+	defer close(hold)
+	var stats h2.Stats
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go h2.ServeConn(c, c, h2.Config{}, func(w *h2.Stream, r *h2.Request) { <-hold }, &stats)
+		}
+	}()
+	dial := func() *h2.RawClient {
+		nc, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			log.Fatal(err)
+		}
+		c, err := h2.NewRawClient(nc)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return c
+	}
+	// waitFor: đọc tới khi thấy want frame loại t (ACK hoặc RST).
+	waitFor := func(c *h2.RawClient, t h2.FrameType, ack bool, want int) {
+		got := 0
+		c.NC.SetReadDeadline(time.Now().Add(10 * time.Second))
+		for got < want {
+			f, err := c.Fr.ReadFrame()
+			if err != nil {
+				// nodefense10: HEADERS tên in hoa không bị RST ⇒ chờ mãi — in ra, đi tiếp.
+				log.Printf("  flood: chờ %v: %v sau %d/%d", t, err, got, want)
+				return
+			}
+			if f.Type == h2.FrameGoAway {
+				log.Printf("  GOAWAY %v sau %d/%d", h2.GoAwayCode(f), got, want)
+				return
+			}
+			if f.Type == t && (!ack || f.Has(h2.FlagAck)) {
+				got++
+			}
+		}
+	}
+	report := func(name string, frames int, el time.Duration, f0 int64) {
+		fl := stats.Flushes.Load() - f0
+		fmt.Printf("  %-34s %7d frame client trong %4d lần ghi ⇒ server %7d Flush (%.2f/frame), %v = %.2f µs/frame\n",
+			name, frames, frames / *n, fl, float64(fl)/float64(frames), el.Round(time.Millisecond), float64(el.Microseconds())/float64(frames))
+	}
+	const total = 100000
+	fmt.Printf("flood: %d frame mỗi bài, client gom %d frame / lần ghi\n", total, *n)
+
+	// (1) PING
+	c := dial()
+	waitFor(c, h2.FrameSettings, false, 1)
+	c.Frame(h2.FrameSettings, h2.FlagAck, 0, nil)
+	f0 := stats.Flushes.Load()
+	t0 := time.Now()
+	go func() {
+		for i := 0; i < total; i++ {
+			c.Fr.WritePing(false, [8]byte{byte(i)})
+			if i%*n == *n-1 {
+				c.Fr.Flush()
+			}
+		}
+		c.Fr.Flush()
+	}()
+	waitFor(c, h2.FramePing, true, total)
+	report("PING", total, time.Since(t0), f0)
+	c.NC.Close()
+
+	// (2) SETTINGS INITIAL_WINDOW_SIZE × 2730 mỗi frame, 100 stream mở
+	c = dial()
+	waitFor(c, h2.FrameSettings, false, 1)
+	for i := 0; i < 100; i++ {
+		c.Headers(uint32(2*i+1), true, h2.GET("a", "/")...)
+	}
+	time.Sleep(200 * time.Millisecond)
+	per := 16384 / 6
+	ss := make([]h2.Setting, per)
+	for i := range ss {
+		ss[i] = h2.Setting{ID: h2.SettingInitialWindowSize, Val: uint32(65535 + i%2)}
+	}
+	frames := total / per
+	f0 = stats.Flushes.Load()
+	t0 = time.Now()
+	go func() {
+		for i := 0; i < frames; i++ {
+			c.Fr.WriteSettings(ss...)
+		}
+		c.Fr.Flush()
+	}()
+	waitFor(c, h2.FrameSettings, true, frames)
+	el := time.Since(t0)
+	fmt.Printf("  %-34s %7d frame × %d setting, 100 stream mở ⇒ %v = %.2f µs/setting, %.0f µs/frame\n",
+		"SETTINGS INITIAL_WINDOW_SIZE", frames, per, el.Round(time.Millisecond), float64(el.Microseconds())/float64(frames*per), float64(el.Microseconds())/float64(frames))
+	c.NC.Close()
+
+	// (3) HEADERS malformed (tên in hoa) ⇒ RST mỗi cái
+	c = dial()
+	waitFor(c, h2.FrameSettings, false, 1)
+	f0 = stats.Flushes.Load()
+	t0 = time.Now()
+	go func() {
+		for i := 0; i < total; i++ {
+			blk := c.Enc.Encode(nil, h2.GET("a", "/", hpack.HeaderField{Name: "X-Bad", Value: "1"}))
+			c.Fr.WriteFrame(h2.FrameHeaders, h2.FlagEndHeaders|h2.FlagEndStream, uint32(2*i+1), blk)
+			if i%*n == *n-1 {
+				c.Fr.Flush()
+			}
+		}
+		c.Fr.Flush()
+	}()
+	waitFor(c, h2.FrameRSTStream, false, total)
+	report("HEADERS malformed ⇒ RST", total, time.Since(t0), f0)
+	c.NC.Close()
 }

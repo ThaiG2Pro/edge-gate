@@ -77,6 +77,8 @@ type Stats struct {
 	Streams, Refused, Resets, ResetsSent atomic.Int64
 	MaxActive                            atomic.Int64 // đỉnh handler chạy đồng thời
 	HeaderBlockMax                       atomic.Int64 // header block đệm lớn nhất (G7)
+	Flushes                              atomic.Int64 // số lần Flush = số syscall ghi (P10-4)
+	SettingsStreamOps                    atomic.Int64 // số lần cộng window stream do SETTINGS (P10-4)
 }
 
 // Conn: một connection h2 phía server.
@@ -84,6 +86,7 @@ type Conn struct {
 	cfg     Config
 	nc      net.Conn
 	fr      *Framer
+	br      *bufio.Reader // CHỈ goroutine đọc chạm (Buffered)
 	dec     *hpack.Decoder
 	handler Handler
 	Stats   *Stats
@@ -190,12 +193,19 @@ func (c *Conn) Shutdown() {
 // NewConn dựng Conn mà chưa chạy (Serve).
 func NewConn(nc net.Conn, r io.Reader, cfg Config, h Handler, stats *Stats) *Conn {
 	cfg.withDefaults()
+	// P10-4: goroutine đọc cần biết "còn frame nào đã nằm trong buffer không"
+	// để gộp phản hồi điều khiển ⇒ đọc luôn qua bufio.
+	br, ok := r.(*bufio.Reader)
+	if !ok {
+		br = bufio.NewReaderSize(r, 16<<10)
+	}
 	if stats == nil {
 		stats = &Stats{}
 	}
 	c := &Conn{
 		cfg: cfg, nc: nc, handler: h, Stats: stats,
-		fr:         NewFramer(r, bufio.NewWriterSize(nc, 16<<10)),
+		fr:         NewFramer(br, bufio.NewWriterSize(nc, 16<<10)),
+		br:         br,
 		dec:        hpack.NewDecoder(4096, uint64(cfg.MaxHeaderListSize)),
 		enc:        hpack.NewEncoder(),
 		streams:    map[uint32]*Stream{},
@@ -236,6 +246,9 @@ func (c *Conn) serve() error {
 	}
 	first := true
 	for {
+		if !c.frameBuffered() {
+			c.flushPending() // P10-4: sắp có thể chặn đọc ⇒ phản hồi dồn phải ra dây trước
+		}
 		c.setReadDeadline()
 		f, err := c.fr.ReadFrame()
 		if err == nil && first && (f.Type != FrameSettings || f.Has(FlagAck)) {
@@ -250,7 +263,7 @@ func (c *Conn) serve() error {
 		}
 		var se StreamError
 		if errors.As(err, &se) {
-			c.resetStream(se.Stream, se.Code)
+			c.resetStreamOpt(se.Stream, se.Code, true)
 			continue
 		}
 		var ce ConnError
@@ -298,14 +311,56 @@ func (c *Conn) setReadDeadline() {
 }
 
 // write: một lần ghi frame dưới wmu, kèm deadline và Flush.
-func (c *Conn) write(fn func(fr *Framer) error) error {
+func (c *Conn) write(fn func(fr *Framer) error) error { return c.writeOpt(fn, true) }
+
+// writeCtl (P10-4): phản hồi điều khiển do GOROUTINE ĐỌC sinh ra (ACK PING /
+// SETTINGS, RST cho stream lỗi, WINDOW_UPDATE trả padding/DATA lạc). Còn frame
+// nằm sẵn trong buffer đọc ⇒ chưa Flush: phản hồi dồn trong bufio, ra dây một
+// lần khi buffer đọc cạn (serve: flushPending trước ReadFrame) hoặc bufio đầy.
+// Trước P10-4: client gom 100 PING vào một lần ghi ⇒ server 100 Flush = 100
+// syscall (bench/p10-flood-before.txt). CHỈ gọi từ goroutine đọc (đọc c.br).
+func (c *Conn) writeCtl(fn func(fr *Framer) error) error {
+	return c.writeOpt(fn, !coalesceCtl || !c.frameBuffered())
+}
+
+// frameBuffered: buffer đọc chứa TRỌN một frame (header + payload) ⇒ ReadFrame
+// kế tiếp không chặn. Chỉ đủ 9 byte header thì không: payload chưa tới mà ACK
+// còn nằm trong bufio ⇒ peer chờ ACK trong khi ta chờ payload.
+func (c *Conn) frameBuffered() bool {
+	if c.br.Buffered() < frameHeaderLen {
+		return false // Peek khi thiếu byte sẽ CHẶN đọc socket — kiểm trước
+	}
+	h, err := c.br.Peek(frameHeaderLen)
+	if err != nil || len(h) < frameHeaderLen {
+		return false
+	}
+	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
+	return c.br.Buffered() >= frameHeaderLen+n
+}
+
+func (c *Conn) writeOpt(fn func(fr *Framer) error, flush bool) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 	c.nc.SetWriteDeadline(time.Now().Add(c.cfg.WriteTimeout))
 	if err := fn(c.fr); err != nil {
 		return err
 	}
+	if !flush {
+		return nil
+	}
+	c.Stats.Flushes.Add(1)
 	return c.fr.Flush()
+}
+
+// flushPending: goroutine đọc sắp chặn chờ byte ⇒ đẩy phản hồi đang dồn.
+func (c *Conn) flushPending() {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	if c.fr.w.Buffered() > 0 {
+		c.nc.SetWriteDeadline(time.Now().Add(c.cfg.WriteTimeout))
+		c.Stats.Flushes.Add(1)
+		c.fr.Flush()
+	}
 }
 
 func (c *Conn) shutdown() {
@@ -385,7 +440,7 @@ func (c *Conn) onData(f *Frame) error {
 		// Client đã RST rồi vẫn gửi DATA: frame trên stream closed (§5.1).
 		// Turn 2 (h2spec 5.1/8): bản đầu gộp với ca dưới và lặng lẽ bỏ qua.
 		c.mu.Unlock()
-		c.refundConn(n)
+		c.refundCtl(n)
 		return StreamError{f.Stream, ErrStreamClosed, "DATA sau RST_STREAM của client"}
 	}
 	if s != nil && s.reset && !s.remoteDone {
@@ -393,12 +448,12 @@ func (c *Conn) onData(f *Frame) error {
 		// thường (§5.1: "minimally process and then discard") — trả window
 		// connection, KHÔNG RST thêm lần nữa.
 		c.mu.Unlock()
-		c.refundConn(n)
+		c.refundCtl(n)
 		return nil
 	}
 	if _, ok := c.localReset[f.Stream]; s == nil && ok {
 		c.mu.Unlock()
-		c.refundConn(n)
+		c.refundCtl(n)
 		return nil
 	}
 	if s == nil || s.remoteDone {
@@ -409,12 +464,12 @@ func (c *Conn) onData(f *Frame) error {
 		}
 		// Stream đã đóng: phần window connection vẫn phải trả lại, không thì
 		// mỗi DATA "lạc" thu hẹp connection vĩnh viễn.
-		c.refundConn(n)
+		c.refundCtl(n)
 		return StreamError{f.Stream, ErrStreamClosed, "DATA trên stream đã đóng"}
 	}
 	if n > s.recvWindow {
 		c.mu.Unlock()
-		c.refundConn(n)
+		c.refundCtl(n)
 		return StreamError{f.Stream, ErrFlowControl, "DATA vượt window stream"}
 	}
 	s.recvWindow -= n
@@ -423,7 +478,7 @@ func (c *Conn) onData(f *Frame) error {
 		// D6 c / G6: byte vượt content-length KHÔNG BAO GIỜ vào body — với
 		// proxy h2→h1 đó chính là request thứ hai trên connection upstream.
 		c.mu.Unlock()
-		c.refundConn(n)
+		c.refundCtl(n)
 		return malformed(f.Stream, "DATA vượt content-length")
 	}
 	s.body = append(s.body, data...)
@@ -445,7 +500,7 @@ func (c *Conn) onData(f *Frame) error {
 		s.recvWindow += pad
 		c.recvWindow += pad
 		c.mu.Unlock()
-		c.write(func(fr *Framer) error {
+		c.writeCtl(func(fr *Framer) error {
 			if !f.Has(FlagEndStream) {
 				fr.WriteWindowUpdate(f.Stream, uint32(pad))
 			}
@@ -453,6 +508,17 @@ func (c *Conn) onData(f *Frame) error {
 		})
 	}
 	return nil
+}
+
+// refundCtl: refundConn từ goroutine đọc (writeCtl).
+func (c *Conn) refundCtl(n int64) {
+	if n == 0 {
+		return
+	}
+	c.mu.Lock()
+	c.recvWindow += n
+	c.mu.Unlock()
+	c.writeCtl(func(fr *Framer) error { return fr.WriteWindowUpdate(0, uint32(n)) })
 }
 
 func (c *Conn) refundConn(n int64) {
@@ -661,7 +727,10 @@ func (c *Conn) exitStream(s *Stream) {
 }
 
 // resetStream: gửi RST_STREAM và đánh dấu stream (nếu còn).
-func (c *Conn) resetStream(id uint32, code ErrCode) {
+func (c *Conn) resetStream(id uint32, code ErrCode) { c.resetStreamOpt(id, code, false) }
+
+// resetStreamOpt: ctl=true ⇔ gọi từ goroutine đọc (writeCtl).
+func (c *Conn) resetStreamOpt(id uint32, code ErrCode, ctl bool) {
 	c.mu.Lock()
 	if s := c.streams[id]; s != nil {
 		s.markReset(errStreamReset)
@@ -669,7 +738,11 @@ func (c *Conn) resetStream(id uint32, code ErrCode) {
 	}
 	c.mu.Unlock()
 	c.Stats.ResetsSent.Add(1)
-	c.write(func(fr *Framer) error { return fr.WriteRSTStream(id, code) })
+	w := c.write
+	if ctl {
+		w = c.writeCtl
+	}
+	w(func(fr *Framer) error { return fr.WriteRSTStream(id, code) })
 }
 
 const maxLocalReset = 256
@@ -792,6 +865,7 @@ func (c *Conn) onSettings(f *Frame) error {
 		return err
 	}
 	c.mu.Lock()
+	newInit, maxInit, initSet := c.peerInit, c.peerInit, false
 	for _, st := range ss {
 		switch st.ID {
 		case SettingEnablePush:
@@ -804,9 +878,15 @@ func (c *Conn) onSettings(f *Frame) error {
 				c.mu.Unlock()
 				return ConnError{ErrFlowControl, "INITIAL_WINDOW_SIZE > 2^31-1"}
 			}
+			if collapseSettings {
+				// P10-4: chỉ ghi nhận; áp MỘT lần sau vòng lặp (dưới).
+				newInit, maxInit, initSet = int64(st.Val), max(maxInit, int64(st.Val)), true
+				continue
+			}
 			// §6.9.2: chênh lệch cộng vào MỌI stream đang mở, có thể làm âm.
 			d := int64(st.Val) - c.peerInit
 			for _, s := range c.streams {
+				c.Stats.SettingsStreamOps.Add(1)
 				s.sendWindow += d
 				if s.sendWindow > maxWindow {
 					c.mu.Unlock()
@@ -822,9 +902,28 @@ func (c *Conn) onSettings(f *Frame) error {
 			c.peerFrame = st.Val
 		}
 	}
+	if initSet {
+		// P10-4 (RFC 9113 §10.5 "changing the same setting multiple times in the
+		// same frame"): áp tuần tự k giá trị = cộng chênh lệch CUỐI (các chênh
+		// lệch giữa chừng triệt tiêu); tràn ở bước giữa ⇔ tràn với giá trị LỚN
+		// NHẤT ⇒ kiểm bằng maxInit. O(k + stream) thay vì O(k × stream): trước
+		// P10-4 một frame 16 KiB × 100 stream = 273 000 lần cộng, 1.8-2.8 ms CPU.
+		d, dmax := newInit-c.peerInit, maxInit-c.peerInit
+		for _, s := range c.streams {
+			if s.sendWindow+dmax > maxWindow {
+				c.mu.Unlock()
+				return ConnError{ErrFlowControl, "window stream tràn sau SETTINGS"}
+			}
+		}
+		for _, s := range c.streams {
+			c.Stats.SettingsStreamOps.Add(1)
+			s.sendWindow += d
+		}
+		c.peerInit = newInit
+	}
 	c.cond.Broadcast()
 	c.mu.Unlock()
-	return c.write(func(fr *Framer) error {
+	return c.writeCtl(func(fr *Framer) error {
 		for _, st := range ss {
 			if st.ID == SettingHeaderTableSize {
 				c.enc.SetMaxTableSize(st.Val) // dưới wmu: cùng khoá với Encode
@@ -846,7 +945,7 @@ func (c *Conn) onPing(f *Frame) error {
 	}
 	var d [8]byte
 	copy(d[:], f.Payload)
-	return c.write(func(fr *Framer) error { return fr.WritePing(true, d) })
+	return c.writeCtl(func(fr *Framer) error { return fr.WritePing(true, d) })
 }
 
 func (c *Conn) onWindowUpdate(f *Frame) error {

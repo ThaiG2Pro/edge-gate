@@ -7,4 +7,6 @@ const (
 	capResetRate      = false
 	capHeaderBlock    = false
 	validateDowngrade = false
+	coalesceCtl       = false
+	collapseSettings  = false
 )
