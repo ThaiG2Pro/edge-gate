@@ -335,6 +335,7 @@ cần chờ client retry.
 | G8 (b) | Cửa sổ idle-close hẹp ⇒ ≥ 1 mất / 20 restart | **548-1 031** mất / 20 restart ≈ **99 %** số connection rỗi bị đóng: client không đọc khi rỗi ⇒ không thấy FIN ⇒ request kế **luôn** rơi | `bench/p7-drainlab.txt`, `bench/p7-drainlab-grace.txt` | **D8′ drain lười** (grace 1 s) ⇒ 4 ⇒ sửa khe race `closeIdle` ⇒ **0** (5 × 22 000) |
 | G8 (c) | Backlog listener cũ bị RST ⇒ ≥ 1 / 20 restart | **0** trong 10 lượt × 20 restart (đếm riêng `io-nohead` trên connection vừa dial) dù `tcp_migrate_req = 0` | `bench/p7-drainlab-grace.txt` dòng "backlog RST: 0" | Không sửa; ghi điều kiện (instance mới bind **trước** khi cũ đóng; accept loop rút queue nhanh ở 2 000 rps) |
 | D8 (bug) | Đóng connection khi về rỗi mà thấy `draining` là an toàn | Response ghi **trước** khi `draining` bật không mang `Connection: close` ⇒ đóng nó là mất request kế: còn **4** mất ở drain lười | `bench/p7-drainlab-grace.txt` (4/4) → `bench/p7-drainlab-closeidle.txt` (0) | Tách cờ `closeIdle` (bật khi Drain quét) khỏi `draining` |
+| D9 (P7-3, 2026-10-02) | Node half-open mà lượt thử hỏng khi cụm đã chạm trần `MaxEjectPercent` ⇒ **ở lại half-open**: không eject lại (trần), không mở hẳn — mỗi vòng đúng **một** request thử, tới khi một lượt thử tốt ⇒ closed | Hành vi nảy ra từ hai cơ chế (`tryEject` từ chối giữ `ejectedUntil` đã hết hạn ⇒ `halfOpen` vẫn đúng), nay đăng ký là thiết kế: cụm xấu thì node xấu nhận tối đa một request một lúc, không bao giờ nhận tải đủ phần khi còn hỏng | `TestBreakerUnderEjectCap`: 4 node trần 50 %, b1+b2 eject, b0 half-open thử hỏng 3 vòng ⇒ 1/32 mỗi vòng, `EjectRefused 3`, `Reopens 3`, `Ejections 1`, state `half-open`; thử tốt ⇒ closed ⇒ 16/32 | Giữ nguyên code; chốt bằng test |
 
 ## Số đo
 
@@ -499,7 +500,7 @@ Chi tiết + lệnh trả trong `docs/debts.md`. P6-1 trả **một phần**: `i
   (G1). Loại backend vừa lỗi khỏi lượt chọn lại; chỉ một backend ⇒ 502 ngay.
 - [ ] **P7-2** 🔧 HeaderTimeout không giới hạn **số** connection một IP giữ (500 Slowloris từ một IP).
   Thêm `MaxConnsPerIP` (khoá = peer, không XFF); slowlab đòi attacker bị giới hạn, probe từ IP khác 100 %.
-- [ ] **P7-3** ⏳ Trần eject 50 % + half-open: node xấu ở lại half-open, mỗi lượt một request thử khi bị
+- [x] **P7-3** ✅ (2026-10-02, D9) — Trần eject 50 % + half-open: node xấu ở lại half-open, mỗi lượt một request thử khi bị
   từ chối mở lại (582 reopen). Hành vi chưa đăng ký, chưa có test.
 - [ ] **P7-4** 📏 chaoslab 4/6 hành động là hại ⇒ 26-36 % 503; đo thêm một tỉ lệ cân (heal ≥ hại) để status
   mix có nghĩa, và một seed có backend "treo" kéo dài để thử deadline client.

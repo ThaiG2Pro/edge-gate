@@ -96,9 +96,11 @@ type Config struct {
 	HandshakeTimeout time.Duration
 	UpstreamTLS      *UpstreamTLSConfig
 
-	// SpliceBody (phase 9 D5): body response CL ≥ 64 KiB đi bằng splice(2)
+	// NoSplice (phase 9 D5, P9-7 lật mặc định 2026-10-02: BẬT trừ khi tắt
+	// tường minh — chaoslab 60 s body 256 KiB xanh, P9-1 đã trả).
+	// Splice: body response CL ≥ 64 KiB đi bằng splice(2)
 	// khi cả hai phía là TCP trần (không TLS). Mặc định tắt.
-	SpliceBody bool
+	NoSplice bool
 
 	// Phase 10 D7: H2C nhận HTTP/2 cleartext prior knowledge trên listener
 	// plaintext (cùng port với h1; phân biệt bằng preface). H2: SETTINGS/trần;
@@ -229,6 +231,13 @@ func New(cfg Config) *Server {
 	cfg.withDefaults()
 	s := &Server{cfg: cfg, conns: map[net.Conn]*connState{}, pools: map[string]*pool{}}
 	s.initResilience()
+	if u := cfg.UpstreamTLS; u != nil {
+		// Trước lb.New: health loop (Start) gọi healthDial đọc upTLSCache ngay.
+		s.upTLSCache = tls.NewLRUClientSessionCache(256)
+		if cfg.LB.Health.Dial == nil {
+			cfg.LB.Health.Dial = s.healthDial // P8-3: probe active bắt tay TLS như data path
+		}
+	}
 	if len(cfg.Upstreams) > 0 || len(cfg.VHosts) == 0 {
 		bl, err := lb.New(cfg.Upstreams, cfg.LB)
 		if err != nil {

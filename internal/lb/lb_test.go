@@ -503,3 +503,87 @@ func TestP2CNoSampleNotFlooded(t *testing.T) {
 		}
 	}
 }
+
+// P7-3 (D9, 2026-10-02) — trần eject + half-open: node half-open mà lượt thử
+// hỏng khi cụm đã ở trần MaxEjectPercent ⇒ KHÔNG eject lại (trần), KHÔNG mở hẳn
+// (đếm lỗi reset nhưng ejectedUntil còn ⇒ halfOpen vẫn đúng) ⇒ ở lại half-open:
+// mỗi vòng đúng một request thử. Thử tốt ⇒ closed, nhận tải đủ phần.
+func TestBreakerUnderEjectCap(t *testing.T) {
+	bl, err := New(addrs(4), Config{Algo: "rr", Health: HealthConfig{Disabled: true},
+		Outlier: OutlierConfig{Consecutive: 3, BaseEject: 100 * time.Millisecond, MaxEject: time.Second, MaxEjectPercent: 50},
+		Logf:    t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b0, b1, b2 := bl.backends[0], bl.backends[1], bl.backends[2]
+	fail := func(x *Backend, n int) {
+		for i := 0; i < n; i++ {
+			x.inflight.Add(1)
+			bl.Done(x, time.Millisecond, true)
+		}
+	}
+	fail(b0, 3) // open 100 ms
+	time.Sleep(110 * time.Millisecond)
+	if st := b0.State(time.Now()); st != "half-open" {
+		t.Fatalf("b0 sau BaseEject: %s", st)
+	}
+	fail(b1, 3)
+	fail(b2, 3) // b1+b2 = 2/4 = 50 %: đúng trần (b0 hết hạn, không tính)
+	burst := func() (onB0 int, got []*Backend) {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := 0; i < 32; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				if b := bl.Pick(""); b != nil {
+					mu.Lock()
+					got = append(got, b)
+					mu.Unlock()
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		for _, b := range got {
+			if b == b0 {
+				onB0++
+			}
+		}
+		return onB0, got
+	}
+	for round := 1; round <= 3; round++ {
+		n, got := burst()
+		t0 := time.Now()
+		if n != 1 {
+			t.Fatalf("vòng %d: half-open dưới trần phải cho đúng 1 request thử vào b0, được %d", round, n)
+		}
+		for _, b := range got {
+			bl.Done(b, time.Since(t0), b == b0) // thử trên b0 hỏng, b3 tốt
+		}
+		if st := b0.State(time.Now()); st != "half-open" {
+			t.Fatalf("vòng %d: thử hỏng dưới trần phải Ở LẠI half-open, được %s", round, st)
+		}
+	}
+	st := bl.Stats()
+	if st.EjectRefused != 3 || st.Backends[0].Reopens != 3 || st.Backends[0].Ejections != 1 {
+		t.Fatalf("refused %d reopens %d ejections %d — muốn 3/3/1", st.EjectRefused, st.Backends[0].Reopens, st.Backends[0].Ejections)
+	}
+	// Thử tốt ⇒ closed ⇒ chia tải thường với b3 (rr 2 node sống: 16/32).
+	n, got := burst()
+	t1 := time.Now()
+	if n != 1 {
+		t.Fatalf("vòng tốt: %d", n)
+	}
+	for _, b := range got {
+		bl.Done(b, time.Since(t1), false)
+	}
+	if st := b0.State(time.Now()); st != "closed" {
+		t.Fatalf("thử tốt phải closed, được %s", st)
+	}
+	if n, _ = burst(); n < 12 || n > 20 {
+		t.Fatalf("closed: b0 phải nhận ≈ 16/32, được %d", n)
+	}
+}

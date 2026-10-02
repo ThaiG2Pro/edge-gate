@@ -63,6 +63,9 @@ func (s *Server) initVHosts() {
 		if vh.LB.Logf == nil {
 			vh.LB.Logf = s.cfg.Logf
 		}
+		if s.cfg.UpstreamTLS != nil && vh.LB.Health.Dial == nil {
+			vh.LB.Health.Dial = s.healthDial // P8-3
+		}
 		bl, err := lb.New(vh.Upstreams, vh.LB)
 		if err != nil {
 			panic(fmt.Sprintf("proxy: vhost %v: %v", vh.Names, err))
@@ -77,9 +80,7 @@ func (s *Server) initVHosts() {
 	if s.cfg.TLS != nil {
 		s.tlsCfg = s.cfg.TLS.Store.ServerConfig(s.cfg.H2ALPN)
 	}
-	if u := s.cfg.UpstreamTLS; u != nil {
-		s.upTLSCache = tls.NewLRUClientSessionCache(256)
-	}
+	// upTLSCache: đặt trong New trước lb.New (P8-3: health loop đọc nó).
 }
 
 // hostOf: Host không port, lowercase.
@@ -144,7 +145,18 @@ func (s *Server) handshake(raw net.Conn, st *connState) (*tls.Conn, bool) {
 // dialUpstream: TCP, rồi TLS nếu cấu hình (D8). Trả conn để nói HTTP và conn
 // TCP bên dưới (probe FIN của phase 5 cần fd thật).
 func (s *Server) dialUpstream(addr string) (c, raw net.Conn, err error) {
-	raw, err = net.DialTimeout("tcp", addr, s.cfg.DialTimeout)
+	return s.dialUpstreamTimeout(addr, s.cfg.DialTimeout)
+}
+
+// healthDial (P8-3): lb.HealthConfig.Dial — cùng đường TLS với data path (SNI,
+// RootCAs, session cache), timeout của health check.
+func (s *Server) healthDial(addr string, timeout time.Duration) (net.Conn, error) {
+	c, _, err := s.dialUpstreamTimeout(addr, timeout)
+	return c, err
+}
+
+func (s *Server) dialUpstreamTimeout(addr string, timeout time.Duration) (c, raw net.Conn, err error) {
+	raw, err = net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -159,7 +171,7 @@ func (s *Server) dialUpstream(addr string) (c, raw net.Conn, err error) {
 	}
 	tc := tls.Client(raw, &tls.Config{ServerName: name, RootCAs: u.RootCAs, NextProtos: []string{"http/1.1"},
 		ClientSessionCache: s.upTLSCache, MinVersion: tls.VersionTLS12})
-	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.DialTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := tc.HandshakeContext(ctx); err != nil {
 		raw.Close()

@@ -94,6 +94,7 @@ cert sinh bằng `crypto/x509` từ một CA lab; client là `crypto/tls` với 
 | D10 | `cmd/edgegate`: khối `tls` (`listen`, `vhosts[{names, cert, key, upstreams, lb}]`, `default_vhost`, `handshake_timeout_ms`) + `SIGHUP` ⇒ `CertStore.Reload()` (đọc lại file), log serial mới hoặc lỗi | fsnotify không có trong stdlib và repo không kéo dependency; SIGHUP là cách nginx (`nginx -s reload`) |
 | D11 | `cmd/tlslab` in-process, ba mode: `handshake` (G6: full/resumed × ECDSA/RSA × 1.2/1.3, + plaintext; tuần tự, p50/p99 handshake), `rtt` (G7: thời gian tới byte đầu trên connection mới, chia cho RTT **đo** bằng một TCP connect trơn ngay trước), `upstream` (G8: pool on/off × upstream plain/TLS), `reload` (G4 dưới tải) | Cùng tiến trình ⇒ CPU client và server lẫn nhau ở G6: ghi rõ đó là **tổng** hai phía |
 | D12 | Phản chứng: `defense8.go` (`!nodefense8`) / `_off`: `sniPinsVHost` (D3), `explicitHandshake` (D6). `make tlslab-nodefense` đỏ đúng dòng | Khuôn P4-4 |
+| D13 | **(P8-3, 2026-10-02) Health probe nói TLS khi `UpstreamTLS`**: `lb.HealthConfig.Dial` (hook, nil = TCP trần); proxy đặt `healthDial` = cùng đường `dialUpstreamTimeout` của data path (SNI, RootCAs, session cache) cho lb chính và mọi vhost. lb không biết TLS — chỉ cần một `net.Conn` sẵn sàng | Probe HTTP thường vào cổng TLS là "unhealthy" giả; cert/SNI là việc của proxy |
 
 ## Deliverable
 
@@ -387,7 +388,7 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
   core (`taskset`), tách client/proxy hai tiến trình để CPU server đo riêng (`scripts/linux-baseline.sh`).
 - [x] **P8-2** — trả turn 3: `GetConfigForClient` trả config rỗng ⇒ `errNoCertificates` ⇒ alert 112 (cách ghi
   ở turn 2, "trả `tls.AlertError(112)`", là sai: đọc nguồn thấy chỉ sentinel nội bộ mới ra 112).
-- [ ] **P8-3** ⏳ Health check active với upstream TLS: probe `GET Path` nói HTTP thường vào cổng TLS ⇒ fail. Cần
+- [x] **P8-3** ✅ (2026-10-02, D13) — Health check active với upstream TLS: probe `GET Path` nói HTTP thường vào cổng TLS ⇒ fail. Cần
   probe TLS (hoặc chỉ TCP) khi `UpstreamTLS` bật — chưa có test.
 - [ ] **P8-4** 📏 Bộ nhớ một connection TLS treo (handshake dở / rỗi) chưa đo — slowlab chế độ TLS, so với 20.7 KiB
   plaintext của phase 7.

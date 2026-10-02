@@ -19,6 +19,10 @@ type HealthConfig struct {
 	Path string
 	Fall int // lỗi liên tiếp ⇒ unhealthy (nginx max_fails)
 	Rise int // tốt liên tiếp ⇒ healthy
+	// Dial (P8-3): thay net.DialTimeout — proxy đặt khi upstream nói TLS để
+	// probe bắt tay TLS trước khi gửi GET Path. nil = TCP trần. lb không biết
+	// TLS: cert/SNI là việc của proxy, lb chỉ cần một net.Conn đã sẵn sàng.
+	Dial func(addr string, timeout time.Duration) (net.Conn, error)
 }
 
 func (h *HealthConfig) withDefaults() {
@@ -39,7 +43,13 @@ func (h *HealthConfig) withDefaults() {
 // probe: một lần kiểm sức khoẻ. Không net/http: dial + WriteHead + ReadResponse.
 func (bl *Balancer) probe(b *Backend) bool {
 	hc := bl.cfg.Health
-	c, err := net.DialTimeout("tcp", b.Addr, hc.Timeout)
+	dial := hc.Dial
+	if dial == nil {
+		dial = func(addr string, timeout time.Duration) (net.Conn, error) {
+			return net.DialTimeout("tcp", addr, timeout)
+		}
+	}
+	c, err := dial(b.Addr, hc.Timeout)
 	if err != nil {
 		return false
 	}
