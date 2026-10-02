@@ -90,6 +90,7 @@ connection**, byte pipelined sau ca bị từ chối không bao giờ được t
 | D9 | **XFF trust boundary:** `trusted_proxies` (CIDR) trong config. Peer **không** tin ⇒ `X-Forwarded-For := peer` (thay), `X-Real-IP := peer`, xoá `Forwarded`. Peer tin ⇒ **append** peer vào XFF, giữ `X-Real-IP` nếu có | Header do client gửi là dữ liệu không tin được. Phase 7 rate-limit theo IP: không có ranh giới này thì một header giả bypass |
 | D10 | **Response kiểm bằng cùng parser**: CL+TE, CL bẩn, CTL, TE/1.0, trailer cấm ⇒ `ReadResponse` lỗi ⇒ proxy **502**, đóng connection **upstream**; connection client giữ theo D6 phase 3 (body request đã đọc hết, chưa gửi gì). *Sửa turn 1 11:45: bản đăng ký ghi "đóng cả hai" — thừa, xem log.* Lỗi **giữa** body (trailer cấm) ⇒ chỉ đóng, không 502 thứ hai | Upstream có thể bị chiếm hoặc chính nó là proxy khoan dung. Không tin upstream hơn client |
 | D11 | Mọi request bị từ chối ở tầng parse ⇒ **đóng connection**, không đọc tiếp | Parser đã lệch, byte sau đó vô nghĩa; pipeline sau payload bẩn là chính kịch bản smuggling |
+| D12 | **(P4-3, 2026-10-02) `X-Forwarded-Proto/Host/Port` sinh theo connection** (`https` khi `connState.tls`, Host client gửi, cổng listener). Peer không tin ⇒ THAY cả ba. Peer tin ⇒ giữ nếu **hợp lệ** (Proto ∈ {http,https}, Port 1-65535, Host không space/CTL/`/`), không thì sinh. `X-Real-IP` của peer tin phải `net.ParseIP` được, không thì := clientIP. **clientIP = phần tử PHẢI nhất của XFF không trong `trusted_proxies`** (toàn tin ⇒ phần tử đầu) — thay cho "phần tử đầu" của D9: client gửi `XFF: 9.9.9.9` qua proxy tin thì phần tử đầu là bịa. `Forwarded` (RFC 7239) **không sinh**: upstream ở đây đọc `X-Forwarded-*`; hai nguồn sự thật thì lệch nhau được; peer tin chuyển nguyên văn, không tin xoá (D9) | "Tin" một proxy là tin nó append XFF, không phải tin mọi byte nó chuyển hộ client. Rate limit (I6) và chash (D5 phase 6) đều treo trên clientIP |
 
 ## Deliverable
 
@@ -244,7 +245,7 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
 - [ ] **P4-1** 🔧 — `hasConnectionToken` / `StripHopByHop` (phase 2) vẫn `bytes.Split`/`strings.Split`
   cấp phát; `checkConnectionTokens` 5 % CPU share. Gộp ba lần duyệt `Connection:` thành một.
 - [ ] **P4-2** 📏 — G4 đo trên WSL2 không phân giải 5 %; đo lại trên Linux thuần cùng P-env-2/P3-5.
-- [ ] **P4-3** ⏳ — `Forwarded` (RFC 7239), `X-Forwarded-Proto/Host/Port` chưa sinh; `X-Real-IP` từ peer
+- [x] **P4-3** ⏳→✅ (2026-10-02, D12) — `Forwarded` (RFC 7239), `X-Forwarded-Proto/Host/Port` chưa sinh; `X-Real-IP` từ peer
   tin cậy chưa kiểm là IP. Cần khi phase 7 (rate limit) và phase 8 (TLS: Proto mới có nghĩa).
 - [ ] **P4-4** 🔧 — Tag `nodefense` dùng chung với phase 1/3 ⇒ e2e lật thêm ca `95-resp-ok-eof` vì bẫy #2
   phase 3 bật cùng lúc. Tách tag theo phase, hoặc ghi rõ trong Makefile.

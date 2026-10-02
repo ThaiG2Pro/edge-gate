@@ -37,7 +37,7 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	if req.Chunked {
 		up.Header.Set("Transfer-Encoding", "chunked")
 	}
-	clientIP := s.forwardedHeaders(up.Header, c.RemoteAddr()) // phase 4 D9: XFF có ranh giới tin cậy
+	clientIP := s.forwardedHeaders(up.Header, c, st) // phase 4 D9/D12: XFF có ranh giới tin cậy
 	// Phase 4 D4 (đóng P-arch-1): Host GIỮ NGUYÊN (nginx `$host`) — reverse
 	// proxy đứng trước virtual host, đổi Host là phá routing của upstream.
 	// httpx.ReadRequest đã (a) kiểm cú pháp Host, (b) viết absolute-form về
@@ -509,40 +509,119 @@ func (s *Server) drain(c net.Conn, req *httpx.Request) bool {
 	return err == nil
 }
 
-// forwardedHeaders (D9) viết X-Forwarded-For / X-Real-IP / Forwarded theo
-// ranh giới tin cậy:
+// forwardedHeaders (D9, D12) viết X-Forwarded-For / X-Real-IP / Forwarded /
+// X-Forwarded-Proto / X-Forwarded-Host / X-Forwarded-Port theo ranh giới tin cậy:
 //
 //   - peer TIN (trong TrustedProxies): XFF client gửi là của một proxy ta tin
-//     ⇒ giữ và APPEND IP peer. X-Real-IP / Forwarded giữ nguyên.
+//     ⇒ giữ và APPEND IP peer. Forwarded giữ nguyên. X-Real-IP / Proto / Host /
+//     Port giữ nếu HỢP LỆ (P4-3: proxy tin vẫn có thể chuyển nguyên văn rác
+//     của client — "tin" là tin nó append XFF, không phải tin mọi byte), không
+//     thì sinh như peer không tin.
 //   - peer KHÔNG tin: mọi thứ nó nói về "client thật" là dữ liệu không tin
-//     được ⇒ XFF := peer (THAY, không append), X-Real-IP := peer, xoá Forwarded.
+//     được ⇒ XFF := peer (THAY, không append), X-Real-IP := peer, xoá Forwarded,
+//     Proto := http/https theo connection, Host := Host client gửi, Port :=
+//     cổng listener.
 //
 // Không có ranh giới này, rate limiter phase 7 đếm theo IP trong XFF bị bypass
 // bằng một header giả — "append, không overwrite" mới là nửa bài.
 //
-// Trả về IP client "thật" theo ranh giới đó: peer tin ⇒ phần tử ĐẦU của XFF
-// (nếu có), không thì peer. Phase 6 dùng làm khoá consistent hash (D5).
-func (s *Server) forwardedHeaders(h httpx.Header, addr net.Addr) (clientIP string) {
-	ipStr := addr.String()
-	if host, _, err := net.SplitHostPort(ipStr); err == nil {
-		ipStr = host
+// Trả về IP client "thật" theo ranh giới đó: phần tử PHẢI nhất của XFF (sau
+// khi append peer) KHÔNG nằm trong TrustedProxies; toàn chuỗi đều tin ⇒ phần
+// tử đầu. Không lấy phần tử đầu: client gửi "XFF: 9.9.9.9" qua proxy tin thì
+// phần tử đầu là của client bịa. Phase 6 dùng làm khoá consistent hash (D5),
+// phase 7 làm khoá rate limit (I6).
+func (s *Server) forwardedHeaders(h httpx.Header, c net.Conn, st *connState) (clientIP string) {
+	ipStr := addrHost(c.RemoteAddr())
+	_, port, _ := net.SplitHostPort(c.LocalAddr().String())
+	proto := "http"
+	if st != nil && st.tls != nil {
+		proto = "https"
 	}
 	ip := net.ParseIP(ipStr)
-	if ip != nil && s.cfg.isTrusted(ip) {
-		vals := h.Values("X-Forwarded-For")
-		xff := ipStr
-		clientIP = ipStr
-		if len(vals) > 0 {
-			xff = strings.Join(vals, ", ") + ", " + ipStr
-			if first, _, _ := strings.Cut(vals[0], ","); strings.TrimSpace(first) != "" {
-				clientIP = strings.TrimSpace(first)
-			}
-		}
-		h.Set("X-Forwarded-For", xff)
-		return clientIP
+	trusted := ip != nil && s.cfg.isTrusted(ip)
+	if !trusted {
+		h.Set("X-Forwarded-For", ipStr)
+		h.Set("X-Real-Ip", ipStr)
+		h.Del("Forwarded")
+		h.Set("X-Forwarded-Proto", proto)
+		h.Set("X-Forwarded-Host", h.Get("Host"))
+		h.Set("X-Forwarded-Port", port)
+		return ipStr
 	}
-	h.Set("X-Forwarded-For", ipStr)
-	h.Set("X-Real-Ip", ipStr)
-	h.Del("Forwarded")
-	return ipStr
+	// XFF: append peer, rồi quét từ phải tìm IP đầu tiên không tin.
+	xff := ipStr
+	if vals := h.Values("X-Forwarded-For"); len(vals) > 0 {
+		xff = strings.Join(vals, ", ") + ", " + ipStr
+	}
+	h.Set("X-Forwarded-For", xff)
+	clientIP = ipStr
+	first := ""
+	for rest := xff; rest != ""; {
+		var el string
+		if i := strings.LastIndexByte(rest, ','); i >= 0 {
+			el, rest = strings.TrimSpace(rest[i+1:]), rest[:i]
+		} else {
+			el, rest = strings.TrimSpace(rest), ""
+		}
+		if el == "" {
+			continue
+		}
+		first = el
+		if eip := net.ParseIP(el); eip == nil || !s.cfg.isTrusted(eip) {
+			clientIP = el
+			break
+		}
+	}
+	if clientIP == ipStr && first != "" {
+		clientIP = first // toàn chuỗi tin ⇒ xa nhất
+	}
+	if net.ParseIP(h.Get("X-Real-Ip")) == nil {
+		h.Set("X-Real-Ip", clientIP)
+	}
+	if v := h.Get("X-Forwarded-Proto"); v != "http" && v != "https" {
+		h.Set("X-Forwarded-Proto", proto)
+	}
+	if v := h.Get("X-Forwarded-Host"); v == "" || !validHostValue(v) {
+		h.Set("X-Forwarded-Host", h.Get("Host"))
+	}
+	if v := h.Get("X-Forwarded-Port"); !validPort(v) {
+		h.Set("X-Forwarded-Port", port)
+	}
+	return clientIP
+}
+
+// addrHost: phần host của một net.Addr "host:port" (IPv6 bỏ ngoặc).
+func addrHost(a net.Addr) string {
+	s := a.String()
+	if host, _, err := net.SplitHostPort(s); err == nil {
+		return host
+	}
+	return s
+}
+
+// validPort: 1-65535, chỉ chữ số.
+func validPort(v string) bool {
+	if v == "" || len(v) > 5 {
+		return false
+	}
+	n := 0
+	for i := 0; i < len(v); i++ {
+		if v[i] < '0' || v[i] > '9' {
+			return false
+		}
+		n = n*10 + int(v[i]-'0')
+	}
+	return n >= 1 && n <= 65535
+}
+
+// validHostValue: uri-host[:port] thô — không space, không CTL, không '/'.
+// Đủ để một proxy tin không chuyển rác của client vào X-Forwarded-Host.
+func validHostValue(v string) bool {
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if c <= ' ' || c >= 0x7f || c == '/' || c == '\\' || c == '?' || c == '#' {
+			return false
+		}
+	}
+	return true
 }

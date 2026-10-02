@@ -122,7 +122,7 @@ func (s *Server) serveH2Stream(c net.Conn, st *connState, w *h2.Stream, r *h2.Re
 	if !limitByTrustedIP {
 		orig = up.Header.Clone()
 	}
-	clientIP := s.forwardedHeaders(up.Header, c.RemoteAddr())
+	clientIP := s.forwardedHeaders(up.Header, c, st)
 	// P10-2: rate limit + shed như h1 (roundTrip bước 1b) — sau head, trước Pick.
 	admitStatus, why, release := s.admitDecision(clientIP, orig)
 	if admitStatus != 0 {

@@ -76,12 +76,6 @@ generator không theo nổi ⇒ **số latency vô nghĩa**, không phải "prox
 ns/op ± 10-37 % (`bench/p4-bench-readrequest.txt`); chỉ allocs/op và CPU share tin được. Trả cùng
 P-env-2/P3-5 trên Linux thuần: `taskset`, `-count 20`, benchstat hai commit `b3e08f0` vs `989b060`.
 
-### ⏳ P4-3 · `Forwarded` / `X-Forwarded-Proto/Host/Port` chưa sinh, `X-Real-IP` từ peer tin chưa kiểm
-
-`forwardedHeaders` chỉ lo XFF + X-Real-IP. Khi có TLS (phase 8) `X-Forwarded-Proto` mới có nghĩa; khi
-có rate limit (phase 7) cần hàm "IP client thật" = phần tử phải nhất của XFF **không** nằm trong
-`trusted_proxies`. Peer tin gửi `X-Real-IP: not-an-ip` hiện được forward nguyên văn.
-
 ### 📏 P4-6 · Oracle thứ hai cho `TestSmugglingOracle`
 
 Chỉ so với Go. "Hướng an toàn" mới đúng với backend Go. Dựng nginx và h2o (docker) nhận cùng 61 payload
@@ -297,6 +291,16 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P4-3 · `X-Forwarded-Proto/Host/Port` chưa sinh, `X-Real-IP` từ peer tin chưa kiểm — trả 2026-10-02
+
+Đăng ký D12 (diary phase 4) rồi code. `forwardedHeaders(h, c, st)` nay sinh Proto (`https` khi `st.tls`),
+Host (client gửi), Port (listener). Peer không tin ⇒ thay cả ba; peer tin ⇒ giữ nếu hợp lệ. `X-Real-IP` của peer
+tin không `ParseIP` được ⇒ := clientIP. **clientIP = phần tử phải nhất của XFF không trong `trusted_proxies`**
+(trước: phần tử đầu — client bịa được qua proxy tin). `Forwarded` RFC 7239 quyết định **không sinh** (hai nguồn
+sự thật). `TestForwardedHeadersUnit` (6 nhánh), `TestForwardedProtoHostPortE2E` (plaintext, peer không tin bịa
+`https`/`evil`/`443` ⇒ 0 lọt), `TestForwardedProtoTLS` (qua TLS SNI `a.test` ⇒ `https`). `TestRateLimitPerIP`
+nhánh tin vẫn 10/20 — khoá không đổi khi chuỗi XFF một phần tử.
 
 ### ✅ P2-5 · `FuzzReadRequest` đỏ 1/3 lượt: 164 912 byte cho input ~6.2 KB — trả 2026-10-02
 
