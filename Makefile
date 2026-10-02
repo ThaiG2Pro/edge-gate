@@ -124,7 +124,7 @@ needzerolab:
 # chỗ: TestCapBeforeAlloc báo decoder cấp phát ~4 GiB. Nếu XANH là thất bại.
 framelab-nodefense:
 	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
-	! go test ./internal/frame/ -run 'TestCapBeforeAlloc|TestCustomMax' -count=1 -tags nodefense
+	! go test ./internal/frame/ -run 'TestCapBeforeAlloc|TestCustomMax' -count=1 -tags nodefense1
 
 fuzz-frame:
 	go test ./internal/frame/ -run '^$$' -fuzz FuzzFrameDecode -fuzztime 120s -fuzzminimizetime 1s
@@ -200,7 +200,7 @@ proxybench:
 # ⇒ TestDrainOnUpstreamDown và TestRawCopyTrap PHẢI đỏ. Xanh là thất bại.
 proxylab-nodefense:
 	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
-	! go test ./internal/proxy/ -run 'TestDrainOnUpstreamDown|TestRawCopyTrap' -count=1 -tags nodefense
+	! go test ./internal/proxy/ -run 'TestDrainOnUpstreamDown|TestRawCopyTrap' -count=1 -tags nodefense3
 
 # ---------------------------------------------------------------------------
 # Phase 4: smuggling. Bài phản chứng BẮT BUỘC ĐỎ.
@@ -216,9 +216,9 @@ smugglelab:
 # Nếu vẫn xanh thì bộ test không chứng minh gì cả. XANH ở đây là một thất bại.
 smugglelab-nodefense:
 	@echo "== bài phản chứng: lệnh này PHẢI đỏ =="
-	! go test ./internal/httpx/ -run 'TestSmuggling$$' -count=1 -tags nodefense
+	! go test ./internal/httpx/ -run 'TestSmuggling$$' -count=1 -tags nodefense4
 	@echo "== và e2e cũng phải đỏ =="
-	! go test ./internal/proxy/ -run TestSmugglingE2E -count=1 -tags nodefense
+	! go test ./internal/proxy/ -run TestSmugglingE2E -count=1 -tags nodefense4
 
 # ---------------------------------------------------------------------------
 # Phase 5: connection pool. Hai con số, và chúng rất khác nhau — báo cáo bằng

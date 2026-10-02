@@ -95,17 +95,6 @@ P-env-2/P3-5 trên Linux thuần: `taskset`, `-count 20`, benchstat hai commit `
 có rate limit (phase 7) cần hàm "IP client thật" = phần tử phải nhất của XFF **không** nằm trong
 `trusted_proxies`. Peer tin gửi `X-Real-IP: not-an-ip` hiện được forward nguyên văn.
 
-### 🔧 P4-4 · Tag `nodefense` chung cho phase 1/3/4 — **trả một phần 2026-09-04 (phase 5)**
-
-`make smugglelab-nodefense` e2e lật 21 ca, trong đó `95-resp-ok-eof` đỏ vì `rawCopyResponse=true`
-(phase 3) chứ không vì phòng tuyến phase 4. Tách `nodefense4` hoặc ghi chú trong target.
-Phase 5 đã tách `nodefensepool` cho `poolCheckClean` (`internal/proxy/defense_pool*.go`) sau khi
-phản chứng G3 đỏ sai chỗ vì bẫy #2. Còn nợ: phase 1/3/4 vẫn chung `nodefense`.
-
-```bash
-go test ./internal/proxy -run 'TestSmugglingE2E/95' -tags nodefense -v   # đỏ vì bẫy #2, không vì phase 4
-```
-
 ### 📏 P4-6 · Oracle thứ hai cho `TestSmugglingOracle`
 
 Chỉ so với Go. "Hướng an toàn" mới đúng với backend Go. Dựng nginx và h2o (docker) nhận cùng 61 payload
@@ -317,6 +306,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P4-4 · Tag `nodefense` chung cho phase 1/3/4 — trả 2026-10-02
+
+Mỗi phase một tag: `nodefense1` (frame), `nodefense3` (proxy D-drain + raw copy), `nodefense4` (httpx 7 phòng
+tuyến). `nodefense` trơn vẫn tắt cả ba (`//go:build nodefense || nodefenseN`) để lệnh cũ trong diary còn chạy.
+`make smugglelab-nodefense` nay `-tags nodefense4`: e2e lật **21 → 20** ca — `95-resp-ok-eof` xanh (nó đỏ vì
+bẫy #2 phase 3, không vì phase 4). `framelab-nodefense` (2 test), `proxylab-nodefense` (2 test),
+`smugglelab-nodefense` vẫn đỏ đúng chỗ.
 
 ### ✅ P4-5 · Ca còn thiếu trong `testdata/smuggle` — trả 2026-10-02
 

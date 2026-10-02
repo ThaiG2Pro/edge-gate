@@ -1,4 +1,4 @@
-//go:build nodefense
+//go:build nodefense || nodefense1
 
 package frame
 

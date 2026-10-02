@@ -1,4 +1,4 @@
-//go:build nodefense
+//go:build nodefense || nodefense3
 
 package proxy
 

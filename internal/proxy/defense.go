@@ -1,11 +1,11 @@
-//go:build !nodefense
+//go:build !nodefense && !nodefense3
 
 package proxy
 
-// Hai phòng tuyến của phase 3. `-tags nodefense` tắt cả hai và bộ test PHẢI
+// Hai phòng tuyến của phase 3. `-tags nodefense3` tắt cả hai và bộ test PHẢI
 // đỏ (G1, G5) — cùng khuôn với internal/frame (phase 1). Xem defense_nodefense.go.
-// Phòng tuyến phase 5 có tag RIÊNG (`nodefensepool`, defense_pool.go) — trả
-// một phần P4-4: tag chung làm phản chứng phase 5 đỏ vì bẫy phase 3.
+// P4-4 (trả 2026-10-02): mỗi phase một tag (nodefense1/3/4, nodefensepool);
+// `nodefense` trơn còn giữ = tắt cả 1+3+4 cho lệnh cũ trong diary.
 const (
 	// drainOnUpstreamError: upstream hỏng trước khi proxy đụng body request ⇒
 	// đọc HẾT body rồi mới trả 502 và giữ connection. Không drain mà vẫn giữ

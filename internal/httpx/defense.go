@@ -1,10 +1,10 @@
-//go:build !nodefense
+//go:build !nodefense && !nodefense4
 
 package httpx
 
 // Bảy phòng tuyến của phase 4 gom thành hằng để `-tags nodefense` tắt được
 // cả bảy trong một file (defense_nodefense.go) — lúc đó `make smugglelab-nodefense`
-// PHẢI đỏ. Một phòng tuyến chưa bao giờ thấy đỏ thì chưa phải bằng chứng.
+// (`-tags nodefense4`; P4-4: không kéo theo bẫy phase 3) PHẢI đỏ. Một phòng tuyến chưa bao giờ thấy đỏ thì chưa phải bằng chứng.
 //
 // Phiên bản "tắt" không phải là "không kiểm" chung chung: mỗi hằng false mô
 // phỏng đúng cách một proxy khoan dung điển hình cư xử (ưu tiên CL khi có cả
