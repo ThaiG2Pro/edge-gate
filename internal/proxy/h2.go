@@ -70,13 +70,14 @@ func (s *Server) serveH2(c net.Conn, st *connState, br *bufio.Reader) {
 // H2Stats: bộ đếm h2 cộng dồn mọi connection (test, lab).
 func (s *Server) H2Stats() *h2.Stats { return &s.h2stats }
 
-// h2Error: response lỗi do proxy sinh (chưa gửi head nào cho stream).
-func h2Error(w *h2.Stream, status int, detail string) {
+// h2Error: response lỗi do proxy sinh (chưa gửi head nào cho stream). extra:
+// field thêm (retry-after cho 429/503).
+func h2Error(w *h2.Stream, status int, detail string, extra ...hpack.HeaderField) {
 	body := strconv.Itoa(status) + " " + reasonPhrase(status) + ": " + detail + "\n"
-	w.WriteHeaders(status, []hpack.HeaderField{
+	w.WriteHeaders(status, append([]hpack.HeaderField{
 		{Name: "content-type", Value: "text/plain; charset=utf-8"},
 		{Name: "content-length", Value: strconv.Itoa(len(body))},
-	}, false)
+	}, extra...), false)
 	w.WriteData([]byte(body), true)
 }
 
@@ -117,7 +118,18 @@ func (s *Server) serveH2Stream(c net.Conn, st *connState, w *h2.Stream, r *h2.Re
 		h2Error(w, 400, "thiếu :authority và host")
 		return
 	}
+	orig := up.Header // rateKey (nodefense7) đọc XFF CLIENT gửi — trước khi forwardedHeaders ghi đè
+	if !limitByTrustedIP {
+		orig = up.Header.Clone()
+	}
 	clientIP := s.forwardedHeaders(up.Header, c.RemoteAddr())
+	// P10-2: rate limit + shed như h1 (roundTrip bước 1b) — sau head, trước Pick.
+	admitStatus, why, release := s.admitDecision(clientIP, orig)
+	if admitStatus != 0 {
+		h2Error(w, admitStatus, why, hpack.HeaderField{Name: "retry-after", Value: "1"})
+		return
+	}
+	defer release() // I7
 	key := clientIP
 	if hh := s.cfg.LB.HashHeader; hh != "" {
 		if v := up.Header.Get(hh); v != "" {

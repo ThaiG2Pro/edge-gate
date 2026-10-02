@@ -115,23 +115,25 @@ func rateKey(clientIP string, orig httpx.Header) string {
 	return clientIP
 }
 
-// admit: rate limit rồi shedding. ok=false ⇒ đã trả 429/503 (keep cho biết
-// connection client còn dùng được). release phải gọi trên MỌI đường ra khi
-// ok=true (I7) — caller defer.
-func (s *Server) admit(c net.Conn, bw *bufio.Writer, req *httpx.Request, clientIP string) (ok, keep bool, release func()) {
+// admitDecision: rate limit rồi shedding, KHÔNG ghi gì — dùng chung cho h1
+// (admit) và h2 (serveH2Stream). status 0 ⇒ được vào, release phải gọi trên
+// MỌI đường ra (I7); 429/503 ⇒ release nil, why là lý do.
+//
+// P10-2 (phase 10, trả 2026-10-02): bản đầu chỉ có admit gắn với bufio.Writer
+// của h1 ⇒ stream h2 không đi qua đây ⇒ client nói h2c trên cùng port thoát cả
+// token bucket lẫn trần inflight.
+func (s *Server) admitDecision(clientIP string, orig httpx.Header) (status int, why string, release func()) {
 	r := &s.res
-	if r.limiter != nil && !r.limiter.Allow(rateKey(clientIP, req.Header), time.Now()) {
+	if r.limiter != nil && !r.limiter.Allow(rateKey(clientIP, orig), time.Now()) {
 		r.rateLimited.Add(1)
-		keep = s.drain(c, req) && !req.Close && !s.draining.Load()
-		s.writeErrorH(c, bw, 429, "quá rate limit", keep, "Retry-After", "1")
-		return false, keep, nil
+		return 429, "quá rate limit", nil
 	}
 	if r.slots == nil {
-		return true, false, func() {}
+		return 0, "", func() {}
 	}
 	select {
 	case r.slots <- struct{}{}:
-		return true, false, func() { <-r.slots }
+		return 0, "", func() { <-r.slots }
 	default:
 	}
 	// Hết slot: xếp hàng nếu hàng còn chỗ. Hàng có trần là toàn bộ ý nghĩa của
@@ -140,25 +142,31 @@ func (s *Server) admit(c net.Conn, bw *bufio.Writer, req *httpx.Request, clientI
 	if r.queued.Add(1) > int64(s.cfg.Shed.MaxQueue) {
 		r.queued.Add(-1)
 		r.shedFull.Add(1)
-		return false, s.shedReply(c, bw, req, "hàng đợi đầy"), nil
+		return 503, "quá tải, shed: hàng đợi đầy", nil
 	}
 	t := time.NewTimer(s.cfg.Shed.QueueTimeout)
 	defer t.Stop()
 	select {
 	case r.slots <- struct{}{}:
 		r.queued.Add(-1)
-		return true, false, func() { <-r.slots }
+		return 0, "", func() { <-r.slots }
 	case <-t.C:
 		r.queued.Add(-1)
 		r.shedTimeout.Add(1)
-		return false, s.shedReply(c, bw, req, "chờ slot quá QueueTimeout"), nil
+		return 503, "quá tải, shed: chờ slot quá QueueTimeout", nil
 	}
 }
 
-func (s *Server) shedReply(c net.Conn, bw *bufio.Writer, req *httpx.Request, why string) bool {
-	keep := s.drain(c, req) && !req.Close && !s.draining.Load()
-	s.writeErrorH(c, bw, 503, "quá tải, shed: "+why, keep, "Retry-After", "1")
-	return keep
+// admit (h1): admitDecision + trả 429/503 trên bufio. ok=false ⇒ đã trả lời
+// (keep cho biết connection client còn dùng được).
+func (s *Server) admit(c net.Conn, bw *bufio.Writer, req *httpx.Request, clientIP string) (ok, keep bool, release func()) {
+	status, why, release := s.admitDecision(clientIP, req.Header)
+	if status == 0 {
+		return true, false, release
+	}
+	keep = s.drain(c, req) && !req.Close && !s.draining.Load()
+	s.writeErrorH(c, bw, status, why, keep, "Retry-After", "1")
+	return false, keep, nil
 }
 
 // allowRetry: D6 — mọi retry (D4 cùng backend, D9 đổi backend) đi qua đây.

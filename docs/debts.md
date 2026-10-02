@@ -307,16 +307,6 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
-### 🔧 P10-2 · Rate limit / shed (phase 7) không áp cho stream h2 — đường vòng qua h2c
-
-`proxy/h2.go:serveH2Stream` không gọi `admit` (D8 phase 10): client bị rate limit trên h1 chỉ cần nói h2c (cùng port)
-là thoát cả token bucket lẫn trần inflight. Đây là lỗ hổng, không phải thiếu tính năng. Sửa: tách `admit` khỏi
-`bufio.Writer` (trả quyết định, caller tự ghi 429/503 theo giao thức), gọi trước `Pick`. Test trước:
-
-```bash
-go test ./internal/proxy -run TestH2RateLimit -v   # (chưa có) Rate 1/s burst 1: 5 GET h2 trên 1 conn ⇒ ≥ 4 × 429
-```
-
 ### 🔧 P10-3 · WINDOW_UPDATE nhỏ giọt ⇒ một DATA frame + một Flush mỗi increment
 
 RFC 9113 §10.5: "Providing tiny increments to flow control in WINDOW_UPDATE frames can cause a sender to generate a
@@ -411,6 +401,16 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-2 · Rate limit / shed không áp cho stream h2 — trả 2026-10-02 (sau phase 10 turn 3)
+
+Đường vòng: `serveH2Stream` không gọi `admit` ⇒ client nói h2c trên cùng port thoát token bucket lẫn trần inflight.
+Sửa: tách lõi `resilience.go:admitDecision` (trả 0/429/503 + release, không ghi gì); `admit` (h1) ghi qua bufio,
+`h2.go:serveH2Stream` ghi HEADERS/DATA kèm `retry-after`, gọi sau head, trước `Pick`, `defer release()` (I7). Test
+viết trước, đỏ trên code cũ: `TestH2RateLimit` `h2: map[200:6]`, h1 sau đó vẫn 200 (`RateLimited:0`); `TestH2Shed`
+`/hello` 200 khi `/slow` giữ slot duy nhất. Sau sửa (×3 `-race`): `map[200:2 429:4]`, Retry-After 4/4, h1 sau đó 429
+(bucket chung, `RateLimited:5`); `/hello` 503, `Inflight:0`. `-tags nodefense7` đỏ đúng 3 test như trước
+(`TestDeadline`, `TestRateLimitPerIP`, `TestRetryBudget`).
 
 ### ✅ P10-1 · Drain không biết connection h2 — trả 2026-10-02 (phase 10 turn 3)
 

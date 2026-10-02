@@ -311,3 +311,77 @@ func TestH2Drain(t *testing.T) {
 		t.Fatalf("Drain ép %d connection sau %v (muốn 0, < 2 s)", forced, el)
 	}
 }
+
+// TestH2RateLimit (P10-2): rate limit phase 7 phải áp cho stream h2 như h1 —
+// không thì client chỉ cần nói h2c trên CÙNG port là thoát token bucket.
+// Burst 2, rate 0.1/s: 6 GET liên tiếp trên một connection h2 ⇒ 2 × 200, 4 × 429
+// (có Retry-After); h1 cùng IP sau đó cũng 429 (cùng bucket, không phải bucket riêng).
+func TestH2RateLimit(t *testing.T) {
+	s, addr := startProxyS(t, startFixture(t), func(c *Config) {
+		h2on(c)
+		c.RateLimit = RateLimitConfig{Rate: 0.1, Burst: 2}
+	})
+	cl := h2cClient()
+	codes := map[int]int{}
+	retryAfter := 0
+	for i := 0; i < 6; i++ {
+		resp, err := cl.Get("http://" + addr + "/hello")
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		codes[resp.StatusCode]++
+		if resp.StatusCode == 429 && resp.Header.Get("Retry-After") != "" {
+			retryAfter++
+		}
+	}
+	h1, err := http.Get("http://" + addr + "/hello") // transport mặc định: h1
+	if err != nil {
+		t.Fatal(err)
+	}
+	h1.Body.Close()
+	t.Logf("h2: %v (Retry-After trên %d), h1 sau đó: %d %s, stats %+v", codes, retryAfter, h1.StatusCode, h1.Proto, s.ResilienceStats())
+	if codes[200] != 2 || codes[429] != 4 || retryAfter != 4 {
+		t.Fatalf("h2 vòng qua rate limit: %v", codes)
+	}
+	if h1.StatusCode != 429 {
+		t.Fatalf("h1 sau 6 request h2 cùng IP: %d, muốn 429 (bucket chung)", h1.StatusCode)
+	}
+}
+
+// TestH2Shed (P10-2): trần inflight phase 7 áp cho stream h2. MaxInflight 1,
+// không hàng đợi: stream thứ hai trong lúc /slow chạy ⇒ 503.
+func TestH2Shed(t *testing.T) {
+	s, addr := startProxyS(t, startFixture(t), func(c *Config) {
+		h2on(c)
+		c.Shed = ShedConfig{MaxInflight: 1, MaxQueue: 0, QueueTimeout: 10 * time.Millisecond}
+	})
+	cl := h2cClient()
+	slow := make(chan int, 1)
+	go func() {
+		resp, err := cl.Get("http://" + addr + "/slow?ms=300")
+		if err != nil {
+			slow <- -1
+			return
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		slow <- resp.StatusCode
+	}()
+	time.Sleep(100 * time.Millisecond)
+	resp, err := cl.Get("http://" + addr + "/hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	first := <-slow
+	t.Logf("/slow %d, /hello trong lúc đó %d, stats %+v", first, resp.StatusCode, s.ResilienceStats())
+	if first != 200 || resp.StatusCode != 503 {
+		t.Fatalf("shed không áp cho h2: /slow %d, /hello %d (muốn 200, 503)", first, resp.StatusCode)
+	}
+	if st := s.ResilienceStats(); st.Inflight != 0 {
+		t.Fatalf("slot không trả (I7): inflight %d", st.Inflight)
+	}
+}

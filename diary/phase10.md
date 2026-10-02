@@ -510,7 +510,7 @@ Chỉ nguồn đã thật sự mở trong phase này:
 Chi tiết + lệnh trả trong [`../docs/debts.md`](../docs/debts.md).
 
 - [x] **P10-1** 🔧 Drain không biết connection h2 — **trả turn 3** (GOAWAY NO_ERROR; `TestH2Drain` 3.0 s/forced 2 → 202 ms/forced 0)
-- [ ] **P10-2** 🔧 Rate limit / shed phase 7 không áp cho stream h2 — **đường vòng qua h2c**, ưu tiên cao nhất
+- [x] **P10-2** 🔧 Rate limit / shed phase 7 không áp cho stream h2 — đường vòng qua h2c — **trả 2026-10-02** sau turn 3 (`admitDecision` dùng chung; `TestH2RateLimit` 6 × 200 → 2 × 200 + 4 × 429; `TestH2Shed`)
 - [ ] **P10-3** 🔧 WINDOW_UPDATE nhỏ giọt ⇒ một DATA frame + Flush mỗi increment (RFC 9113 §10.5)
 - [ ] **P10-4** 🔧 Không trần tốc độ PING / SETTINGS / request malformed
 - [ ] **P10-5** ⏳ ALPN `h2` trên TLS

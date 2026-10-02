@@ -99,3 +99,10 @@
   Suite `-race` xanh; `nodefense10` đỏ 6, `nodefense9` đỏ 2; h2spec vẫn 144/145.
 - Khi viết sổ nợ thấy P10-2 không phải "thiếu tính năng" mà là **đường vòng**: rate limit phase 7 chỉ chạy trên h1 ⇒
   client nói h2c trên cùng port là thoát. Ghi ưu tiên cao nhất.
+
+## §4 Sau turn 3 — trả P10-2 (2026-10-02 13:52 → 13:55)
+
+- Test viết trước, chạy trên code cũ: `TestH2RateLimit` ⇒ `h2: map[200:6] … h1 sau đó: 200`, `RateLimited:0`
+  (sáu request h2 không chạm bucket); `TestH2Shed` ⇒ `/hello` 200 trong lúc `/slow` giữ slot duy nhất, `Inflight:0`.
+- Tách `admitDecision` khỏi `admit`; h2 gọi nó sau head, trước `Pick`. Sau sửa ×3 `-race`: `map[200:2 429:4]`, h1 429,
+  `/hello` 503. Suite `-race` xanh; `nodefense7` đỏ đúng 3 test như commit trước (so bằng worktree của HEAD).
