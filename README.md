@@ -56,7 +56,18 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | 7 | Resiliency | ✅ [`diary/phase7.md`](diary/phase7.md) — **6/9 giả thuyết sai một vế**; Slowloris không giết Go, trần connection mới giết; shed p99 352x; drain lười 0 mất; chaoslab 4/4 invariant |
 | 8 | TLS + SNI | ✅ [`diary/phase8.md`](diary/phase8.md) — **2/8 giả thuyết sai một vế**; 421 chặn domain fronting; resumption cắt 0 RTT ở TLS 1.3; pool upstream TLS tiết kiệm 2 RTT; reload 0 lỗi |
 | 9 | Performance & epoll | ✅ [`diary/phase9.md`](diary/phase9.md) — **3/8 giả thuyết sai**; pool: GC chứ không malloc (ns/op 2.4x); conn rỗi 28 → 8-9 KiB; giá L7 ở body = mất splice, lấy lại bằng splice body; epoll 55x ít RAM, rps ngang; EdgeGate ≈ nginx, ReverseProxy 3.1x chậm hơn (WSL2) |
-| 10 | HTTP/2 h2c (tùy chọn) | ✅ [`diary/phase10.md`](diary/phase10.md) — HPACK/frame/flow control tự viết; h2spec **144/145**; **2/8 giả thuyết sai/nửa sai**; HOL TCP (loss 2 %) h2 2.7x tệ ở trung vị, 1.1x ở đuôi; Rapid Reset / CONTINUATION flood / H2.CL smuggling có phản chứng đỏ |
+| 10 | HTTP/2 h2c (tùy chọn) | ✅ [`diary/phase10.md`](diary/phase10.md) — HPACK/frame/flow control tự viết; h2spec **145/145** qua TLS/ALPN (P10-5) và `h2c_only` (P10-6), **144/145** mặc định chung port (cố ý); **2/8 giả thuyết sai/nửa sai**; HOL TCP (loss 2 %) h2 2.7x tệ ở trung vị, 1.1x ở đuôi; Rapid Reset / CONTINUATION flood / H2.CL smuggling có phản chứng đỏ |
+
+### Nợ kỹ thuật (2026-10-03)
+
+Mười phase xong. **42 nợ đã trả, 23 còn mở** — tất cả là nợ `📏` (cần Linux thuần / netem / nhiều
+core) hoặc `⏳` (P5-4b, P9-2: chờ số đo PUT thật / workload upload thật). **Không còn nợ `🔧`** (sửa
+được ngay trên máy này). Phiên 2026-10-02/03 trả P2-5, P4-3, P10-5, P10-6, P3-2, P8-3, P7-3, P9-7,
+P4-6 và dựng công cụ cho P-env-2.
+
+Tái hiện số đo thật: [`docs/REPRODUCE-LINUX.md`](./docs/REPRODUCE-LINUX.md) — bảng 23 nợ `📏` kèm
+lệnh và tiêu chí đạt, chạy bằng `./scripts/linux-baseline.sh` (phase 0–7) và
+`./scripts/linux-measure.sh` (P-env-2, phase 8/9/10). Trên WSL2 số không chốt được; script tự cảnh báo.
 
 ## Ba con số của phase 0
 
