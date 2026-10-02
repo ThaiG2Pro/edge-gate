@@ -230,6 +230,12 @@ func (s *Server) Drain(timeout time.Duration) int {
 	s.closeIdle.Store(true) // trước khi quét: cặp Dekker với serveConn (idle rồi closeIdle)
 	s.mu.Lock()
 	for c, st := range s.conns {
+		if hc := st.h2.Load(); hc != nil {
+			// Phase 10 (turn 3): h2 không có "rỗi" kiểu h1 — GOAWAY NO_ERROR,
+			// stream đang chạy chạy tiếp, connection tự đóng khi stream cuối xong.
+			hc.Shutdown()
+			continue
+		}
 		if st.idle.Load() {
 			s.res.drainedIdle.Add(1)
 			c.SetReadDeadline(time.Now()) // đánh thức Peek ⇒ serveConn thoát, không trả byte nào

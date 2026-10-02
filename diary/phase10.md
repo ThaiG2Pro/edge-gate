@@ -1,9 +1,9 @@
 # Phase 10 — (tùy chọn) HTTP/2 h2c: frame, HPACK, multiplexing, flow control
 
-- **Thời lượng dự kiến:** 3-4 ngày · **thực tế:** đang làm (turn 1 2026-10-01 17:46-18:16, turn 2 2026-10-02 11:48-13:40)
-- **Bắt đầu:** 2026-10-01 17:46 · **Kết thúc:** —
-- **Trạng thái:** 🚧 turn 2 xong (đo G1-G8) — **2 giả thuyết sai/nửa sai** (G5 vế p99, G8 cả hai vế); G1-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase; D6 a′ thêm 18:08, trước khi đo.
-- **Commit:** — (turn 1 `d4141b8`; commit nền `9a45ac3`)
+- **Thời lượng dự kiến:** 3-4 ngày · **thực tế:** ~2 giờ 20 phút làm việc (turn 1 2026-10-01 17:46-18:16, turn 2 2026-10-02 11:48-13:40, turn 3 13:43-13:55)
+- **Bắt đầu:** 2026-10-01 17:46 · **Kết thúc:** 2026-10-02 13:55
+- **Trạng thái:** ✅ xong — **2 giả thuyết sai/nửa sai** (G5 vế p99, G8 cả hai vế); G1-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase; D6 a′ thêm 18:08, trước khi đo.
+- **Commit:** (xem commit turn 3) (turn 1 `d4141b8`, turn 2 `bb02e5f`; commit nền `9a45ac3`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase10-log.md`](phase10-log.md). File này là bản biên tập.
 >
@@ -379,16 +379,141 @@ CPU 1.78-2.34x, ctxsw 1.66-1.75x; Rapid Reset qua proxy: upstream nhận 143 vs 
 
 ## Invariant + lệnh kiểm chứng
 
-*(turn 3)*
+Chạy lại 2026-10-02 13:50, output `bench/p10-invariants.txt` (25 test PASS ở bản mặc định; `make h2-nodefense` đỏ đúng 6);
+số lab lấy từ turn 2.
+
+| Invariant | Cài ở | Kiểm chứng | Kết quả |
+|---|---|---|---|
+| **I1 qua downgrade h2→h1**: byte vượt `content-length` không bao giờ thành request thứ hai trên upstream | `h2/conn.go:onData` (recvd > declCL ⇒ RST trước khi vào buffer); `proxy/h2.go:h2copyRequestBody` (LimitReader + đòi EOF — lớp hai) | `TestH2Smuggle`, `TestContentLengthMismatch`; `make h2-nodefense` PHẢI đỏ | mặc định upstream thấy `[]`; nodefense10 `["POST /" "GET /smuggled"]` |
+| **I1/I5 qua downgrade**: CR/LF/NUL trong field và header connection-specific không tới serializer h1 | `h2/request.go:buildRequest` (§8.2.1-8.2.2); lớp hai phase 4: `httpx.appendWire`, `StripHopByHop` | `TestMalformedStreamReset` (8 ca), `TestH2Smuggle` ca CRLF/TE | RST PROTOCOL_ERROR; conn sống (request thứ 9 ⇒ 200); CRLF/TE chặn cả dưới nodefense10 nhờ phase 4 |
+| **I2**: frame có trần trước payload; header block có trần trong lúc ghép; header list có trần trong lúc decode; body mỗi stream ≤ window | `frame.go:ReadFrame` (Length > MaxRead), `conn.go:checkHBCap`, `hpack/codec.go:emit` + `readString`, `conn.go:onData` (FLOW_CONTROL_ERROR) | `TestGoAwayCases`, `TestContinuationFlood`, `TestDecoderListLimit` | FRAME_SIZE_ERROR không đọc payload; đệm 65 542 B vs nodefense **4 194 310 B** |
+| **Bảng HPACK hai đầu không lệch**: block luôn được decode, kể cả stream bị từ chối (RFC 9113 §10.5.1 "MUST be processed") | `conn.go:endHeaderBlock` (decode TRƯỚC kiểm concurrency) | `TestRefusedKeepsHPACKInSync` | request dùng mục động của block bị REFUSED vẫn 200 |
+| **Việc đồng thời mỗi connection có trần thật** (Rapid Reset) | `conn.go:exitStream` (slot trả khi handler thoát), `onRST` (trần tốc độ RST, D6 a′) | `TestRapidReset`, `TestH2RapidResetProxy` | handler đỉnh 100 vs **5 000**; upstream 143 vs **4 872** request |
+| **I3**: mọi chờ đợi có deadline — preface/header block (HeaderTimeout), conn rỗi (IdleTimeout), body stream (BodyTimeout), chờ window (WriteTimeout) | `conn.go:setReadDeadline`, `bodyTimer`, `WriteData` AfterFunc | `TestBodyTimeout`, `TestWindowTimeout` | `ErrBodyTimeout`, `ErrWindowTimeout` sau 200 ms |
+| **Trạng thái stream đúng §5.1** (frame sau RST của peer ⇒ STREAM_CLOSED; sau RST của mình ⇒ bỏ qua) | `conn.go:onData` (`peerReset`, `localReset` FIFO 256) | `TestDataAfterRST`; `make h2spec` | h2spec 144/145 (`bench/p10-h2spec-3.txt` sau turn 3) |
+| **I7/I8**: slot, window connection, goroutine trả trên mọi đường ra | `conn.go:exitStream` (active--, refund body chưa đọc), `shutdown` (markReset mọi stream + `wg.Wait`) | `TestServeConnExits`, `go test ./... -race` | ServeConn thoát < 2 s sau khi client đóng; suite xanh |
+| **Drain không cắt stream h2 đang chạy** (phase 7 D8 mở rộng) | `conn.go:Shutdown` (GOAWAY NO_ERROR), `resilience.go:Drain`, `h2.go:serveH2` (Dekker với `closeIdle`) | `TestH2Drain` (trả P10-1) | trước: `Drain 3.001s, forced=2`; sau: `202ms, forced=0`, `/slow` 200 |
+| **Data path không `net/http`, không dependency** | — | `grep -rln '"net/http"' internal cmd/edgegate \| grep -v _test.go`; `cat go.mod` | `internal/fixture`, `cmd/edgegate/pprof.go` (như phase 9); `go.mod` không có `require` |
 
 ## Đọc gì
 
-*(turn 3 — chỉ nguồn đã thật sự đọc)*
+Chỉ nguồn đã thật sự mở trong phase này:
+
+- **RFC 7541** (bản `curl https://www.rfc-editor.org/rfc/rfc7541.txt`, 2026-10-01): §4.1 (kích thước mục = name +
+  value + 32), §4.2 / §6.3 (size update chỉ ở đầu block), §5.1 (số nguyên prefix N bit, ví dụ C.1.2 = 1337), §5.2 (ba
+  luật lỗi padding Huffman), Appendix A (diff máy 61/61), Appendix B (bảng mã — dữ liệu chép từ `$GOROOT/src/vendor/
+  golang.org/x/net/http2/hpack/tables.go`, kiểm bằng C.4/C.6), Appendix C (16 vector trích máy).
+- **RFC 9113** (bản tải 2026-10-01 và 2026-10-02):
+  - §3.1: token "h2c" cho Upgrade "never widely deployed and is deprecated" ⇒ D7 chỉ prior knowledge là đúng hướng.
+  - §5.1 "closed": phân biệt RST do mình gửi (bỏ qua frame tới sau) và RST do peer gửi — đọc sau khi h2spec fail 5.1/8.
+  - §5.2.1-5.2.3: "Flow control is specific to a connection … single hop"; "a proxy … might have a slow upstream
+    connection and a fast downstream one"; "If an endpoint cannot ensure that its peer always has available
+    flow-control window space that is greater than the peer's bandwidth * delay product … receive throughput will be
+    limited".
+  - §8.2.1-8.2.2: luật ký tự field, header connection-specific, `te`. Có câu nói thẳng: "Failure to validate fields
+    can be exploited for request smuggling attacks … when messages are forwarded using HTTP/1.1".
+  - §10.5 (danh sách DoS: WINDOW_UPDATE nhỏ giọt, PING/SETTINGS phải trả lời, request sai sinh RST); §10.5.1 ("The
+    field block MUST be processed to ensure a consistent connection state").
+- **CVE-2023-44487** và **CVE-2024-27316**: mô tả nguyên văn từ `https://cveawg.mitre.org/api/cve/<id>`.
+  - CVE-2023-44487: "request cancellation can reset many streams quickly, as exploited in the wild in August through
+    October 2023".
+  - CVE-2024-27316: "incoming headers exceeding the limit are temporarily buffered in nghttp2 in order to generate an
+    informative HTTP 413 response. If a client does not stop sending headers, this leads to memory exhaustion". Bài
+    học trong câu đó: đệm *để trả lỗi cho đẹp* cũng là đệm không trần.
+- **Source h2spec** (`~/go/pkg/mod/github.com/summerwind/h2spec@v2.2.1+incompatible`):
+  - `http2/3_5_http2_connection_preface.go`.
+  - `http2/5_1_stream_states.go`.
+
+  Đọc để hiểu đúng hai ca fail, không phải để chỉnh code cho khớp test.
+- **Go**: `go doc net/http.Protocols` (`SetUnencryptedHTTP2`, Go 1.24+). **Không** đọc `net/http/h2_bundle.go`
+  hay `x/net/http2` server — để dành cho sau (như ROADMAP dặn với `net/http` ở phase 2/5).
 
 ## Rút ra
 
-*(turn 3)*
+**1. HPACK đổi một rủi ro lấy một rủi ro khác.**
+- Deflate nén header chung ngữ cảnh với dữ liệu do attacker điều khiển. Độ dài sau nén vì thế làm lộ cookie từng byte
+  (CRIME).
+- HPACK bỏ hẳn so khớp chuỗi con: một field hoặc khớp nguyên vẹn để thành chỉ số, hoặc không khớp gì.
+- Kết quả trên request thật: 318 byte còn 12 byte từ request thứ hai trở đi. Ít hơn 42 lần so với head h1 tương đương.
+- Cái giá: bảng động là trạng thái **chung** của hai đầu.
+  - Decode hỏng một block thì mình không còn biết bên kia đã thêm gì vào bảng. Vì vậy mọi lỗi HPACK là lỗi
+    connection.
+  - Một block phải được decode ngay cả khi stream đó bị từ chối. `TestRefusedKeepsHPACKInSync` chứng minh: bỏ qua
+    block của stream REFUSED thì request kế tiếp đọc sai chỉ số.
+
+**2. Multiplexing hết HOL ở tầng HTTP, nhưng HOL vẫn còn ở tầng TCP.**
+- Ở tầng HTTP: `/fast` sau `/slow` trên cùng một connection h1 phải chờ 490 ms; trên h2 chỉ mất 0.7 ms (gấp 581-747 lần).
+- Ở tầng TCP: byte của mọi stream nằm chung một hàng đợi kernel có thứ tự. Mất một gói thì không stream nào đọc tiếp
+  được cho tới khi gói đó được gửi lại.
+- Số đo dưới loss 2 % cho thấy HOL này **không** làm đuôi dài thêm (p99 h2/h1 chỉ 1.1x). Nó làm **trung vị** tệ đi
+  2.7x.
+  - Với h1 trên 32 connection, mất gói chỉ trúng vài request. Chúng chịu một RTO, và đó chính là đuôi của h1.
+  - Với h2, cùng lần mất gói đó bắt cả 32 stream chịu chung một RTO.
+- HOL tầng TCP không tạo ra đuôi mới mà dời giá của mất gói từ vài request sang tất cả. Muốn mỗi stream mất gói độc
+  lập thì stream phải nằm dưới tầng transport. Đó là QUIC.
+- Phụ: ở RTT 0 một connection h2 cũng chậm hơn 32 connection h1 khoảng 2.8 lần.
+  - Server `net/http` của Go đo cùng bài cũng chậm 1.9-3 lần, nên đây là giá của việc dồn mọi thứ vào một socket
+    (một luồng đọc, ghi tuần tự). Nó không phải lỗi cài đặt.
+  - RTT 20 ms che phần này đi gần hết, còn 1.15 lần.
+
+**3. Flow control thứ hai tồn tại vì TCP chỉ có một window cho cả connection.**
+- Proxy có upstream chậm phải chặn được *một* stream mà không chặn cả connection (RFC 9113 §5.2.2 lấy đúng ví dụ
+  proxy).
+- Ta gửi WINDOW_UPDATE khi handler **đọc**, không khi nhận. Nhờ vậy upstream chậm đọc thì chỉ client của stream đó
+  bị chặn, và body đệm mỗi stream không vượt quá window.
+- Cái giá đo được: window mặc định 65 535 byte là trần một window mỗi RTT. Ở RTT 40 ms đo được 1.51-1.57 MB/s, sát
+  lý thuyết 1.63 MB/s; window 8 MiB nhanh hơn 14 lần. Ở RTT 0 không thấy (1.5-1.8 lần).
+- Client và server h2 "mặc định đúng spec" mà không nới window thì là đường ống 1.6 MB/s trên mọi đường xuyên lục địa.
+
+**4. Downgrade h2→h1 phải tự dựng lại ranh giới.**
+- Ranh giới request ở h2 là framing (`END_STREAM`). Ở h1 là CL hoặc TE.
+- Proxy ghi `content-length` của client sang upstream nhưng lại chép body theo frame. Như vậy CL 0 cộng với DATA
+  `GET /smuggled…` thành request thứ hai trên upstream. G6 cho đúng chuỗi đó dưới nodefense10.
+- Phòng tuyến là kiểm CL = tổng DATA ngay khi nhận, trước khi byte vào buffer (RFC 9113 §8.1.1 coi lệch là
+  malformed).
+- Hai vector còn lại (CRLF trong value, `transfer-encoding`) đã bị chặn sẵn ở phase 4: serializer h1 từ chối
+  CR/LF/NUL, `StripHopByHop` xoá TE. Đó là phòng tuyến nhiều lớp đúng nghĩa: lớp h2 tắt mà lớp h1 vẫn giữ.
+- Ranh giới body là chỗ duy nhất serializer h1 *không thể* tự kiểm, vì nó không biết frame.
+
+**5. Một connection h2 là cả trăm việc, nên trần phải đặt lên *việc*, không đặt lên *frame*.**
+- `MAX_CONCURRENT_STREAMS` chỉ là trần thật nếu slot được giữ tới khi công việc xong. Trả slot lúc nhận RST thì 5 000
+  handler chạy cùng lúc thay vì 100 (CVE-2023-44487).
+- Giữ slot thôi chưa đủ cho proxy. Proxy huỷ upstream khi nhận RST (đúng, vì giải phóng tài nguyên), nhưng việc huỷ
+  làm slot về nhanh. Client vẫn bơm được 4 872 request sang upstream rồi huỷ. Phải có thêm trần **tốc độ** RST (143
+  request).
+- CONTINUATION không có END_HEADERS cần trần trên block đang ghép. Không có trần thì đệm 4 MiB và hơn nữa.
+  - Không thể RST riêng stream đó: block chưa decode xong thì bảng HPACK đã lệch, nên chỉ còn cách đóng connection.
+  - CVE-2024-27316 nhắc thêm một điều: đệm *để trả lỗi cho đẹp* cũng là đệm không trần.
+
+**6. Giá CPU của h2 không phải hằng số mỗi request.**
+- Giả thuyết dự đoán h2 tốn ≥ 1.3 lần CPU và ≥ 2 lần context switch, vì có hand-off giữa goroutine đọc và goroutine
+  stream. Thực tế khi proxy bận liên tục: CPU 1.23 lần, context switch 0.83-1.03 lần.
+- `voluntary_ctxt_switches` đếm lần luồng OS phải ngủ. Khi lúc nào cũng có việc, hand-off chỉ chuyển goroutine trong
+  cùng luồng và gần như miễn phí.
+- Khi tải thưa (một stream), mỗi hand-off đánh thức một luồng đang ngủ, nên h2 tốn khoảng 2 lần CPU và 1.7 lần context
+  switch.
+- Phase 9 thấy hand-off là thứ làm `ReverseProxy` chậm. Phase 10 thêm điều kiện: nó đắt khi tải **thưa**, không đắt
+  khi tải bận.
+
+**7. h2spec đạt 143 → 144/145 nhưng không chứng minh được khả năng chịu tấn công.**
+- Hai ca fail lần đầu thuộc hai loại khác nhau:
+  - 5.1/8 là hiểu sai spec: frame sau RST của peer khác frame sau RST của mình. Viết test cho ca ngược lại còn lộ thêm
+    một bug thứ hai.
+  - 3.5/2 là đánh đổi cố ý. Port dùng chung h1 + h2c nên preface sai là một request h1 hỏng, trả 400 là đúng.
+- Bản nodefense10 vẫn pass 139/145. Năm ca nó fail đều là luật field; không ca nào là Rapid Reset hay CONTINUATION
+  flood.
+- Bộ test tuân thủ đo xem mình nói đúng ngôn ngữ chưa. Nó không đo việc người nói đúng ngôn ngữ có giết được mình
+  không. Bằng chứng cho vế sau chỉ có thể là phản chứng đỏ.
 
 ## Nợ kỹ thuật
 
-*(turn 3)*
+Chi tiết + lệnh trả trong [`../docs/debts.md`](../docs/debts.md).
+
+- [x] **P10-1** 🔧 Drain không biết connection h2 — **trả turn 3** (GOAWAY NO_ERROR; `TestH2Drain` 3.0 s/forced 2 → 202 ms/forced 0)
+- [ ] **P10-2** 🔧 Rate limit / shed phase 7 không áp cho stream h2 — **đường vòng qua h2c**, ưu tiên cao nhất
+- [ ] **P10-3** 🔧 WINDOW_UPDATE nhỏ giọt ⇒ một DATA frame + Flush mỗi increment (RFC 9113 §10.5)
+- [ ] **P10-4** 🔧 Không trần tốc độ PING / SETTINGS / request malformed
+- [ ] **P10-5** ⏳ ALPN `h2` trên TLS
+- [ ] **P10-6** ⏳ h2spec 3.5/2 (listener `h2c_only` nếu cần 145/145)
+- [ ] **P10-7** ⏳ Trailer h2 bị bỏ (chưa proxy được gRPC)
+- [ ] **P10-8** 📏 G5/G8 trên Linux thuần, `tc` chỉ chiều client↔proxy, nhiều mẫu hơn

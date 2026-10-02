@@ -58,7 +58,13 @@ func (s *Server) serveH2(c net.Conn, st *connState, br *bufio.Reader) {
 		cfg.Logf = s.cfg.Logf
 	}
 	s.h2conns.Add(1)
-	h2.ServeConn(c, br, cfg, func(w *h2.Stream, r *h2.Request) { s.serveH2Stream(c, st, w, r) }, &s.h2stats)
+	hc := h2.NewConn(c, br, cfg, func(w *h2.Stream, r *h2.Request) { s.serveH2Stream(c, st, w, r) }, &s.h2stats)
+	st.h2.Store(hc)
+	// Drain đã quét trước khi Store ⇒ tự Shutdown (cặp Dekker như idle/closeIdle).
+	if s.closeIdle.Load() {
+		hc.Shutdown()
+	}
+	hc.Serve()
 }
 
 // H2Stats: bộ đếm h2 cộng dồn mọi connection (test, lab).

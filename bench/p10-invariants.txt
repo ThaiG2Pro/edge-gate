@@ -1,0 +1,54 @@
+Fri Oct  2 13:48:41 +07 2026
+ 13:48:41 up  5:02,  1 user,  load average: 1.54, 2.72, 2.17
+$ go test ./internal/h2/... ./internal/proxy -count=1 -race -run "H2|RFC7541|Encoder|Huffman|Decoder|Interop|Curl|GoAway|Malformed|ContentLength|FlowControl|WindowTimeout|BodyTimeout|Refused|RapidReset|Continuation|Ping|ServeConnExits|DataAfterRST" -v
+    h2_test.go:149: streams=53 resets_sent=0 max_active=9
+--- PASS: TestInteropNetHTTP (0.06s)
+--- PASS: TestCurlInterop (0.02s)
+--- PASS: TestGoAwayCases (0.01s)
+--- PASS: TestMalformedStreamReset (0.00s)
+--- PASS: TestContentLengthMismatch (0.00s)
+--- PASS: TestFlowControlStreamWindow (0.20s)
+--- PASS: TestWindowTimeout (0.20s)
+--- PASS: TestBodyTimeout (0.20s)
+--- PASS: TestRefusedKeepsHPACKInSync (0.00s)
+    h2_test.go:439: streams=100 refused=4900 resets=100 peak_handlers=100
+--- PASS: TestRapidReset (0.12s)
+    h2_test.go:460: header block đệm tối đa = 65542 byte
+--- PASS: TestContinuationFlood (0.10s)
+--- PASS: TestPing (0.00s)
+--- PASS: TestServeConnExits (0.00s)
+--- PASS: TestDataAfterRST (0.02s)
+ok  	github.com/thaivro/edgegate/internal/h2	1.975s
+--- PASS: TestRFC7541AppendixC (0.00s)
+--- PASS: TestEncoderMatchesRFC (0.00s)
+--- PASS: TestHuffmanRoundTrip (0.00s)
+--- PASS: TestHuffmanErrors (0.00s)
+--- PASS: TestDecoderErrors (0.00s)
+--- PASS: TestDecoderListLimit (0.00s)
+--- PASS: TestEncoderTableSizeUpdate (0.00s)
+ok  	github.com/thaivro/edgegate/internal/h2/hpack	1.024s
+    phase10_test.go:115: h2 conns=1 streams=55 pool={Dials:39 Reuses:17 Puts:56 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:39}
+--- PASS: TestH2CProxyInterop (0.13s)
+    phase10_test.go:208: upstream thấy: []
+    phase10_test.go:208: upstream thấy: []
+    phase10_test.go:208: upstream thấy: []
+--- PASS: TestH2Smuggle (0.91s)
+    phase10_test.go:266: upstream nhận 291 request; h2 streams=300 refused=0 resets=201
+--- PASS: TestH2RapidResetProxy (0.61s)
+    phase10_test.go:306: Drain 200ms, forced=0, stream đang chạy: "200 OK slow done\n"
+--- PASS: TestH2Drain (0.30s)
+ok  	github.com/thaivro/edgegate/internal/proxy	2.990s
+$ make h2-nodefense
+--- FAIL: TestMalformedStreamReset (3.00s)
+--- FAIL: TestContentLengthMismatch (3.00s)
+--- FAIL: TestRapidReset (0.04s)
+--- FAIL: TestContinuationFlood (0.11s)
+--- FAIL: TestH2Smuggle (0.91s)
+--- FAIL: TestH2RapidResetProxy (1.56s)
+$ grep -rln "\"net/http\"" internal cmd/edgegate | grep -v _test.go
+internal/fixture/upstream.go
+cmd/edgegate/pprof.go
+$ cat go.mod
+module github.com/thaivro/edgegate
+
+go 1.26

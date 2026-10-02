@@ -391,6 +391,8 @@ type connState struct {
 	up atomic.Pointer[net.Conn]
 	// pre: byte đầu đọc lúc rỗi khi không cầm bufio (phase 9 D2).
 	pre prefixReader
+	// h2: connection đã sang h2c (phase 10) — Drain gửi GOAWAY qua đây.
+	h2 atomic.Pointer[h2.Conn]
 }
 
 func (s *Server) track(c net.Conn) *connState {

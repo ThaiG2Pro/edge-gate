@@ -307,6 +307,65 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
+### 🔧 P10-2 · Rate limit / shed (phase 7) không áp cho stream h2 — đường vòng qua h2c
+
+`proxy/h2.go:serveH2Stream` không gọi `admit` (D8 phase 10): client bị rate limit trên h1 chỉ cần nói h2c (cùng port)
+là thoát cả token bucket lẫn trần inflight. Đây là lỗ hổng, không phải thiếu tính năng. Sửa: tách `admit` khỏi
+`bufio.Writer` (trả quyết định, caller tự ghi 429/503 theo giao thức), gọi trước `Pick`. Test trước:
+
+```bash
+go test ./internal/proxy -run TestH2RateLimit -v   # (chưa có) Rate 1/s burst 1: 5 GET h2 trên 1 conn ⇒ ≥ 4 × 429
+```
+
+### 🔧 P10-3 · WINDOW_UPDATE nhỏ giọt ⇒ một DATA frame + một Flush mỗi increment
+
+RFC 9113 §10.5: "Providing tiny increments to flow control in WINDOW_UPDATE frames can cause a sender to generate a
+large number of DATA frames." `h2/conn.go:Stream.WriteData` gửi ngay `min(window, …)` byte — client cho từng 1 byte ⇒
+1 MiB response = 1 048 576 frame 10 byte + 1 048 576 syscall. Sửa: chỉ gửi khi window ≥ min(còn lại, 1 KiB) (hoặc
+đếm frame/byte và ENHANCE_YOUR_CALM). Test trước: client `INITIAL_WINDOW_SIZE 0` rồi WINDOW_UPDATE 1 × 10 000 ⇒ server
+gửi ≤ 100 DATA frame.
+
+```bash
+go test ./internal/h2 -run TestTinyWindowUpdates -v   # (chưa có)
+```
+
+### 🔧 P10-4 · Không trần tốc độ cho PING / SETTINGS / request malformed
+
+Ghi đồng bộ dưới `wmu` (D3) chặn được hàng đợi ACK không trần (client không đọc ⇒ TCP backpressure), nhưng client
+**có** đọc thì một connection bơm PING/SETTINGS/HEADERS malformed vô hạn, mỗi cái tốn một lần encode + ghi + Flush
+(CVE-2019-9512/9515 họ CPU; RFC 9113 §10.5 "An invalid request … can cause a peer to send RST_STREAM"). D6 a′ chỉ đếm
+RST **của client**. Sửa: một bộ đếm chung "frame không sinh việc hữu ích" mỗi giây ⇒ GOAWAY ENHANCE_YOUR_CALM.
+
+```bash
+go test ./internal/h2 -run 'TestPingFlood|TestMalformedFlood' -v   # (chưa có) 100 000 PING ⇒ GOAWAY trước khi hết
+```
+
+### ⏳ P10-5 · ALPN `h2` trên TLS
+
+D7: chỉ h2c. Listener TLS phase 8 công bố `NextProtos: ["http/1.1"]` (`tlsx/store.go:ServerConfig`). Cần: thêm `h2`,
+`NegotiatedProtocol == "h2"` ⇒ `serveH2` (không preface sniff), kiểm TLS ≥ 1.2 + cipher (RFC 9113 §9.2). Lệnh trả:
+`h2spec -t -k -p 18443` xanh như h2c.
+
+### ⏳ P10-6 · h2spec 3.5/2 fail vì h1 + h2c chung port
+
+Preface sai ⇒ hiểu là h1 hỏng ⇒ `400` (D7, cố ý). Nếu cần pass 145/145: tuỳ chọn listener `h2c_only` (không fallback
+h1). Lệnh trả: `make h2spec` với `config/h2-only.json` ⇒ `145 passed`.
+
+### ⏳ P10-7 · Trailer h2 bị bỏ (cả request lẫn response)
+
+`h2/conn.go:endHeaderBlock` nhận trailer request rồi bỏ; `proxy/h2.go` không chuyển trailer chunked của upstream thành
+HEADERS cuối. Cùng họ P3-1. gRPC sống bằng trailer (`grpc-status`) ⇒ proxy h2 này chưa proxy được gRPC.
+
+### 📏 P10-8 · G5/G8 đo trên WSL2 loopback + netem
+
+G5: 640 mẫu mỗi cột, p99 = ~6 mẫu; netem trên `lo` mất gói **cả hai chiều** và cả chặng proxy→upstream. G8: load nền
+tới 13 (session khác), closed-loop. Chạy lại trên Linux thuần, hai máy, `tc` chỉ ở chiều client↔proxy:
+
+```bash
+./bin/h2lab -mode tcphol -n 100 -par 32      # × {loss 0, 1 %, 2 %, 5 %}
+taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 5   # × {8×8 vs 64, 1×1 vs 1}
+```
+
 ### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`
 
 `pgrep -a -x upstream` lúc 16:00 phase 5 thấy `./bin/upstream -addr :8081` pid 146978 từ phase 3.
@@ -352,6 +411,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-1 · Drain không biết connection h2 — trả 2026-10-02 (phase 10 turn 3)
+
+Connection h2 không bao giờ "idle" theo nghĩa h1 ⇒ `Drain` chờ hết timeout rồi đóng cưỡng bức, cắt stream đang chạy.
+Sửa: `h2.Conn.Shutdown` — GOAWAY NO_ERROR với last-stream-id hiện tại, không nhận stream mới, stream cuối xong ⇒
+đóng; `resilience.go:Drain` gọi nó qua `connState.h2`; `serveH2` tự Shutdown nếu Store sau lần quét (Dekker như
+idle/closeIdle). `TestH2Drain` viết trước, đỏ trên code cũ (`Drain 3.001s, forced=2`), sau sửa `Drain 202ms,
+forced=0`, stream `/slow` đang chạy trả `200` (×3 `-race`).
 
 ### ✅ P9-3 · `copyBody` cấp 32 KiB cho body request rỗng — trả 2026-10-01 (phase 9 turn 3)
 

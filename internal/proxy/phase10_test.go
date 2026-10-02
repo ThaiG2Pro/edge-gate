@@ -268,3 +268,46 @@ func TestH2RapidResetProxy(t *testing.T) {
 		t.Fatalf("Rapid Reset qua proxy: upstream nhận %d request > 400", got.Load())
 	}
 }
+
+// TestH2Drain (trả nợ turn 3): Drain với một connection h2 đang chạy stream
+// /slow 300 ms VÀ một connection h2 rỗi. Đúng: stream đang chạy xong (200),
+// connection rỗi được đóng ngay bằng GOAWAY NO_ERROR, Drain trả 0 connection bị
+// ép, không chờ hết timeout. Trước turn 3: connection h2 không bao giờ "idle"
+// với Drain ⇒ chờ timeout rồi đóng cưỡng bức.
+func TestH2Drain(t *testing.T) {
+	s, addr := startProxyS(t, startFixture(t), func(c *Config) {
+		h2on(c)
+		c.Limits.IdleTimeout = 10 * time.Second // connection rỗi không tự đóng trong lúc test
+	})
+	busy := h2cClient()
+	idle := h2cClient()
+	if resp, err := idle.Get("http://" + addr + "/hello"); err != nil {
+		t.Fatal(err)
+	} else {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
+	res := make(chan string, 1)
+	go func() {
+		resp, err := busy.Get("http://" + addr + "/slow?ms=300")
+		if err != nil {
+			res <- err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		res <- resp.Status + " " + string(b)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	t0 := time.Now()
+	forced := s.Drain(3 * time.Second)
+	el := time.Since(t0)
+	got := <-res
+	t.Logf("Drain %v, forced=%d, stream đang chạy: %q", el.Round(time.Millisecond), forced, got)
+	if !strings.HasPrefix(got, "200") {
+		t.Fatalf("stream đang chạy bị cắt khi drain: %q", got)
+	}
+	if forced != 0 || el > 2*time.Second {
+		t.Fatalf("Drain ép %d connection sau %v (muốn 0, < 2 s)", forced, el)
+	}
+}

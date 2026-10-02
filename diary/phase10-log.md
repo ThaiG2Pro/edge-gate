@@ -89,3 +89,13 @@
 - 13:31 người dùng bật `netem delay 20ms` (ping 40.3 ms) ⇒ G4. 13:33 đổi `delay 10ms` ⇒ G5 đối chứng. 13:33 đổi
   `delay 10ms loss 2%` ⇒ G5. 13:36 người dùng tháo; kiểm: `qdisc noqueue`, ping 0.047 ms, không tiến trình sót.
 - 13:37 G6/G7 hai build. Suite `-race` xanh, `make h2-nodefense` đỏ 6.
+
+## §3 Turn 3 — 2026-10-02 13:43 → 13:55
+
+- Đọc RFC 9113 §5.2, §10.5, §3.1 (bản tải sáng nay), mô tả CVE-2023-44487 / CVE-2024-27316 qua API cveawg.mitre.org.
+  §10.5 chỉ ra một lỗ mình chưa phòng: WINDOW_UPDATE nhỏ giọt ⇒ P10-3.
+- Trả nợ drain (P10-1): `TestH2Drain` viết trước, chạy trên code cũ ⇒ `Drain 3.001s, forced=2` (đỏ). Cài
+  `Conn.Shutdown` (GOAWAY NO_ERROR), `connState.h2`, Dekker với `closeIdle` ⇒ `202ms, forced=0` ×3 `-race`.
+  Suite `-race` xanh; `nodefense10` đỏ 6, `nodefense9` đỏ 2; h2spec vẫn 144/145.
+- Khi viết sổ nợ thấy P10-2 không phải "thiếu tính năng" mà là **đường vòng**: rate limit phase 7 chỉ chạy trên h1 ⇒
+  client nói h2c trên cùng port là thoát. Ghi ưu tiên cao nhất.

@@ -101,6 +101,7 @@ type Conn struct {
 	peerFrame  uint32
 	lastID     uint32
 	goaway     bool // peer gửi GOAWAY hoặc ta đang đóng: không nhận stream mới
+	draining   bool // ta đã gửi GOAWAY NO_ERROR (Shutdown): stream cuối xong ⇒ đóng
 	closed     bool
 	wg         sync.WaitGroup
 
@@ -157,6 +158,37 @@ var ErrWindowTimeout = errors.New("h2: chờ WINDOW_UPDATE quá WriteTimeout")
 // preface — D7: byte đã nằm trong buffer phải đọc qua CÙNG reader). Chặn tới
 // khi connection kết thúc và mọi handler đã thoát.
 func ServeConn(nc net.Conn, r io.Reader, cfg Config, h Handler, stats *Stats) error {
+	return NewConn(nc, r, cfg, h, stats).Serve()
+}
+
+// Serve: như ServeConn, cho Conn tạo bằng NewConn (caller giữ con trỏ để Shutdown).
+func (c *Conn) Serve() error {
+	err := c.serve()
+	c.shutdown()
+	return err
+}
+
+// Shutdown (drain, turn 3): GOAWAY NO_ERROR với last-stream-id hiện tại —
+// client biết stream nào ĐÃ được nhận (≤ last) và mở stream mới ở connection
+// khác; stream đang chạy chạy tiếp; stream cuối xong ⇒ đóng connection. Gọi
+// nhiều lần an toàn.
+func (c *Conn) Shutdown() {
+	c.mu.Lock()
+	if c.draining || c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.draining, c.goaway = true, true
+	last, idle := c.lastID, c.active == 0
+	c.mu.Unlock()
+	c.write(func(fr *Framer) error { return fr.WriteGoAway(last, ErrNo, "drain") })
+	if idle {
+		c.nc.SetReadDeadline(time.Now()) // đánh thức goroutine đọc ⇒ serve thoát
+	}
+}
+
+// NewConn dựng Conn mà chưa chạy (Serve).
+func NewConn(nc net.Conn, r io.Reader, cfg Config, h Handler, stats *Stats) *Conn {
 	cfg.withDefaults()
 	if stats == nil {
 		stats = &Stats{}
@@ -173,9 +205,7 @@ func ServeConn(nc net.Conn, r io.Reader, cfg Config, h Handler, stats *Stats) er
 		peerFrame:  defaultMaxFrame,
 	}
 	c.cond = sync.NewCond(&c.mu)
-	err := c.serve()
-	c.shutdown()
-	return err
+	return c
 }
 
 func (c *Conn) serve() error {
@@ -255,9 +285,11 @@ func (c *Conn) setReadDeadline() {
 		c.nc.SetReadDeadline(time.Now().Add(c.cfg.HeaderTimeout))
 	default:
 		c.mu.Lock()
-		n := c.active
+		n, dr := c.active, c.draining
 		c.mu.Unlock()
-		if n == 0 {
+		if n == 0 && dr {
+			c.nc.SetReadDeadline(time.Now()) // Shutdown: hết stream ⇒ thoát
+		} else if n == 0 {
 			c.nc.SetReadDeadline(time.Now().Add(c.cfg.IdleTimeout))
 		} else {
 			c.nc.SetReadDeadline(time.Time{})
@@ -615,12 +647,15 @@ func (c *Conn) exitStream(s *Stream) {
 	// Body chưa đọc hết: window connection đã bị trừ cho số byte đó ⇒ trả lại.
 	unread := int64(len(s.body))
 	s.body = nil
-	idle := c.active == 0
+	idle, dr := c.active == 0, c.draining
 	c.mu.Unlock()
 	if unread > 0 {
 		c.refundConn(unread)
 	}
-	if idle {
+	switch {
+	case idle && dr:
+		c.nc.SetReadDeadline(time.Now())
+	case idle:
 		c.nc.SetReadDeadline(time.Now().Add(c.cfg.IdleTimeout))
 	}
 }
