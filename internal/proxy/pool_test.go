@@ -170,16 +170,34 @@ func TestDirtyConnNotPooled(t *testing.T) {
 
 // idleClosingUpstream: trả response rồi ĐÓNG NGAY mà không nói Connection:
 // close — FIN nằm trong kernel của proxy trong khi pool tin connection còn sống.
-func idleClosingUpstream(t *testing.T) string {
-	return rawServer(t, func(c net.Conn, br *bufio.Reader) {
+// closed nhận một tín hiệu SAU mỗi lần Close (P10-9: test chờ sự kiện này thay
+// vì ngủ cố định — dưới tải, goroutine upstream có thể chưa kịp chạy tới Close
+// trong 20 ms).
+func idleClosingUpstream(t *testing.T) (addr string, closed <-chan struct{}) {
+	ch := make(chan struct{}, 256)
+	addr = rawServer(t, func(c net.Conn, br *bufio.Reader) {
 		req, err := httpx.ReadRequest(br, httpx.DefaultLimits())
 		if err != nil {
 			return
 		}
 		n, _ := io.Copy(io.Discard, req.Body)
 		fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", len(fmt.Sprint(n)), fmt.Sprint(n))
-		// return ⇒ rawServer đóng: upstream "đóng rỗi lặng lẽ".
+		c.Close() // upstream "đóng rỗi lặng lẽ" (rawServer Close lần nữa: vô hại)
+		ch <- struct{}{}
 	})
+	return addr, ch
+}
+
+// waitUpstreamClosed: chờ upstream báo đã Close connection vừa phục vụ, rồi
+// 2 ms cho FIN đi qua loopback vào kernel proxy (probe đọc nó bằng MSG_PEEK).
+func waitUpstreamClosed(t *testing.T, closed <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upstream không đóng connection trong 2 s")
+	}
+	time.Sleep(2 * time.Millisecond)
 }
 
 // G4 — upstream đóng connection rỗi lặng lẽ. Bốn nhánh của D3/D4.
@@ -188,14 +206,16 @@ func TestIdleClosedUpstream(t *testing.T) {
 	get := "GET /x HTTP/1.1\r\nHost: x\r\n\r\n"
 	post := "POST /x HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\nabcd"
 	run := func(t *testing.T, probe bool, raw, method, wantBody string, wantStatus int) PoolStats {
-		s, p := startProxyS(t, idleClosingUpstream(t), func(c *Config) { c.Pool.Probe = &probe })
+		up, closed := idleClosingUpstream(t)
+		s, p := startProxyS(t, up, func(c *Config) { c.Pool.Probe = &probe })
 		rc := dialRaw(t, p)
 		rc.do(t, method, raw) // warm-up: dial đầu, put về pool (FIN sẽ tới ngay sau)
 		ok := 0
 		for i := 0; i < n; i++ {
-			// FIN của upstream tới kernel proxy. 3 ms (phase 5) hụt khi cả suite chạy
-			// song song dưới -race ở load ~7 (phase 8 turn 1: DeadOnProbe 41/50) ⇒ 20 ms.
-			time.Sleep(20 * time.Millisecond)
+			// FIN của upstream tới kernel proxy. Phase 5: sleep 3 ms; phase 8: 20 ms
+			// (hụt dưới -race load ~7); P10-9: 20 ms vẫn hụt 1/30 lượt khi full suite
+			// chạy song song ⇒ chờ SỰ KIỆN upstream đã Close, không chờ thời gian.
+			waitUpstreamClosed(t, closed)
 			resp, b := rc.do(t, method, raw)
 			if resp.Status == wantStatus && (wantStatus != 200 || string(b) == wantBody) {
 				ok++
@@ -233,12 +253,17 @@ func TestIdleClosedUpstream(t *testing.T) {
 		// được. Nhưng KHÔNG phải 50/50 như G4 đăng ký: 502 làm connection bị
 		// bỏ (dropDirty), pool rỗng, request kế dial mới ⇒ 200 rồi put ⇒ FIN ⇒
 		// request kế nữa 502. Xen kẽ: đúng 25 lần 502 + 25 lần 200.
-		s, p := startProxyS(t, idleClosingUpstream(t), func(c *Config) { f := false; c.Pool.Probe = &f })
+		up, closed := idleClosingUpstream(t)
+		s, p := startProxyS(t, up, func(c *Config) { f := false; c.Pool.Probe = &f })
 		rc := dialRaw(t, p)
 		rc.do(t, "POST", post) // warm-up
 		got := ""
 		for i := 0; i < n; i++ {
-			time.Sleep(3 * time.Millisecond)
+			// Request 502 không tới upstream mới nào ⇒ không có Close mới để chờ
+			// cho request KẾ; chỉ chờ sau request vừa thực sự được upstream phục vụ.
+			if i == 0 || strings.HasSuffix(got, "2") {
+				waitUpstreamClosed(t, closed)
+			}
 			resp, _ := rc.do(t, "POST", post)
 			if resp.Close {
 				t.Fatalf("req %d: 502 phải GIỮ connection client (body đã drain): %v", i, resp.Header)

@@ -307,17 +307,6 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
-### 🔧 P10-9 · `TestIdleClosedUpstream` chập chờn khi cả suite chạy dưới tải
-
-2026-10-02 (lúc trả P10-4): đỏ 2 lần trong full suite `-race` (load ~5), `req 43: 502 … DeadOnProbe:48` — 1/50 request
-tới trước FIN. Chạy riêng 10/10 xanh trên cả code mới lẫn HEAD; full suite thêm 6 lần (3 mới, 3 HEAD) sạch. Nguyên
-nhân đã biết từ phase 8: test **ngủ cố định** 20 ms chờ FIN của upstream tới kernel proxy (3 → 20 ms ở phase 8). Sửa:
-thay sleep bằng chờ có điều kiện (poll `PoolStats` / đọc tới khi upstream báo đã đóng), không nới số.
-
-```bash
-for i in $(seq 10); do go test ./... -count=1 -race 2>&1 | grep -E '^--- FAIL'; done   # phải không in gì
-```
-
 ### ⏳ P10-5 · ALPN `h2` trên TLS
 
 D7: chỉ h2c. Listener TLS phase 8 công bố `NextProtos: ["http/1.1"]` (`tlsx/store.go:ServerConfig`). Cần: thêm `h2`,
@@ -389,6 +378,15 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-9 · `TestIdleClosedUpstream` chập chờn dưới tải — trả 2026-10-02
+
+Tái hiện trước khi sửa: chạy subtest probe `-race -count=30` trong khi 5 package khác chạy test `-race` song song + 6 ×
+`yes` (load 7.25) ⇒ **1/30 đỏ** (`probe-POST-body`: `46/50 … DropDirty:4 DeadOnProbe:42`); chỉ 6 × `yes` thì 0/20 —
+tải phải giống full suite. Nguyên nhân: test ngủ cố định 20 ms chờ FIN, nhưng dưới tải goroutine upstream có thể chưa
+chạy tới `Close`. Sửa: `idleClosingUpstream` báo tín hiệu SAU `Close`; `waitUpstreamClosed` chờ tín hiệu (trần 2 s) +
+2 ms cho FIN qua loopback; nhánh noprobe-502 chỉ chờ sau request upstream thực sự phục vụ. Sau, cùng bài tải: **0/30**
+và **0/60** (load 7.06), full suite `-race` 3/3 sạch; test 3.9 s → 0.5 s (bỏ 50 × 20 ms).
 
 ### ✅ P10-4 · PING / SETTINGS / request malformed khuếch đại chi phí server — trả 2026-10-02
 

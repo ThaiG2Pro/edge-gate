@@ -514,7 +514,7 @@ Chi tiết + lệnh trả trong [`../docs/debts.md`](../docs/debts.md).
 - [x] **P10-2** 🔧 Rate limit / shed phase 7 không áp cho stream h2 — đường vòng qua h2c — **trả 2026-10-02** sau turn 3 (`admitDecision` dùng chung; `TestH2RateLimit` 6 × 200 → 2 × 200 + 4 × 429; `TestH2Shed`)
 - [x] **P10-3** 🔧 WINDOW_UPDATE nhỏ giọt — **đóng 2026-10-02 bằng số đo**: không khuếch đại (20 000 update ⇒ 878-1 208 DATA frame; ghi đồng bộ + mỗi frame lấy hết credit), không thêm phòng tuyến
 - [x] **P10-4** 🔧 PING / SETTINGS / malformed khuếch đại — **trả 2026-10-02**: gộp Flush phản hồi điều khiển (100 001 → 111 Flush / 100 000 PING), SETTINGS áp một lần (1.8-2.8 ms → 51-106 µs / frame); không cần trần tốc độ
-- [ ] **P10-9** 🔧 `TestIdleClosedUpstream` chập chờn khi cả suite chạy dưới tải (sleep cố định 20 ms chờ FIN)
+- [x] **P10-9** 🔧 `TestIdleClosedUpstream` chập chờn dưới tải — **trả 2026-10-02**: chờ sự kiện upstream đã Close thay vì sleep 20 ms (cùng bài tải: 1/30 đỏ → 0/30, 0/60)
 - [ ] **P10-5** ⏳ ALPN `h2` trên TLS
 - [ ] **P10-6** ⏳ h2spec 3.5/2 (listener `h2c_only` nếu cần 145/145)
 - [ ] **P10-7** ⏳ Trailer h2 bị bỏ (chưa proxy được gRPC)

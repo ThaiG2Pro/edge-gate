@@ -133,3 +133,10 @@
 - `TestIdleClosedUpstream` đỏ 2 lần trong full suite ⇒ không đổ lỗi, đo: riêng 10/10 xanh cả hai bản, full suite
   3 + 3 lần sạch ⇒ chập chờn có sẵn (sleep 20 ms chờ FIN) ⇒ nợ P10-9.
 - Sau: PING 111 Flush / 100 000, SETTINGS 51-106 µs/frame; `make h2-nodefense` đỏ 8; h2spec 144/145.
+
+## §7 P10-9 — 2026-10-02 15:05 → 15:13: test chờ thời gian → chờ sự kiện
+
+- Tái hiện trước: 6 × `yes` một mình ⇒ 0/20 đỏ (load chưa kịp lên, và không giống full suite). Thêm 5 package test
+  `-race` chạy song song ⇒ 1/30 đỏ (`probe-POST-body` 46/50, `DropDirty:4`). Tải phải giống tải thật mới tái hiện.
+- Sửa: upstream báo sau `Close`, test chờ tín hiệu + 2 ms. Cùng bài tải: 0/30, rồi 0/60 ở load 7.06; full suite 3/3
+  sạch. Bài học lặp lại lần thứ ba của sleep này (3 ms phase 5 → 20 ms phase 8 → sự kiện): nới số chỉ dời điểm gãy.
