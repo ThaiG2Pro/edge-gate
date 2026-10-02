@@ -245,9 +245,9 @@ func runL4L7() {
 		cp := strings.TrimPrefix(*impl, "l4")
 		px = start(fmt.Sprintf("taskset -c %s %s -mode l4proxy -copy %s -listen %s -target %s", *pcpu, self, cp, proxyAddr, *upAddr), proxyAddr)
 	case "edgegate", "edgegate-splice":
-		sp := ""
+		sp := " -nosplice" // P9-7: splice mặc định bật ⇒ "edgegate" trần phải tắt tường minh
 		if *impl == "edgegate-splice" {
-			sp = " -splice"
+			sp = ""
 		}
 		px = start(fmt.Sprintf("taskset -c %s %s -config config/bench.json -listen %s -upstream %s%s", *pcpu, *edgebin, proxyAddr, *upAddr, sp), proxyAddr)
 	default:

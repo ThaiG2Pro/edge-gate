@@ -153,13 +153,6 @@ vài trăm ms — tốn fd thay CPU) hoặc trần ở kernel (`iptables connlim
 taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 100   # × {đóng ngay, tarpit 200 ms}
 ```
 
-### ⏳ P7-3 · Trần eject 50 % + half-open: hành vi nảy ra, chưa đăng ký
-
-chaoslab seed 1: node `probes 586 / reopens 582 / ejections 6` — thử hỏng, `tryEject` bị trần từ chối ⇒
-node ở lại half-open ⇒ một request thử mỗi lượt. Có thể là đúng ý ("cụm xấu thì mỗi node xấu một
-request một lúc"), nhưng không test nào nói thế. Quyết định + test `TestBreakerUnderEjectCap` khi có
-ngữ cảnh phase 9 (tải thật).
-
 ### 📏 P7-4 · chaoslab thiên về hại ⇒ status mix không có nghĩa
 
 4/6 hành động là hại (kill/slow/err50/hang), 2/6 chữa ⇒ 26-36 % 503 vì không còn backend. Invariant vẫn
@@ -195,11 +188,6 @@ thật trả tiền) đo riêng — RSA lúc đó phải đắt hơn rõ (+~1.2 
 uptime   # < 1
 taskset -c 4,5 go run ./cmd/tlslab -mode handshake -n 2000 -kex x25519
 ```
-
-### ⏳ P8-3 · Health check active với upstream TLS
-
-`lb/health.go:probe` gửi `GET Path` HTTP thường; upstream TLS ⇒ handshake hỏng ⇒ fail ⇒ unhealthy. Mặc định `Path`
-rỗng (chỉ TCP) nên chưa lộ. Cần probe TLS khi `UpstreamTLS` bật + test `TestHealthTLSUpstream`.
 
 ### 📏 P8-4 · Bộ nhớ connection TLS treo
 
@@ -250,11 +238,6 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
   & sleep 25; curl -s 127.0.0.1:6061/debug/pprof/goroutine?debug=1 | head; go tool pprof -top http://127.0.0.1:6061/debug/pprof/heap
 ```
 
-### ⏳ P9-7 · `SpliceBody` tắt mặc định
-
-An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
-Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
-
 ### 📏 P10-8 · G5/G8 đo trên WSL2 loopback + netem
 
 G5: 640 mẫu mỗi cột, p99 = ~6 mẫu; netem trên `lo` mất gói **cả hai chiều** và cả chặng proxy→upstream. G8: load nền
@@ -275,6 +258,26 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P9-7 · `SpliceBody` tắt mặc định — trả 2026-10-02
+
+D11 phase 9. Điều kiện đủ: P9-1 trả; `go run ./cmd/chaoslab -duration 60s -rate 500 -tick 300ms -body 262144`
+(cờ `-body` mới: mỗi request thứ 4 là `/large` 256 KiB đi splice) **PASS**, `bench/p9-7-chaoslab-body.txt`. Lượt
+đầu đỏ fd 23/7: 16 fd là 8 pipe của Go splice pool (finalizer) — chaoslab nay GC trước khi đếm, in riêng `pipe:`,
+về 7/7. Lật: `Config.NoSplice` / `"no_splice_body"` / `-nosplice`; perflab `edgegate` trần truyền `-nosplice`.
+`perflab-nodefense` (nodefense9) vẫn đỏ đúng hai test.
+
+### ✅ P8-3 · Health check active với upstream TLS — trả 2026-10-02
+
+D13 phase 8: `lb.HealthConfig.Dial` hook; proxy đặt `healthDial` (= `dialUpstreamTimeout`, cùng SNI/RootCAs/session
+cache với data path) khi `UpstreamTLS` bật, cho lb chính và vhost. `TestHealthTLSUpstream` (httptest TLS + Path
+`/hello`, Interval 30 ms, Fall 2): đỏ trên HEAD (unhealthy sau 300 ms), xanh sau sửa, GET qua proxy 3/3 200.
+
+### ✅ P7-3 · Trần eject 50 % + half-open — trả 2026-10-02
+
+D9 phase 7: đăng ký "node half-open thử hỏng dưới trần ⇒ ở lại half-open, một request thử mỗi vòng" là thiết kế.
+`TestBreakerUnderEjectCap` (lb): 3 vòng thử hỏng ⇒ b0 nhận đúng 1/32 mỗi vòng, `EjectRefused 3 / Reopens 3 /
+Ejections 1`, state `half-open`; thử tốt ⇒ closed ⇒ 16/32. Không đổi code.
 
 ### ✅ P3-2 · 101 Switching Protocols ⇒ 502 — trả 2026-10-02
 

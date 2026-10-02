@@ -1,0 +1,19 @@
+chaoslab: scenario=chaos duration=1m0s rate=500 tick=300ms seed=1 drop=0.50 body=262144 splice=on client-timeout=7s
+  nền (trước proxy): goroutine 5, fd 11 (trước cả backend: 1 / 7)
+  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)
+
+chaos          n=30000 200:49.1% 502:4.2% 503:40.6% 504:6.1%
+               200: p50 4.05ms p90 21.99ms p99 61.5ms p99.9 113.56ms max 121.16ms · goodput 246/s
+               199 hành động chaos: map[err50:37 hang:31 heal:26 kill:32 revive:37 slow:36]
+               127.0.0.1:46687 picks 8241 fails 2137 ejections 6 probes 6 reopens 2 state half-open healthy false
+               127.0.0.1:46249 picks 5057 fails 284 ejections 10 probes 10 reopens 4 state open healthy true
+               127.0.0.1:38553 picks 725 fails 286 ejections 7 probes 8 reopens 6 state half-open healthy false
+               127.0.0.1:39543 picks 4959 fails 1542 ejections 8 probes 281 reopens 277 state half-open healthy false
+               proxy: retry cho 890 / từ chối 146, shed 0+1591, no-available 10302, eject-refused 691
+
+invariant (c'): connection client còn mở ở proxy 500 ms sau tải: 0 (ngay khi tải xong: 0)
+invariant (b): goroutine sau Close proxy + kill backend: 1 (nền trước mọi thứ 1, ±2)
+invariant (c): fd sau Close proxy + kill backend: 7 (nền trước mọi thứ 7, ±0; trong đó pipe splice: 2)
+invariant (d): treo quá 7s: 0; đóng không trả gì (io-nohead): 0; body cụt (io-body): 0; dial lỗi: 0
+invariant (a): không panic — tới được dòng này
+PASS

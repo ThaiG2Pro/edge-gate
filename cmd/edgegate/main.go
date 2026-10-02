@@ -77,7 +77,7 @@ type fileConfig struct {
 	DrainIdleGraceMs   *int    `json:"drain_idle_grace_ms"` // nil ⇒ 1000 (D8′); 0 ⇒ đóng connection rỗi ngay
 	ReusePort          bool    `json:"reuse_port"`
 	MaxConnsPerIP      int     `json:"max_conns_per_ip"` // P7-2: 0 = không trần
-	SpliceBody         bool    `json:"splice_body"`      // phase 9 D5
+	NoSplice           bool    `json:"no_splice_body"`   // phase 9 D5; P9-7: splice mặc định BẬT
 	// Phase 10 D7: h2c prior knowledge trên listener plaintext (cùng port h1).
 	H2C bool `json:"h2c"`
 	// P10-5: ALPN "h2" trên listener TLS (cipher TLS 1.2 còn ECDHE+AEAD).
@@ -112,7 +112,7 @@ func main() {
 	pool := flag.Bool("pool", true, "pool connection tới upstream; false = dial mỗi request (phase 3-4)")
 	algo := flag.String("algo", "", "ghi đè lb.algo: rr|leastconn|p2c|chash")
 	pprofAddr := flag.String("pprof", "", "listener admin net/http/pprof (phase 9 D10), vd 127.0.0.1:6061; rỗng = tắt")
-	splice := flag.Bool("splice", false, "bật splice_body (phase 9 D5) bất kể config")
+	nosplice := flag.Bool("nosplice", false, "tắt splice body (phase 9 D5; mặc định bật từ P9-7) bất kể config")
 	h2c := flag.Bool("h2c", false, "nhận HTTP/2 cleartext prior knowledge (phase 10 D7) bất kể config")
 	flag.Parse()
 	if *pprofAddr != "" {
@@ -163,7 +163,7 @@ func main() {
 		RetryBudget:   proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
 		ReusePort:     fc.ReusePort,
 		MaxConnsPerIP: fc.MaxConnsPerIP,
-		SpliceBody:    fc.SpliceBody || *splice,
+		NoSplice:      fc.NoSplice || *nosplice,
 		H2C:           fc.H2C || *h2c,
 		H2ALPN:        fc.H2ALPN,
 		H2COnly:       fc.H2COnly,

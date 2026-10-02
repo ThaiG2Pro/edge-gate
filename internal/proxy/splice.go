@@ -26,7 +26,7 @@ const spliceMinBody = 64 << 10
 // body đã nằm trong ubr (đọc lố cùng head) chép qua bw trước — splice chỉ thấy
 // byte còn trong kernel. Sạch (caller) ⇔ chép đủ CL ∧ ubr.Buffered() == 0.
 func (s *Server) spliceBody(c net.Conn, bw *bufio.Writer, resp *httpx.Response, ubr *bufio.Reader, pc *pooledConn) (used bool, rerr, werr error) {
-	if !spliceBodyOn || !s.cfg.SpliceBody || resp.ContentLength < spliceMinBody {
+	if !spliceBodyOn || s.cfg.NoSplice || resp.ContentLength < spliceMinBody {
 		return false, nil, nil
 	}
 	ct, ok := c.(*net.TCPConn)

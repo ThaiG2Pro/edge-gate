@@ -85,7 +85,7 @@ func TestIdlePipeliningAndPrefix(t *testing.T) {
 // Phần body đọc lố cùng head (trong ubr) phải đi trước phần splice.
 // nodefense9: không splice ⇒ SpliceStats 0 ⇒ đỏ.
 func TestSpliceBody(t *testing.T) {
-	s, p := startProxyS(t, startFixture(t), func(c *Config) { c.SpliceBody = true })
+	s, p := startProxyS(t, startFixture(t), nil)
 	rc := dialRaw(t, p)
 	for _, n := range []int{1 << 20, 100_000, 1000} { // 1000 < spliceMinBody ⇒ copy
 		resp, b := rc.do(t, "GET", fmt.Sprintf("GET /large?n=%d HTTP/1.1\r\nHost: x\r\n\r\n", n))
@@ -114,7 +114,7 @@ func TestSpliceBodyShortUpstream(t *testing.T) {
 		io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 1048576\r\n\r\n")
 		c.Write(make([]byte, 300_000))
 	})
-	s, p := startProxyS(t, up, func(c *Config) { c.SpliceBody = true })
+	s, p := startProxyS(t, up, nil)
 	c, _ := net.Dial("tcp", p)
 	defer c.Close()
 	io.WriteString(c, "GET / HTTP/1.1\r\nHost: x\r\n\r\n")

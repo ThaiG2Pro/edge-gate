@@ -11,7 +11,7 @@ const (
 	// releaseIdleBufio (D2): connection rỗi trả bufio về pool, chờ byte đầu
 	// bằng Read 1 byte. false ⇒ giữ 2×8 KiB suốt đời connection.
 	releaseIdleBufio = true
-	// spliceBodyOn (D5): Config.SpliceBody có tác dụng. false ⇒ luôn copy qua
+	// spliceBodyOn (D5): splice body có tác dụng (Config.NoSplice tắt). false ⇒ luôn copy qua
 	// userspace.
 	spliceBodyOn = true
 )

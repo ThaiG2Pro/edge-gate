@@ -96,7 +96,7 @@ func TestSpliceClientGone(t *testing.T) {
 		c.Write(make([]byte, size)) // chặn tới khi proxy đọc / connection bị đóng
 		io.Copy(io.Discard, c)      // sống tiếp: upstream KHÔNG có lỗi gì
 	})
-	s, p := startProxyS(t, up, func(c *Config) { c.SpliceBody = true })
+	s, p := startProxyS(t, up, nil)
 	c, err := net.Dial("tcp", p)
 	if err != nil {
 		t.Fatal(err)

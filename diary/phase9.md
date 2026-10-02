@@ -96,6 +96,7 @@ EdgeGate / nginx / `httputil.ReverseProxy`.
 | D8 | `cmd/rpbaseline`: `httputil.ReverseProxy` với `Transport{MaxIdleConnsPerHost: 64}` (mặc định 2 sẽ dial liên tục — so như vậy là so pool vs không pool). nginx: `docker run --network host nginx:1.25-alpine` với `config/nginx-bench.conf` (`worker_processes 2`, `upstream { keepalive 64; }`, `proxy_http_version 1.1`, `proxy_set_header Connection ""`, `access_log off`), port 18090 — **không** đụng container `local-gateway` cổng 80 đang chạy | So ReverseProxy không pool hay nginx không keepalive upstream là so cấu hình, không so proxy |
 | D9 | Ghim core cho G8: `taskset -c 0-1` proxy (`GOMAXPROCS=2`, nginx 2 worker, `--cpuset-cpus 0-1`), `-c 2-3` upstream, `-c 4-5` loadgen. EdgeGate cấu hình tối giản (`config/bench.json`: 1 upstream, RR, health/outlier/rate limit/shed tắt) — so cái proxy làm, không so tính năng. **Upstream = `epolllab -impl epoll -loops 2`** (response 1 KiB cố định), không phải `cmd/upstream` (sửa 14:24, trước khi đo: `cmd/upstream` log mỗi request + net/http ⇒ upstream thành nút cổ chai của cả ba cột). Thêm cột **direct** (loadgen → upstream, không proxy) = trần của chính loadgen. Ba proxy chạy cùng lúc, mỗi rate bắn xoay vòng thứ tự | nginx bench cũng không có health check chủ động/rate limit |
 | D10 | `cmd/edgegate -pprof 127.0.0.1:6061` (listener admin riêng, `net/http/pprof`); profile 30 s lấy bằng `go tool pprof -proto` lưu `bench/p9-*.prof` (vài chục KB, commit được) | Data path vẫn không `net/http`; profile phải có thể mở lại |
+| D11 (P9-7, 2026-10-02) | **Splice body mặc định BẬT**: `Config.SpliceBody` → `Config.NoSplice` (`"no_splice_body"`, CLI `-nosplice`); perflab `edgegate` trần nay truyền `-nosplice`, `edgegate-splice` không truyền gì. Điều kiện trong nợ đã đủ: P9-1 trả; `chaoslab -body 262144` (mỗi request thứ 4 là `/large` 256 KiB qua splice) 60 s **PASS** (`bench/p9-7-chaoslab-body.txt`). Lượt đầu đỏ invariant fd: dư 16 fd = 8 pipe — Go giữ pipe của splice(2) trong `sync.Pool` (`internal/poll` splicePipePool), đóng bằng finalizer ⇒ chaoslab nay `runtime.GC()` trước khi đếm và in riêng số `pipe:`; sau GC fd về đúng nền 7/7 | Không phải rò; chaoslab đếm đúng thứ nó định đếm |
 
 ## Deliverable
 
@@ -467,4 +468,4 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
 - [ ] **P9-4** 📏 G8 chạy lại trên Linux thuần + đếm syscall/request của nginx vs EdgeGate.
 - [ ] **P9-5** 📏 ReverseProxy chậm: tương quan context switch — cần `go tool trace` để thành nhân quả.
 - [ ] **P9-6** 📏 8 KiB/conn rỗi còn lại chưa chia; RSS/conn nginx chưa đo, tài liệu nginx chưa đọc.
-- [ ] **P9-7** ⏳ `SpliceBody` tắt mặc định — bật sau P9-1 + chaoslab body lớn.
+- [x] **P9-7** ✅ (2026-10-02, D11) splice body mặc định bật — chaoslab body 256 KiB PASS.

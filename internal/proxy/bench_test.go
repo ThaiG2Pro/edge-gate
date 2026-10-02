@@ -133,7 +133,7 @@ func BenchmarkProxyKeepAlive(b *testing.B) {
 func BenchmarkProxyLarge(b *testing.B) {
 	for _, splice := range []bool{false, true} {
 		b.Run(fmt.Sprintf("splice=%v", splice), func(b *testing.B) {
-			benchKeepAlive(b, 1<<20, func(c *Config) { c.SpliceBody = splice })
+			benchKeepAlive(b, 1<<20, func(c *Config) { c.NoSplice = !splice })
 		})
 	}
 }

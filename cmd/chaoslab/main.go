@@ -44,6 +44,7 @@ func main() {
 	tick := flag.Duration("tick", 300*time.Millisecond, "mỗi bao lâu một hành động chaos")
 	drop := flag.Float64("drop", 0.5, "retry: xác suất backend đóng connection dùng lại")
 	seed := flag.Uint64("seed", 1, "seed của chaos (in ra để chạy lại được)")
+	body := flag.Int("body", 0, "P9-7: mỗi request thứ 4 là GET /large?n=N (N ≥ 64 KiB đi splice); 0 = chỉ /hello")
 	flag.Parse()
 
 	// Khởi động netpoller (epoll fd + eventfd) TRƯỚC khi đo nền: lần dùng mạng
@@ -86,7 +87,7 @@ func main() {
 	// Deadline client: chuỗi dài nhất của proxy = dial (0.5 s) + đổi backend dial
 	// (0.5 s) + head (1 s) + retry D4 head (1 s) + body (2 s) = 5 s; +2 s dư.
 	clientTO := 7 * time.Second
-	fmt.Printf("chaoslab: scenario=%s duration=%s rate=%.0f tick=%s seed=%d drop=%.2f client-timeout=%s\n", *scenario, *dur, *rate, *tick, *seed, *drop, clientTO)
+	fmt.Printf("chaoslab: scenario=%s duration=%s rate=%.0f tick=%s seed=%d drop=%.2f body=%d splice=default-on client-timeout=%s\n", *scenario, *dur, *rate, *tick, *seed, *drop, *body, clientTO)
 	fmt.Printf("  nền (trước proxy): goroutine %d, fd %d (trước cả backend: %d / %d)\n", g0, fd0, gBase, fdBase)
 	fmt.Println("  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)")
 
@@ -141,7 +142,17 @@ func main() {
 	}
 
 	t0 := time.Now()
-	ss := loadgen.Run(loadgen.Config{Addr: ln.Addr().String(), Rate: *rate, Duration: *dur, Workers: 512, Timeout: clientTO})
+	lg := loadgen.Config{Addr: ln.Addr().String(), Rate: *rate, Duration: *dur, Workers: 512, Timeout: clientTO}
+	if *body > 0 {
+		large := fmt.Sprintf("GET /large?n=%d HTTP/1.1\r\nHost: chaoslab\r\n\r\n", *body)
+		lg.Request = func(i int) string {
+			if i%4 == 3 {
+				return large
+			}
+			return "GET /hello HTTP/1.1\r\nHost: chaoslab\r\n\r\n"
+		}
+	}
+	ss := loadgen.Run(lg)
 	el := time.Since(t0)
 	close(stopChaos)
 	cwg.Wait()
@@ -191,16 +202,20 @@ func main() {
 	for _, s := range sims {
 		s.Kill()
 	}
-	var g1, fd1 int
+	var g1, fd1, pipes int
 	for i := 0; i < 40; i++ { // tối đa 2 s cho goroutine/fd về
 		time.Sleep(50 * time.Millisecond)
-		g1, fd1 = runtime.NumGoroutine(), countFDs()
+		// P9-7: splice(2) của Go cầm pipe trong sync.Pool (internal/poll
+		// splicePipePool), đóng bằng finalizer ⇒ cần GC mới trả fd. Không phải
+		// rò: đếm riêng `pipe:` để thấy, và GC trước khi kết luận.
+		runtime.GC()
+		g1, fd1, pipes = runtime.NumGoroutine(), countFDs(), countPipes()
 		if g1 <= gBase+2 && fd1 <= fdBase {
 			break
 		}
 	}
 	fmt.Printf("invariant (b): goroutine sau Close proxy + kill backend: %d (nền trước mọi thứ %d, ±2)\n", g1, gBase)
-	fmt.Printf("invariant (c): fd sau Close proxy + kill backend: %d (nền trước mọi thứ %d, ±0)\n", fd1, fdBase)
+	fmt.Printf("invariant (c): fd sau Close proxy + kill backend: %d (nền trước mọi thứ %d, ±0; trong đó pipe splice: %d)\n", fd1, fdBase, pipes)
 	fmt.Printf("invariant (d): treo quá %s: %d; đóng không trả gì (io-nohead): %d; body cụt (io-body): %d; dial lỗi: %d\n",
 		clientTO, sum.ByKind["timeout"], sum.ByKind["io-nohead"], sum.ByKind["io-body"], sum.ByKind["dial"])
 	if g1 > gBase+2 || fd1 > fdBase || sum.ByKind["timeout"] > 0 {
@@ -220,6 +235,21 @@ func countFDs() int {
 		return -1
 	}
 	return len(es)
+}
+
+// countPipes: fd là pipe (splice của Go giữ theo cặp trong pool).
+func countPipes() int {
+	es, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return -1
+	}
+	n := 0
+	for _, e := range es {
+		if l, err := os.Readlink("/proc/self/fd/" + e.Name()); err == nil && strings.HasPrefix(l, "pipe:") {
+			n++
+		}
+	}
+	return n
 }
 
 func fatal(err error) {
