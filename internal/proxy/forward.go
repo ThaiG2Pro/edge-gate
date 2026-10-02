@@ -197,7 +197,7 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		// io.Copy(upstream, c).
 		if req.ContentLength != 0 || req.Chunked {
 			// Phase 9 turn 3 (P9-3): GET không body không cần buffer 32 KiB.
-			readErr, writeErr = copyBody(ubw, req.Body, req.Chunked)
+			readErr, writeErr = copyBodyT(ubw, req.Body, req.Chunked, req.Trailer)
 		}
 	}
 	if writeErr == nil {
@@ -317,7 +317,9 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 				rerr, werr = copyBody(bw, resp.Body, false)
 			}
 		case modeChunked:
-			rerr, werr = copyBody(bw, resp.Body, true)
+			// P3-1: trailer upstream (đã qua checkTrailer phía parser) về client.
+			// Body tới-EOF đổi sang chunked thì resp.Trailer() == nil ⇒ chunk cuối trần.
+			rerr, werr = copyBodyT(bw, resp.Body, true, resp.Trailer)
 		}
 		bodyDone = bodyDone || (rerr == nil && werr == nil) // resp.Body đã trả io.EOF
 		if rerr != nil {
@@ -336,7 +338,6 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 	if err := bw.Flush(); err != nil {
 		return false, false, upFail
 	}
-	// D4 phase 3: trailer của resp bị bỏ (resp.Trailer()). Nợ P3-1.
 
 	// D2: SẠCH ⇔ body đã EOF (b) ∧ không byte thừa (c) ∧ upstream không đòi
 	// đóng / không phải body-tới-EOF (d) ∧ không lỗi (e, đã return ở trên).
@@ -350,6 +351,12 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 // Trả riêng lỗi đọc và lỗi ghi: caller phân biệt "client/upstream nguồn
 // hỏng" với "đích hỏng" để quyết keep-alive.
 func copyBody(dst *bufio.Writer, src io.Reader, chunked bool) (readErr, writeErr error) {
+	return copyBodyT(dst, src, chunked, nil)
+}
+
+// copyBodyT: như copyBody; chunked ⇒ trailer() (gọi SAU khi src EOF — trailer
+// chỉ có sau chunk cuối) được ghi kèm chunk cuối (P3-1, trả 2026-10-02).
+func copyBodyT(dst *bufio.Writer, src io.Reader, chunked bool, trailer func() httpx.Header) (readErr, writeErr error) {
 	var w io.Writer = dst
 	var cw *httpx.ChunkedWriter
 	if chunked {
@@ -377,7 +384,11 @@ func copyBody(dst *bufio.Writer, src io.Reader, chunked bool) (readErr, writeErr
 		}
 	}
 	if cw != nil {
-		if werr := cw.Close(); werr != nil {
+		var tr httpx.Header
+		if trailer != nil {
+			tr = trailer()
+		}
+		if werr := cw.CloseWithTrailer(tr); werr != nil {
 			return nil, werr
 		}
 	}

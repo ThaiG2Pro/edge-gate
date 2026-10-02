@@ -42,7 +42,8 @@ func TestStripHopByHop(t *testing.T) {
 		h.Add(kv[0], kv[1])
 	}
 	h.StripHopByHop()
-	if h.Count() != 2 || h.Get("Host") != "h" || h.Get("X-Keep") != "yes" {
+	// Trailer KHÔNG phải hop-by-hop (RFC 9110 §7.6.1; P3-1) ⇒ còn lại 3.
+	if h.Count() != 3 || h.Get("Host") != "h" || h.Get("X-Keep") != "yes" || h.Get("Trailer") != "X" {
 		t.Fatalf("còn lại: %v", h)
 	}
 }

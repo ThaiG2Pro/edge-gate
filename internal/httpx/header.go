@@ -60,8 +60,11 @@ func (h Header) Count() int {
 // hopByHop là các field chỉ có ý nghĩa trên một chặng TCP duy nhất, proxy
 // không được forward sang chặng tiếp theo.
 //
-// RFC 9110 §7.6.1 liệt kê: Connection, Proxy-Connection, Keep-Alive, TE,
-// Trailer, Transfer-Encoding, Upgrade.
+// RFC 9110 §7.6.1: Connection + mọi field nó liệt kê, và "SHOULD remove …
+// Proxy-Connection, Keep-Alive, TE, Transfer-Encoding, Upgrade". KHÔNG có
+// Trailer — bản cũ ghi "§7.6.1 liệt kê … Trailer" mà chưa đọc nguyên văn
+// (đọc 2026-10-02, trả P3-1); Trailer (§6.6.2) là gợi ý cho bên nhận cuối,
+// đi cùng trailer được forward.
 //
 // Proxy-Authenticate / Proxy-Authorization KHÔNG nằm trong danh sách đó — chúng
 // là credential dành riêng cho chặng proxy này (RFC 9110 §11.7), nên cũng không
@@ -71,7 +74,6 @@ var hopByHop = map[string]bool{
 	"Proxy-Connection":    true, // non-standard nhưng client thật vẫn gửi
 	"Keep-Alive":          true,
 	"Te":                  true, // CanonicalMIMEHeaderKey("TE") == "Te"
-	"Trailer":             true,
 	"Transfer-Encoding":   true,
 	"Upgrade":             true,
 	"Proxy-Authenticate":  true,

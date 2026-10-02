@@ -177,6 +177,24 @@ func (cw *ChunkedWriter) Close() error {
 	return err
 }
 
+// CloseWithTrailer: chunk cuối + trailer section (RFC 9112 §7.1.2). Trailer đi
+// qua cùng appendWire với header ⇒ CR/LF/NUL bị từ chối (I5); field cấm trong
+// trailer (§6.5.1) đã bị parser phía nhận loại trước khi tới đây (P3-1).
+func (cw *ChunkedWriter) CloseWithTrailer(tr Header) error {
+	if len(tr) == 0 {
+		return cw.Close()
+	}
+	buf := append(cw.buf[:0], '0', '\r', '\n')
+	buf, err := tr.appendWire(buf)
+	if err != nil {
+		return err
+	}
+	buf = append(buf, '\r', '\n')
+	cw.buf = buf
+	_, err = cw.w.Write(buf)
+	return err
+}
+
 // forbiddenTrailer: RFC 9110 §6.5.1 — field điều khiển framing, routing,
 // request modifier, authentication, hay content-coding KHÔNG được xuất hiện
 // trong trailer. Trailer đến SAU khi hai bên đã đồng ý ranh giới; cho

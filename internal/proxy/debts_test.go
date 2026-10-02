@@ -119,3 +119,52 @@ func TestSpliceClientGone(t *testing.T) {
 		t.Fatalf("client bỏ đi bị tính cho backend: fails=%d", f)
 	}
 }
+
+// P3-1: trailer của response chunked từ upstream phải tới client (gRPC-web,
+// `Trailer: X-Checksum`). Client net/http đọc trailer sau body.
+func TestTrailerForwarded(t *testing.T) {
+	up := rawServer(t, func(c net.Conn, br *bufio.Reader) {
+		if _, err := httpx.ReadRequest(br, httpx.DefaultLimits()); err != nil {
+			return
+		}
+		io.WriteString(c, "HTTP/1.1 200 OK\r\nTrailer: X-Checksum\r\nTransfer-Encoding: chunked\r\n\r\n"+
+			"5\r\nhello\r\n0\r\nX-Checksum: abc123\r\n\r\n")
+	})
+	p := startProxy(t, up, nil)
+	resp, err := oracleClient().Get("http://" + p + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	t.Logf("body %q, Trailer khai báo %q, trailer %v", b, resp.Header.Values("Trailer"), resp.Trailer)
+	if string(b) != "hello" || resp.Trailer.Get("X-Checksum") != "abc123" {
+		t.Fatalf("trailer mất qua proxy: %v", resp.Trailer)
+	}
+}
+
+// P3-1 chiều request: trailer của body chunked từ client tới upstream; trailer
+// cấm (Content-Length — RFC 9110 §6.5.1) bị parser phía proxy từ chối ⇒ 400.
+func TestRequestTrailerForwarded(t *testing.T) {
+	up := rawServer(t, func(c net.Conn, br *bufio.Reader) {
+		for {
+			req, err := httpx.ReadRequest(br, httpx.DefaultLimits())
+			if err != nil {
+				return
+			}
+			io.Copy(io.Discard, req.Body)
+			v := req.Trailer().Get("X-Sig")
+			fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", len(v), v)
+		}
+	})
+	p := startProxy(t, up, nil)
+	rc := dialRaw(t, p)
+	_, b := rc.do(t, "POST", "POST / HTTP/1.1\r\nHost: x\r\nTrailer: X-Sig\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\nX-Sig: s1\r\n\r\n")
+	if string(b) != "s1" {
+		t.Fatalf("upstream thấy trailer %q, muốn s1", b)
+	}
+	resp, _ := rc.do(t, "POST", "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\nContent-Length: 5\r\n\r\n")
+	if resp.Status != 400 {
+		t.Fatalf("trailer cấm Content-Length: %d, muốn 400", resp.Status)
+	}
+}

@@ -313,16 +313,6 @@ tới 13 (session khác), closed-loop. Chạy lại trên Linux thuần, hai má
 taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 5   # × {8×8 vs 64, 1×1 vs 1}
 ```
 
-### 🔧 P3-1 · Trailer chunked từ upstream bị bỏ (D4 phase 3)
-
-`forward.go:copyBody` gọi `ChunkedWriter.Close()` không ghi trailer; `resp.Trailer()` bị bỏ.
-gRPC-web / `Trailer: X-Checksum` sẽ mất. Test trước: fixture Hijack ghi chunked + trailer, kỳ
-vọng client thấy trailer ⇒ fail ⇒ sửa.
-
-```bash
-go test ./internal/proxy -run TestTrailerForwarded -v
-```
-
 ### ⏳ P3-2 · 101 Switching Protocols ⇒ 502
 
 `forward.go` D7: 101 không thuộc phase 3. WebSocket cần tunnel hai chiều sau head. Phase 7 (khi có
@@ -338,6 +328,16 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P3-1 · Trailer chunked bị bỏ (h1, cả hai chiều) — trả 2026-10-02
+
+`httpx/chunked.go:CloseWithTrailer` (chunk cuối + trailer qua `appendWire` — CR/LF bị từ chối); `forward.go:copyBodyT`
+gọi `resp.Trailer()` / `req.Trailer()` SAU khi body EOF và ghi kèm chunk cuối, cả hai chiều. Đọc RFC 9110 nguyên văn
+(tải 2026-10-02): §7.6.1 **không** liệt kê `Trailer` là hop-by-hop (chỉ Proxy-Connection, Keep-Alive, TE,
+Transfer-Encoding, Upgrade + Connection) — comment phase 2 trong `httpx/header.go` trích sai ⇒ bỏ `Trailer` khỏi
+`hopByHop`, sửa comment và `TestStripHopByHop`; §6.6.2: `Trailer` là gợi ý cho bên nhận cuối. Test viết trước, đỏ trên
+HEAD (worktree): `TestTrailerForwarded` `trailer map[]`, `TestRequestTrailerForwarded` `upstream thấy trailer ""`. Sau
+(×3 `-race`): `X-Checksum: abc123` tới client net/http; `X-Sig: s1` tới upstream; trailer cấm `Content-Length` ⇒ 400.
 
 ### ✅ P9-1 · Splice body: lỗi ghi client bị tính là lỗi upstream — trả 2026-10-02
 
