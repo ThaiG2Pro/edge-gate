@@ -189,10 +189,14 @@ func readHeaders(br *bufio.Reader, lim Limits) (Header, int, error) {
 }
 
 // hasConnectionToken kiểm `Connection:` có chứa token (không phân biệt hoa/thường).
+// P4-1 (trả 2026-10-02): strings.Cut thay bytes.Split([]byte(v)) — bản cũ cấp
+// phát bản sao value + slice mỗi lần gọi (2 alloc / request).
 func hasConnectionToken(h Header, token string) bool {
 	for _, v := range h.Values("Connection") {
-		for _, tok := range bytes.Split([]byte(v), []byte{','}) {
-			if bytes.EqualFold(trimOWS(tok), []byte(token)) {
+		for v != "" {
+			var tok string
+			tok, v, _ = strings.Cut(v, ",")
+			if strings.EqualFold(strings.Trim(tok, " \t"), token) {
 				return true
 			}
 		}

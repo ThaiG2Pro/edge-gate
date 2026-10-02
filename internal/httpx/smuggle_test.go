@@ -223,3 +223,23 @@ func BenchmarkReadRequest(b *testing.B) {
 		}
 	}
 }
+
+// P4-1: duyệt `Connection:` không cấp phát — request có `Connection: keep-alive`
+// tốn ≤ 24 alloc (bản cũ 26: bytes.Split([]byte(v)) trong hasConnectionToken).
+func TestReadRequestAllocs(t *testing.T) {
+	wire := []byte("GET /api/v1/items?page=2 HTTP/1.1\r\nHost: shop.example.com\r\nUser-Agent: bench/1.0\r\nAccept: application/json\r\nAccept-Encoding: gzip\r\nConnection: keep-alive\r\nX-Request-Id: 7c1d0e0a-3f2b-4d1e-9a8c-0b1c2d3e4f50\r\n\r\n")
+	lim := DefaultLimits()
+	rd := bytes.NewReader(wire)
+	br := bufio.NewReaderSize(rd, 4096)
+	n := testing.AllocsPerRun(200, func() {
+		rd.Reset(wire)
+		br.Reset(rd)
+		if _, err := ReadRequest(br, lim); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Logf("%.0f alloc / ReadRequest", n)
+	if n > 24 {
+		t.Fatalf("%.0f alloc > 24", n)
+	}
+}

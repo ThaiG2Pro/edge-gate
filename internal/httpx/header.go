@@ -88,12 +88,12 @@ var hopByHop = map[string]bool{
 // viết: nó cho attacker smuggle header xuyên qua proxy.
 func (h Header) StripHopByHop() {
 	for _, v := range h.Values("Connection") {
-		for _, tok := range strings.Split(v, ",") {
-			tok = strings.TrimSpace(tok)
-			if tok == "" {
-				continue
+		for v != "" { // P4-1: Cut, không Split (không cấp phát slice)
+			var tok string
+			tok, v, _ = strings.Cut(v, ",")
+			if tok = strings.TrimSpace(tok); tok != "" {
+				h.Del(tok)
 			}
-			h.Del(tok)
 		}
 	}
 	for name := range hopByHop {

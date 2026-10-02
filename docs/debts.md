@@ -71,14 +71,17 @@ taskset -c 3,4,5 vegeta attack -rate=5000 -duration=30s -targets=t.txt | vegeta 
 Đã ghim core vẫn chưa đủ: cần so `rps` đạt được với `rate` yêu cầu. Lệch > 2% nghĩa là
 generator không theo nổi ⇒ **số latency vô nghĩa**, không phải "proxy chậm".
 
-### 🔧 P4-1 · Ba lần duyệt `Connection:` và hai trong ba cấp phát
+### 🔧 P2-5 · `FuzzReadRequest` đỏ 1/3 lượt 30 s: 164 912 byte cho input ~6.2 KB
 
-`hasConnectionToken` (`bytes.Split([]byte(v))`), `StripHopByHop` (`strings.Split`), `checkConnectionTokens`
-(`strings.Cut`, không alloc) — cùng một header duyệt ba lần. Gộp thành một lần duyệt trả về
-(tokens, close, keepAlive, bad). Test trước: `BenchmarkReadRequest` phải giảm allocs/op dưới 26.
+Phát hiện lúc trả P4-1 (2026-10-02): `cấp phát 164912 byte cho input 6185-6198 byte (trần 164496-164704)` — **cùng một
+số byte** ở mọi lần đỏ, trên cả HEAD trước P4-1 (1/3) lẫn sau (1/3), load 12. Chạy lại riêng input
+(`-run FuzzReadRequest/<id>`) thì xanh ở cả hai bản ⇒ không phải lỗi tất định của input. Nghi: cấp phát phụ thuộc trạng
+thái `sync.Pool` (phase 9: head/bufio pool) khác nhau giữa fuzz liên tục và chạy một lần — hằng số 164 912 gợi ý một
+buffer cố định chứ không phải nhiễu của bộ đếm toàn tiến trình. Lệnh trả: tái hiện có pool ấm (chạy input 1 000 lần
+trong một test, đo từng lần), rồi quyết: trần `allocBound` có phải cộng hằng số pool không.
 
 ```bash
-go test ./internal/httpx -run '^$' -bench 'ReadRequest$' -benchmem -count 6
+for i in 1 2 3; do go test ./internal/httpx -run '^$' -fuzz FuzzReadRequest -fuzztime 30s -fuzzminimizetime 1s | tail -1; done
 ```
 
 ### 📏 P4-2 · G4 đo trên WSL2 không phân giải được 5 %
@@ -320,6 +323,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P4-1 · Duyệt `Connection:` cấp phát — trả 2026-10-02
+
+`parse.go:hasConnectionToken` và `header.go:StripHopByHop` duyệt `Connection:` bằng `strings.Cut` (bản cũ
+`bytes.Split([]byte(v))` / `strings.Split` — cấp phát bản sao + slice). `TestReadRequestAllocs` (`AllocsPerRun`, trần 24)
+viết trước, đỏ `26 alloc > 24`; sau 24. `BenchmarkReadRequest` ×6: **26 → 24 allocs/op, 864 → 824 B/op**, ns/op
+1590-3630 → 1145-2158 (máy ồn, không chốt ns). Ba lần duyệt vẫn còn nhưng không lần nào cấp phát — gộp làm một chỉ
+tiết kiệm ns, không đổi đại lượng món nợ đăng ký. Suite httpx/proxy `-race` + `make smugglelab` xanh.
 
 ### ✅ P7-2 · Trần connection theo IP — trả 2026-10-02
 
