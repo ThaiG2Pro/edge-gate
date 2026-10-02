@@ -125,6 +125,14 @@ func TestSpliceBodyShortUpstream(t *testing.T) {
 	if head >= 1<<20 || err != io.EOF {
 		t.Fatalf("muốn body thiếu rồi đóng")
 	}
+	// P9-1 đối chứng: upstream đóng giữa body là lỗi CỦA UPSTREAM.
+	deadline := time.Now().Add(time.Second)
+	for s.LBStats().Backends[0].Fails == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if f := s.LBStats().Backends[0].Fails; f != 1 {
+		t.Fatalf("upstream đóng giữa body splice: backend fails=%d, muốn 1", f)
+	}
 	if s.PoolStats().Idle != 0 {
 		t.Fatal("upstream hỏng không được về pool")
 	}

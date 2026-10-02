@@ -53,3 +53,36 @@ func probeIdle(c net.Conn) (dead, known bool) {
 		return true, true // byte lạ ⇒ bẩn
 	}
 }
+
+// peerGone (P9-1): đầu bên kia đã đóng/RST chưa? Khác probeIdle ở một chỗ:
+// n > 0 (byte đang chờ, vd request pipelined của client) là CÒN SỐNG, không
+// phải "bẩn". known=false ⇒ không lấy được fd.
+func peerGone(c net.Conn) (gone, known bool) {
+	sc, ok := c.(syscall.Conn)
+	if !ok {
+		return false, false
+	}
+	rc, err := sc.SyscallConn()
+	if err != nil {
+		return true, true
+	}
+	var (
+		n    int
+		rerr error
+	)
+	err = rc.Read(func(fd uintptr) bool {
+		var b [1]byte
+		n, _, rerr = syscall.Recvfrom(int(fd), b[:], syscall.MSG_PEEK|syscall.MSG_DONTWAIT)
+		return true
+	})
+	switch {
+	case err != nil:
+		return true, true
+	case errors.Is(rerr, syscall.EAGAIN) || errors.Is(rerr, syscall.EWOULDBLOCK):
+		return false, true
+	case rerr != nil:
+		return true, true
+	default:
+		return n == 0, true // n == 0: FIN; n > 0: còn byte ⇒ sống
+	}
+}

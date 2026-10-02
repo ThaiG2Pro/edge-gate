@@ -82,3 +82,40 @@ func TestRepickExcludesFailedBackend(t *testing.T) {
 		t.Fatal("không request nào bốc trúng backend xấu — test không đo gì")
 	}
 }
+
+// P9-1: client bỏ đi giữa một body splice (đọc 100 KB của 16 MiB rồi đóng ⇒
+// RST) KHÔNG được tính là lỗi của backend (outlier phase 6 D7 sẽ eject oan).
+// Upstream vẫn sống và đã gửi đủ. Đối chứng: upstream đóng giữa body ⇒ PHẢI tính.
+func TestSpliceClientGone(t *testing.T) {
+	const size = 16 << 20
+	up := rawServer(t, func(c net.Conn, br *bufio.Reader) {
+		if _, err := httpx.ReadRequest(br, httpx.DefaultLimits()); err != nil {
+			return
+		}
+		fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", size)
+		c.Write(make([]byte, size)) // chặn tới khi proxy đọc / connection bị đóng
+		io.Copy(io.Discard, c)      // sống tiếp: upstream KHÔNG có lỗi gì
+	})
+	s, p := startProxyS(t, up, func(c *Config) { c.SpliceBody = true })
+	c, err := net.Dial("tcp", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.WriteString(c, "GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+	buf := make([]byte, 100<<10)
+	io.ReadFull(c, buf)
+	c.Close() // dữ liệu chưa đọc trong receive queue ⇒ kernel gửi RST
+	deadline := time.Now().Add(3 * time.Second)
+	for s.res.connsActive.Load() > 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	nr, nb := s.SpliceStats()
+	f := s.LBStats().Backends[0].Fails
+	t.Logf("client bỏ đi sau 100 KB: splice %d response %d byte; backend fails=%d", nr, nb, f)
+	if nr != 1 {
+		t.Fatalf("không đi đường splice (nr=%d) — test không đo gì", nr)
+	}
+	if f != 0 {
+		t.Fatalf("client bỏ đi bị tính cho backend: fails=%d", f)
+	}
+}

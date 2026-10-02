@@ -243,17 +243,6 @@ Phase 7: 20.7 KiB / connection plaintext treo. TLS thêm buffer record (tới 16
 RFC 9110 §15.5.20 (421 — hành vi retry của client), RFC 8446 §4.6.1 (thời điểm NewSessionTicket) và §8
 (anti-replay 0-RTT): công cụ fetch cắt trang ở turn 3. Đọc và trích vào `diary/phase8.md` Đọc gì.
 
-### 🔧 P9-1 · Splice body: lỗi ghi client bị tính là lỗi upstream
-
-`proxy/splice.go:spliceBody` gọi `(*net.TCPConn).ReadFrom` — một lời gọi, một lỗi, không tách được "upstream đóng
-giữa body" với "client bỏ đi giữa body". Hiện coi mọi thiếu byte là upstream (`rerr`) ⇒ client bỏ đi giữa một
-response splice nuôi outlier ejection (phase 6 D7) oan cho backend. Test trước: client đóng sau 100 KB của body
-1 MiB splice ⇒ `LBStats` không được ghi một lỗi cho backend.
-
-```bash
-go test ./internal/proxy -run TestSpliceClientGone -v   # (test chưa có — viết cho nó đỏ trước)
-```
-
 ### ⏳ P9-2 · Body request (upload) không splice
 
 D5 chỉ làm chiều response. Upload lớn CL qua proxy vẫn đi `copyBody` userspace (32 KiB). Cùng điều kiện (CL, hai
@@ -349,6 +338,15 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P9-1 · Splice body: lỗi ghi client bị tính là lỗi upstream — trả 2026-10-02
+
+`splice.go:spliceClientFault` phân loại sau một ReadFrom thiếu byte: `err == nil` ⇒ upstream EOF sớm; `EPIPE` (chỉ
+phát sinh khi ghi) ⇒ client; còn lại ⇒ dò hai socket bằng `pool_linux.go:peerGone` (MSG_PEEK; khác `probeIdle`: byte
+đang chờ = còn sống) — upstream chết ⇒ upstream, không mà client chết ⇒ client, không rõ ⇒ upstream như cũ. Client lỗi
+trả về `werr` ⇒ không nuôi outlier, connection upstream vẫn bị bỏ (chưa đọc hết body). Test viết trước, đỏ trên code
+cũ: `TestSpliceClientGone` (body 16 MiB, client đọc 100 KB rồi đóng ⇒ RST) `fails=1` ×3. Sau ×5 `-race`: `fails=0`;
+đối chứng `TestSpliceBodyShortUpstream` thêm assert `fails=1` (upstream đóng giữa body) xanh.
 
 ### ✅ P7-1 · D9 chọn lại chính backend vừa dial lỗi — trả 2026-10-02
 
