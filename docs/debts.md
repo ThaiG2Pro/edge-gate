@@ -411,7 +411,11 @@ byte + `io.ErrUnexpectedEOF`, sau đó EOF sạch (không byte nào thêm), back
 
 `TestNoGoroutineLeak` chạy đúng số G6 đăng ký: 1 000 request, chia ba h1 keep-alive / h1 mỗi request một connection /
 h2c (phase 10: goroutine đọc + goroutine stream cũng phải về, I8). `-race -count=3`: goroutine trước 5, sau 6
-(≤ before+2) sau 20 ms.
+(≤ before+2) sau 20 ms. **Sửa cùng ngày (lúc trả P7-2):** đỏ 1/3 lượt full suite `trước 5, sau 8` —
+in stack: 3 goroutine thừa là `net/http.(*conn).serve` của FIXTURE (connection rỗi trong pool proxy, đúng thiết kế;
+trộn h2 ⇒ pool giữ 2-3 conn). Test giờ trừ goroutine phía upstream (đếm từ profile) và in stack khi đỏ; 0/20 đỏ; đột
+biến (rò một goroutine mỗi connection proxy) ⇒ đỏ `trước 5, sau 341`. Commit P7-2 `4a4327d` đi qua dù suite đỏ vì
+chuỗi lệnh nối bằng `;` — từ đó commit chỉ sau `go test … &&`.
 
 ### ✅ P10-9 · `TestIdleClosedUpstream` chập chờn dưới tải — trả 2026-10-02
 

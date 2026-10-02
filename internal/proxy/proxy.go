@@ -73,7 +73,11 @@ type Config struct {
 	// PEER (không XFF — lúc Accept chưa có byte nào). Vượt ⇒ đóng ngay sau Accept.
 	// HeaderTimeout giới hạn THỜI GIAN một connection Slowloris sống, không giới
 	// hạn SỐ connection một IP mở lại liên tục (phase 7: 500 conn × 20.7 KiB).
-	// 0 = không trần.
+	// 0 = không trần. Đếm MỌI connection (kể cả keep-alive rỗi, kiểu HAProxy
+	// src_conn_cur) ⇒ ngưỡng phải > độ đồng thời hợp lệ của MỘT IP (NAT!):
+	// slowlab với 32 chặn luôn probe 64 worker (51.6 % 200 ở baseline). Đóng ngay
+	// ⇒ attacker nối lại liên tục (828 913 lần / 30 s) ⇒ đổi RAM lấy CPU: p99
+	// probe 4.7 → 89 ms (P7-2b).
 	MaxConnsPerIP int
 	// ReusePort (D9): SO_REUSEPORT ở ListenAndServe — hai instance cùng port.
 	ReusePort bool

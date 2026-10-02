@@ -9,6 +9,7 @@ import (
 	"net/http" // ORACLE phía client + fixture upstream — chỉ trong _test.go
 	"net/http/httptest"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"testing"
 	"time"
@@ -417,13 +418,24 @@ func TestNoGoroutineLeak(t *testing.T) {
 	ka.CloseIdleConnections()
 	nk.CloseIdleConnections()
 	h2.CloseIdleConnections()
+	// Goroutine net/http.(*conn).serve là của FIXTURE (upstream giả, cùng tiến
+	// trình): mỗi connection rỗi trong pool của proxy (đúng thiết kế, ≤ MaxIdle)
+	// giữ một cái ở phía upstream. Trộn h2 (P3-4) ⇒ pool giữ 2-3 conn ⇒ bản đầu
+	// đếm cả chúng và đỏ "trước 5, sau 8" 1/3 lượt. Rò của PROXY = phần còn lại.
+	upstreamSide := func() int {
+		var sb strings.Builder
+		pprof.Lookup("goroutine").WriteTo(&sb, 2)
+		return strings.Count(sb.String(), "net/http.(*conn).serve(")
+	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if n := runtime.NumGoroutine(); n <= before+2 {
+		if n := runtime.NumGoroutine() - upstreamSide(); n <= before+2 {
 			t.Logf("G6: goroutine trước %d, sau %d (chờ %s)", before, n, time.Since(deadline.Add(-3*time.Second)).Round(time.Millisecond))
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("goroutine trước %d, sau %d", before, runtime.NumGoroutine())
+	var sb strings.Builder
+	pprof.Lookup("goroutine").WriteTo(&sb, 1) // rò thì phải biết CÁI GÌ rò
+	t.Fatalf("goroutine trước %d, sau %d\n%s", before, runtime.NumGoroutine(), sb.String())
 }
