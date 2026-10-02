@@ -158,23 +158,48 @@ func (s *CertStore) Serials() []string {
 func (s *CertStore) Loads() int64 { return s.loads.Load() }
 
 // ServerConfig: tls.Config cho listener — GetCertificate từ store, ALPN
-// http/1.1 (D5, móc cho phase 10), TLS ≥ 1.2.
+// http/1.1 (D5), thêm "h2" khi h2 (P10-5), TLS ≥ 1.2.
+//
+// h2 ⇒ cipher TLS 1.2 chỉ còn ECDHE + AEAD (RFC 9113 §9.2.2 cấm blocklist
+// Appendix A: không ECDHE, CBC, 3DES…). Giới hạn ở tầng cipher chứ không bắt
+// tay rồi GOAWAY INADEQUATE_SECURITY: client CBC-only thấy handshake hỏng, rõ
+// hơn một connection h2 chết. TLS 1.3 không bị ảnh hưởng (Go không cho chọn).
 //
 // SNI lạ (P8-2, phase 8 turn 3): GetConfigForClient trả một config KHÔNG có cert
 // nào ⇒ crypto/tls đi nhánh errNoCertificates ⇒ alert unrecognized_name(112)
 // đúng RFC 6066 §3. Trả lỗi từ GetCertificate thì Go luôn gửi internal_error
 // (handshake_server_tls13.go: pickCertificate) — client thấy "internal error"
 // cho một chuyện không phải lỗi nội bộ.
-func (s *CertStore) ServerConfig() *tls.Config {
+func (s *CertStore) ServerConfig(h2 bool) *tls.Config {
+	protos := []string{"http/1.1"}
+	var suites []uint16
+	if h2 {
+		protos = []string{"h2", "http/1.1"}
+		suites = H2CipherSuites()
+	}
 	return &tls.Config{
 		GetCertificate: s.GetCertificate,
 		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 			if s.cur.Load().lookup(hello.ServerName) == nil {
-				return &tls.Config{NextProtos: []string{"http/1.1"}, MinVersion: tls.VersionTLS12}, nil
+				return &tls.Config{NextProtos: protos, MinVersion: tls.VersionTLS12, CipherSuites: suites}, nil
 			}
 			return nil, nil // nil ⇒ dùng config gốc
 		},
-		NextProtos: []string{"http/1.1"},
-		MinVersion: tls.VersionTLS12,
+		NextProtos:   protos,
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: suites,
 	}
+}
+
+// H2CipherSuites: cipher TLS 1.2 được phép với h2 (RFC 9113 §9.2.2) — lọc từ
+// tls.CipherSuites() (đã bỏ nhóm insecure) lấy ECDHE + AEAD (GCM/CHACHA20).
+func H2CipherSuites() []uint16 {
+	var out []uint16
+	for _, cs := range tls.CipherSuites() {
+		n := cs.Name
+		if strings.HasPrefix(n, "TLS_ECDHE_") && (strings.Contains(n, "_GCM_") || strings.Contains(n, "CHACHA20")) {
+			out = append(out, cs.ID)
+		}
+	}
+	return out
 }

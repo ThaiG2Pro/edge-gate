@@ -105,6 +105,10 @@ type Config struct {
 	// timeout zero ⇒ lấy từ Limits.
 	H2C bool
 	H2  h2.Config
+	// H2ALPN (P10-5): listener TLS công bố ALPN ["h2","http/1.1"]; đàm phán
+	// được "h2" ⇒ serveH2 ngay sau handshake. Kéo theo cipher TLS 1.2 bị
+	// giới hạn còn ECDHE+AEAD (RFC 9113 §9.2.2) cho mọi client của listener đó.
+	H2ALPN bool
 
 	Logf func(format string, args ...any)
 }
@@ -467,6 +471,14 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 			return
 		}
 		c = tc
+		// P10-5: ALPN đã quyết giao thức — không sniff preface (h2.Conn vẫn
+		// kiểm preface là frame đầu, RFC 9113 §3.4).
+		if tc.ConnectionState().NegotiatedProtocol == "h2" {
+			br := getReader(c)
+			defer putReader(br)
+			s.serveH2(c, st, br)
+			return
+		}
 	}
 	lim := s.cfg.Limits
 	// D2: bufio chỉ cầm khi có request. Rỗi ⇒ trả pool, chờ byte đầu bằng Read

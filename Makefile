@@ -10,7 +10,7 @@
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab tlslab-nodefense tlslab-rtt \
 	perflab perflab-nodefense perf-bins idlelab l4l7lab pproflab bench-vs-nginx epolllab \
-	h2-bins h2lab h2lab-flow h2lab-tcphol h2spec h2-nodefense \
+	h2-bins h2lab h2lab-flow h2lab-tcphol h2spec h2spec-tls h2-nodefense \
 	rtt-up rtt-down
 
 all: fmt vet test
@@ -452,6 +452,14 @@ h2spec: h2-bins
 	 ./bin/epolllab -impl epoll -loops 1 -addr 127.0.0.1:18100 & UP=$$!; \
 	 ./bin/edgegate -config config/h2.json >/dev/null 2>&1 & PX=$$!; sleep 1; \
 	 $(H2SPEC) -h 127.0.0.1 -p 18093 -o 5 | tail -40
+
+# P10-5: h2spec qua TLS (ALPN h2) — `-t -k`, port 18443, cert tự ký của gencert.
+h2spec-tls: h2-bins
+	@go run ./cmd/gencert -out bin/certs -names a.test -serial 1 > /dev/null
+	@UP=; PX=; trap 'kill $$PX $$UP 2>/dev/null; wait 2>/dev/null; true' EXIT; \
+	 ./bin/epolllab -impl epoll -loops 1 -addr 127.0.0.1:18100 & UP=$$!; \
+	 ./bin/edgegate -config config/h2-tls.json >/dev/null 2>&1 & PX=$$!; sleep 1; \
+	 $(H2SPEC) -t -k -h 127.0.0.1 -p 18443 -o 5 | tail -40
 
 # Phản chứng D6 + P10-4: bản không phòng tuyến phải đỏ đúng 8 test.
 h2-nodefense:

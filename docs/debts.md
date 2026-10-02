@@ -255,12 +255,6 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
-### ⏳ P10-5 · ALPN `h2` trên TLS
-
-D7: chỉ h2c. Listener TLS phase 8 công bố `NextProtos: ["http/1.1"]` (`tlsx/store.go:ServerConfig`). Cần: thêm `h2`,
-`NegotiatedProtocol == "h2"` ⇒ `serveH2` (không preface sniff), kiểm TLS ≥ 1.2 + cipher (RFC 9113 §9.2). Lệnh trả:
-`h2spec -t -k -p 18443` xanh như h2c.
-
 ### ⏳ P10-6 · h2spec 3.5/2 fail vì h1 + h2c chung port
 
 Preface sai ⇒ hiểu là h1 hỏng ⇒ `400` (D7, cố ý). Nếu cần pass 145/145: tuỳ chọn listener `h2c_only` (không fallback
@@ -291,6 +285,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-5 · ALPN `h2` trên TLS — trả 2026-10-02
+
+D11 phase 10. `Config.H2ALPN` / `"h2_alpn"` ⇒ `ServerConfig(h2)`: ALPN `["h2","http/1.1"]`, cipher TLS 1.2 chỉ ECDHE+AEAD
+(RFC 9113 §9.2.2). `NegotiatedProtocol=="h2"` ⇒ `serveH2` không sniff preface. `TestTLSALPNH2` (net/http h2 qua TLS
+SNI a.test: 3 GET HTTP/2.0 200 A, 3 stream; client chỉ http/1.1 vẫn h1), `TestTLSH2CipherBlocklist` (TLS 1.2 +
+ECDHE-ECDSA-AES128-CBC-SHA + h2 ⇒ `handshake failure`; h2 tắt ⇒ cùng cipher h1 bắt tay được). `make h2spec-tls`:
+**145 tests, 145 passed** — 3.5/2 (P10-6) xanh qua TLS vì không còn mơ hồ chung port.
 
 ### ✅ P4-3 · `X-Forwarded-Proto/Host/Port` chưa sinh, `X-Real-IP` từ peer tin chưa kiểm — trả 2026-10-02
 

@@ -75,7 +75,7 @@ func (s *Server) initVHosts() {
 		bl.Start()
 	}
 	if s.cfg.TLS != nil {
-		s.tlsCfg = s.cfg.TLS.Store.ServerConfig()
+		s.tlsCfg = s.cfg.TLS.Store.ServerConfig(s.cfg.H2ALPN)
 	}
 	if u := s.cfg.UpstreamTLS; u != nil {
 		s.upTLSCache = tls.NewLRUClientSessionCache(256)

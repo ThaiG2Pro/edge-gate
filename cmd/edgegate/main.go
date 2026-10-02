@@ -80,7 +80,9 @@ type fileConfig struct {
 	SpliceBody         bool    `json:"splice_body"`      // phase 9 D5
 	// Phase 10 D7: h2c prior knowledge trên listener plaintext (cùng port h1).
 	H2C bool `json:"h2c"`
-	H2  struct {
+	// P10-5: ALPN "h2" trên listener TLS (cipher TLS 1.2 còn ECDHE+AEAD).
+	H2ALPN bool `json:"h2_alpn"`
+	H2     struct {
 		MaxConcurrentStreams uint32 `json:"max_concurrent_streams"`
 		InitialWindow        uint32 `json:"initial_window"`
 		ConnWindow           uint32 `json:"conn_window"`
@@ -161,6 +163,7 @@ func main() {
 		MaxConnsPerIP: fc.MaxConnsPerIP,
 		SpliceBody:    fc.SpliceBody || *splice,
 		H2C:           fc.H2C || *h2c,
+		H2ALPN:        fc.H2ALPN,
 		H2: h2.Config{
 			MaxConcurrentStreams: fc.H2.MaxConcurrentStreams,
 			InitialWindow:        fc.H2.InitialWindow,
