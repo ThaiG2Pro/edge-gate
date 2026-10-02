@@ -538,3 +538,53 @@ func TestDataAfterRST(t *testing.T) {
 		}
 	}
 }
+
+// P10-3 (RFC 9113 §10.5 "tiny increments … large number of DATA frames"),
+// đóng 2026-10-02 bằng SỐ ĐO, không bằng phòng tuyến: client INITIAL_WINDOW_SIZE
+// 0 rồi WINDOW_UPDATE 1 byte × 20 000 cho response 1 MiB. Vì ghi đồng bộ (D3) và
+// mỗi DATA lấy TOÀN BỘ credit đang dồn, số DATA frame ≤ số WINDOW_UPDATE (+ phần
+// cắt theo MAX_FRAME_SIZE) — không khuếch đại; đo được 878-1 208 frame cho
+// 20 000 update (flush mỗi 1/10/100 update; dưới -race 2 822-3 350). Test chốt
+// bất biến tất định đó (số frame tuỳ lịch chạy, không đem ra so).
+func TestTinyWindowUpdates(t *testing.T) {
+	for _, every := range []int{1, 100} {
+		s := startServer(t, Config{}, echo)
+		c := rawConn(t, s, Setting{SettingInitialWindowSize, 0})
+		c.WindowUpdate(0, 1<<30) // window connection rộng: chỉ window STREAM nhỏ giọt
+		c.Headers(1, true, GET("a", "/size/1048576")...)
+		var frames, got atomic.Int64
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			c.NC.SetReadDeadline(time.Now().Add(5 * time.Second))
+			for {
+				f, err := c.Fr.ReadFrame()
+				if err != nil {
+					return
+				}
+				if f.Type == FrameData {
+					frames.Add(1)
+					if got.Add(int64(len(f.Payload))) == 20000 {
+						return
+					}
+				}
+			}
+		}()
+		const updates = 20000
+		for i := 0; i < updates; i++ {
+			c.Fr.WriteWindowUpdate(1, 1)
+			if i%every == every-1 {
+				c.Fr.Flush()
+			}
+		}
+		c.Fr.Flush()
+		<-done
+		t.Logf("flush mỗi %d update: %d WINDOW_UPDATE ⇒ %d DATA frame, %d byte", every, updates, frames.Load(), got.Load())
+		if got.Load() != updates {
+			t.Fatalf("nhận %d byte, cấp %d byte credit", got.Load(), updates)
+		}
+		if frames.Load() > updates+1<<20/defaultMaxFrame {
+			t.Fatalf("khuếch đại: %d DATA frame > %d WINDOW_UPDATE", frames.Load(), updates)
+		}
+	}
+}

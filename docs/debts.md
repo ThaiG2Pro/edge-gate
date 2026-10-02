@@ -307,18 +307,6 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
-### 🔧 P10-3 · WINDOW_UPDATE nhỏ giọt ⇒ một DATA frame + một Flush mỗi increment
-
-RFC 9113 §10.5: "Providing tiny increments to flow control in WINDOW_UPDATE frames can cause a sender to generate a
-large number of DATA frames." `h2/conn.go:Stream.WriteData` gửi ngay `min(window, …)` byte — client cho từng 1 byte ⇒
-1 MiB response = 1 048 576 frame 10 byte + 1 048 576 syscall. Sửa: chỉ gửi khi window ≥ min(còn lại, 1 KiB) (hoặc
-đếm frame/byte và ENHANCE_YOUR_CALM). Test trước: client `INITIAL_WINDOW_SIZE 0` rồi WINDOW_UPDATE 1 × 10 000 ⇒ server
-gửi ≤ 100 DATA frame.
-
-```bash
-go test ./internal/h2 -run TestTinyWindowUpdates -v   # (chưa có)
-```
-
 ### 🔧 P10-4 · Không trần tốc độ cho PING / SETTINGS / request malformed
 
 Ghi đồng bộ dưới `wmu` (D3) chặn được hàng đợi ACK không trần (client không đọc ⇒ TCP backpressure), nhưng client
@@ -401,6 +389,18 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-3 · WINDOW_UPDATE nhỏ giọt — đóng 2026-10-02 bằng số đo: KHÔNG phải lỗ (tiền đề của món nợ sai)
+
+Món nợ ghi "1 MiB = 1 048 576 frame + 1 048 576 syscall" — ước lượng, chưa từng đo. Đo
+(`TestTinyWindowUpdates`, viết dạng "phải GOAWAY" trước, chạy trên code cũ): 20 000 WINDOW_UPDATE 1 byte ⇒ **878-1 208**
+DATA frame (client flush mỗi 1/10/100 update; dưới `-race` 2 822-3 350), không phải 20 000. Lý do: ghi đồng bộ dưới
+`wmu` (D3) và `WriteData` lấy **toàn bộ** credit đang dồn mỗi frame ⇒ trong lúc ghi một frame, client gửi thêm nhiều
+update và chúng gộp vào frame sau ⇒ số DATA frame ≤ số WINDOW_UPDATE (+ phần cắt theo MAX_FRAME_SIZE): **không khuếch
+đại**, chi phí client ≥ chi phí server. Kịch bản RFC 9113 §10.5 nhắm cài đặt *xếp hàng* frame. Không thêm phòng tuyến
+(ngưỡng "chờ ≥ 1 KiB" deadlock client window nhỏ hợp lệ; đếm-rồi-GOAWAY chặn nhầm nó). Test giữ lại làm chốt bất
+biến tất định "frame ≤ update + 64". Còn lại, không phải nợ: client đi từng bước (1 update, chờ DATA) tốn 1 RTT mỗi
+byte — tự giới hạn.
 
 ### ✅ P10-2 · Rate limit / shed không áp cho stream h2 — trả 2026-10-02 (sau phase 10 turn 3)
 

@@ -355,6 +355,7 @@ Nợ cũng phải chốt lại; các món dự kiến ghi ở log §1, cộng th
 |---|---|---|---|
 | G5 vế p99: mất gói 2 % làm h2 (1 conn) tệ hơn h1 (32 conn) ≥ 1.5x **cả ở đuôi** | Đuôi gần bằng nhau (1.06-1.13x); cái tệ nằm ở **trung vị** (2.65-2.93x) | `h2lab -mode tcphol` dưới `delay 10ms loss 2%`: p99 h2 309-332 ms vs h1 293-300 ms; p50 112-124 vs 42 ms | Hiểu lại HOL tầng TCP: không làm đuôi dài hơn (đuôi vẫn là một RTO), mà kéo **mọi** stream vào cùng một lần chờ RTO ⇒ dời giá từ vài request sang tất cả |
 | G8: h2 tốn CPU ≥ 1.3x và context switch ≥ 2x so với h1 vì hand-off goroutine đọc ⇄ goroutine stream | Ở 8×8 vs 64 conn: CPU 1.23x (trung vị), ctxsw 0.83-1.03x. Ở 1×1: CPU 1.8-2.3x, ctxsw 1.7x | `h2lab -mode cpu` mặc định và `-h2conns 1 -h2streams 1 -h1conns 1` | `voluntary_ctxt_switches` đếm luồng OS ngủ, không đếm chuyển goroutine; bận ⇒ hand-off không làm luồng ngủ. Đo thêm ở tải thấp; kết luận: giá hand-off tỉ lệ với độ **thưa** của tải |
+| (sổ nợ, sau turn 3) P10-3: "client cho window từng 1 byte ⇒ 1 MiB = 1 048 576 DATA frame + syscall" — viết từ RFC 9113 §10.5, chưa đo | 20 000 update 1 byte ⇒ 878-1 208 frame; số frame ≤ số update — không khuếch đại | `TestTinyWindowUpdates` viết dạng "phải GOAWAY", chạy trên code cũ: `DATA frame = 984, byte = 20000`; flush mỗi update: 1 208 | Đóng nợ bằng số đo; giữ test làm chốt bất biến; không thêm phòng tuyến có giá (chặn nhầm client window nhỏ) cho một rủi ro không có |
 | (lỗi spec, không phải giả thuyết) "Frame tới sau RST đều bỏ qua" | Chỉ frame tới sau RST **của mình** được bỏ qua; sau RST của peer ⇒ STREAM_CLOSED | h2spec 5.1/8 `Actual: WINDOW_UPDATE Frame` | Cờ `peerReset`; nhớ id mình RST (FIFO 256); `TestDataAfterRST` |
 
 ## Số đo
@@ -511,7 +512,7 @@ Chi tiết + lệnh trả trong [`../docs/debts.md`](../docs/debts.md).
 
 - [x] **P10-1** 🔧 Drain không biết connection h2 — **trả turn 3** (GOAWAY NO_ERROR; `TestH2Drain` 3.0 s/forced 2 → 202 ms/forced 0)
 - [x] **P10-2** 🔧 Rate limit / shed phase 7 không áp cho stream h2 — đường vòng qua h2c — **trả 2026-10-02** sau turn 3 (`admitDecision` dùng chung; `TestH2RateLimit` 6 × 200 → 2 × 200 + 4 × 429; `TestH2Shed`)
-- [ ] **P10-3** 🔧 WINDOW_UPDATE nhỏ giọt ⇒ một DATA frame + Flush mỗi increment (RFC 9113 §10.5)
+- [x] **P10-3** 🔧 WINDOW_UPDATE nhỏ giọt — **đóng 2026-10-02 bằng số đo**: không khuếch đại (20 000 update ⇒ 878-1 208 DATA frame; ghi đồng bộ + mỗi frame lấy hết credit), không thêm phòng tuyến
 - [ ] **P10-4** 🔧 Không trần tốc độ PING / SETTINGS / request malformed
 - [ ] **P10-5** ⏳ ALPN `h2` trên TLS
 - [ ] **P10-6** ⏳ h2spec 3.5/2 (listener `h2c_only` nếu cần 145/145)

@@ -106,3 +106,15 @@
   (sáu request h2 không chạm bucket); `TestH2Shed` ⇒ `/hello` 200 trong lúc `/slow` giữ slot duy nhất, `Inflight:0`.
 - Tách `admitDecision` khỏi `admit`; h2 gọi nó sau head, trước `Pick`. Sau sửa ×3 `-race`: `map[200:2 429:4]`, h1 429,
   `/hello` 503. Suite `-race` xanh; `nodefense7` đỏ đúng 3 test như commit trước (so bằng worktree của HEAD).
+
+## §5 P10-3 — 2026-10-02 13:58 → 14:00: nợ đóng bằng số đo
+
+- Kế hoạch ghi trong sổ nợ ("chờ window ≥ 1 KiB") có lỗ trước khi chạy: client hợp lệ với window nhỏ
+  (`TestFlowControlStreamWindow` dùng INITIAL 0 + update 7) sẽ deadlock; hạ ngưỡng theo window client công bố thì
+  attacker đặt 0 là né. Đổi hướng: đếm frame bị ép nhỏ ⇒ GOAWAY (khuôn D6 a′). Viết test "phải GOAWAY" trước.
+- Chạy trên code cũ: `DATA frame = 984, byte = 20000`, không GOAWAY. Đỏ — nhưng 984, không phải 20 000 như sổ nợ tính.
+  Thử client flush mỗi 1/10/100 update: 1 208 / 878 / 937 frame.
+- Vì sao: D3 ghi đồng bộ; `WriteData` lấy hết credit đang dồn mỗi frame ⇒ update đến trong lúc ghi gộp vào frame sau.
+  Số frame ≤ số update ⇒ không khuếch đại. Phòng tuyến cho rủi ro không tồn tại chỉ còn lại giá (chặn nhầm client
+  window nhỏ) ⇒ không thêm. Viết lại test thành chốt bất biến "frame ≤ update + 64" (×2 nhịp flush, ×3 `-race`:
+  2 822-3 350 frame). Suite `-race` xanh, `make h2-nodefense` đỏ 6.
