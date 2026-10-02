@@ -174,15 +174,6 @@ outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D tr�
 go test ./internal/proxy -run 'TestLBKillRevive' -count=3 -v
 ```
 
-### 🔧 P7-1 · D9 chọn lại CHÍNH backend vừa dial lỗi ⇒ 2× DialTimeout
-
-`TestDeadline/dial-502`: một backend không route ⇒ 502 sau **602-610 ms** với `DialTimeout` 300 ms. D9
-"Pick lại một lần" không loại backend vừa lỗi. Sửa: `lb.PickExcept(key, b)`; không còn ai ⇒ 502 ngay.
-
-```bash
-go test ./internal/proxy -run 'TestDeadline/dial' -v      # đòi el ≤ DialTimeout + 150 ms
-```
-
 ### 🔧 P7-2 · Không có trần connection theo IP — HeaderTimeout không giới hạn SỐ connection
 
 `bench/p7-slowlab.txt`: attacker một IP nối lại mỗi 10 s (1 500 reconnect) ⇒ proxy giữ 500 connection
@@ -358,6 +349,15 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P7-1 · D9 chọn lại chính backend vừa dial lỗi — trả 2026-10-02
+
+`lb/balancer.go:PickExcept(key, ex)` — picker nhận bản sao danh sách với `ex` thay bằng chỗ giữ `unavailable`
+(healthy=false; giữ vị trí ⇒ chash đi tiếp trên ring); `forward.go:roundTrip` dùng nó cho lượt chọn lại D9, không còn
+ai khác ⇒ 502 ngay. Test viết trước, đỏ trên code cũ: `TestDeadline/dial-502` siết ≤ DialTimeout + 150 ms ⇒ `502 sau
+602ms`; `TestRepickExcludesFailedBackend` (2 backend, một không route, least-conn, outlier tắt) ⇒ `200:17 502:3`. Sau
+(×3 `-race`): `502 sau 301-303ms`; `200:20` với 8-11 lượt bốc trúng backend xấu. `TestPickExcept`: 4 thuật toán × 300
+lượt không trả `ex`; chash giữ đúng một backend thay thế cho cùng key; một backend ⇒ nil.
 
 ### ✅ P-ops-1 · `make proxybench` để sót tiến trình — trả 2026-10-02
 

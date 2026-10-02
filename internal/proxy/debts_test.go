@@ -52,3 +52,33 @@ func TestUpstreamDiesMidBody(t *testing.T) {
 		t.Fatalf("lỗi body upstream tính cho backend: fails=%d, muốn 1", f)
 	}
 }
+
+// P7-1: hai backend (một không route, một sống), least-conn, outlier tắt (để
+// backend xấu luôn được chọn lại được). Request nào bốc trúng backend xấu thì
+// lượt chọn lại D9 PHẢI sang backend kia ⇒ mọi request 200. Bản cũ (Pick thường)
+// chọn lại chính backend xấu ~50 % (hoà inflight ⇒ ngẫu nhiên) ⇒ 502.
+func TestRepickExcludesFailedBackend(t *testing.T) {
+	const dl = 150 * time.Millisecond
+	s, p := startProxyS(t, "", func(c *Config) {
+		c.Upstream = ""
+		c.Upstreams = []string{"10.255.255.1:81", startFixture(t)}
+		c.DialTimeout = dl
+		c.LB.Algo = "leastconn"
+		c.LB.Health.Disabled = true
+		c.LB.Outlier.Disabled = true
+	})
+	codes := map[int]int{}
+	for i := 0; i < 20; i++ {
+		rc := dialRaw(t, p)
+		resp, _ := rc.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+		codes[resp.Status]++
+	}
+	st := s.LBStats()
+	t.Logf("status %v; picks xấu=%d tốt=%d", codes, st.Backends[0].Picks, st.Backends[1].Picks)
+	if codes[200] != 20 {
+		t.Fatalf("D9 chọn lại backend vừa dial lỗi: %v", codes)
+	}
+	if st.Backends[0].Picks == 0 {
+		t.Fatal("không request nào bốc trúng backend xấu — test không đo gì")
+	}
+}

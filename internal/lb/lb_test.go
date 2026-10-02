@@ -446,3 +446,36 @@ func TestBreakerHalfOpen(t *testing.T) {
 		t.Fatalf("closed rồi mà b0 chỉ nhận %d/32 (RR ⇒ 8)", n)
 	}
 }
+
+// P7-1: PickExcept không bao giờ trả backend bị loại, ở cả bốn thuật toán; với
+// chash, key vẫn rơi vào CÙNG một backend thay thế mỗi lần (đi tiếp trên ring).
+func TestPickExcept(t *testing.T) {
+	for _, algo := range []string{"rr", "leastconn", "p2c", "chash"} {
+		bl, err := New([]string{"a:1", "b:1", "c:1"}, Config{Algo: algo, Health: HealthConfig{Disabled: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var alt *Backend
+		for i := 0; i < 300; i++ {
+			key := "k"
+			ex := bl.Pick(key)
+			bl.Done(ex, time.Millisecond, false)
+			b := bl.PickExcept(key, ex)
+			if b == nil || b == ex {
+				t.Fatalf("%s: PickExcept trả %v (loại %s)", algo, b, ex.Addr)
+			}
+			if algo == "chash" {
+				if alt == nil {
+					alt = b
+				} else if b != alt {
+					t.Fatalf("chash: backend thay thế đổi %s → %s cho cùng key", alt.Addr, b.Addr)
+				}
+			}
+			bl.Done(b, time.Millisecond, false)
+		}
+	}
+	one, _ := New([]string{"a:1"}, Config{Health: HealthConfig{Disabled: true}})
+	if b := one.PickExcept("", one.Pick("")); b != nil {
+		t.Fatalf("một backend, loại nó ⇒ phải nil, có %s", b.Addr)
+	}
+}

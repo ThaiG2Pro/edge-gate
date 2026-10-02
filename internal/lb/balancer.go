@@ -109,10 +109,31 @@ func (bl *Balancer) Close() {
 
 // Pick chọn backend cho request có khoá key (chỉ chash dùng) và tăng inflight
 // (D2: đếm theo request, từ ĐÂY). nil ⇒ không còn backend nào dùng được ⇒ 503.
-func (bl *Balancer) Pick(key string) *Backend {
+func (bl *Balancer) Pick(key string) *Backend { return bl.pick(bl.backends, key) }
+
+// unavailable: chỗ giữ cho backend bị loại trong PickExcept — healthy=false
+// (zero value) ⇒ available() luôn false. Giữ ĐÚNG vị trí trong danh sách để
+// consistent hash (ring tham chiếu chỉ số) đi tiếp sang vnode kế, không lệch.
+var unavailable = &Backend{}
+
+// PickExcept: như Pick nhưng không bao giờ trả ex (P7-1, trả 2026-10-02). Proxy
+// dùng cho lượt chọn lại D9 sau khi dial ex lỗi — bản cũ gọi Pick ⇒ least-conn
+// hoà inflight / rr một backend chọn lại CHÍNH ex ⇒ 2× DialTimeout rồi 502.
+func (bl *Balancer) PickExcept(key string, ex *Backend) *Backend {
+	all := make([]*Backend, len(bl.backends))
+	for i, b := range bl.backends {
+		if b == ex {
+			b = unavailable
+		}
+		all[i] = b
+	}
+	return bl.pick(all, key)
+}
+
+func (bl *Balancer) pick(all []*Backend, key string) *Backend {
 	now := time.Now()
 	for try := 0; try < 3; try++ {
-		b := bl.picker.Pick(bl.backends, now, key)
+		b := bl.picker.Pick(all, now, key)
 		if b == nil {
 			break
 		}

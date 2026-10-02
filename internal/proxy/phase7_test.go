@@ -95,8 +95,9 @@ func TestDeadline(t *testing.T) {
 		}
 	})
 	t.Run("dial-502", func(t *testing.T) {
-		// 10.255.255.1: không route ⇒ SYN rơi ⇒ chỉ deadline mới cứu. Một backend
-		// ⇒ D9 chọn lại CHÍNH nó ⇒ hai lần dial.
+		// 10.255.255.1: không route ⇒ SYN rơi ⇒ chỉ deadline mới cứu. Một backend.
+		// P7-1 (trả 2026-10-02): D9 chọn lại bằng PickExcept ⇒ không còn ai khác ⇒
+		// 502 ngay sau MỘT DialTimeout (bản cũ chọn lại CHÍNH nó ⇒ 602-610 ms).
 		p := startProxy(t, "10.255.255.1:81", tight)
 		c, _ := net.Dial("tcp", p)
 		defer c.Close()
@@ -110,8 +111,8 @@ func TestDeadline(t *testing.T) {
 			t.Fatalf("đọc: %v sau %s", err, el)
 		}
 		t.Logf("dial không route: %d sau %s (DialTimeout %s)", resp.Status, el.Round(time.Millisecond), dl)
-		if resp.Status != 502 || el > 2*dl+150*time.Millisecond {
-			t.Fatalf("muốn 502 trong ≤ 2×DialTimeout")
+		if resp.Status != 502 || el > dl+150*time.Millisecond {
+			t.Fatalf("muốn 502 trong ≤ DialTimeout + 150 ms (không dial lại backend vừa lỗi)")
 		}
 	})
 	t.Run("upstream-head-504", func(t *testing.T) {

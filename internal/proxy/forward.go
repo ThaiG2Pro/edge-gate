@@ -80,9 +80,20 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	var p *pool
 	var start time.Time
 	repicked := false
+	var failed *lb.Backend // P7-1: backend vừa dial lỗi — lượt chọn lại D9 loại nó
 	for attempt := 0; ; attempt++ {
 		if attempt == 0 {
-			be = bl.Pick(key)
+			if failed != nil {
+				be = bl.PickExcept(key, failed)
+				if be == nil {
+					// Không còn backend nào KHÁC ⇒ 502 ngay, không dial lại cái vừa lỗi.
+					keep := s.drain(c, req) && !req.Close
+					s.writeError(c, bw, 502, "không dial được upstream", keep)
+					return keep
+				}
+			} else {
+				be = bl.Pick(key)
+			}
 			if be == nil {
 				// D8: không còn backend nào dùng được ⇒ 503 (không phải 502),
 				// chưa đụng body ⇒ drain, giữ client.
@@ -115,6 +126,7 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 				// backend ⇒ backend vừa chết ⇒ refused) — trước đây trả 502 dù chưa
 				// byte nào đi đâu; lộ ra dưới -race ở TestLBKillRevive.
 				repicked = true
+				failed = be
 				attempt = -1
 				continue
 			}
