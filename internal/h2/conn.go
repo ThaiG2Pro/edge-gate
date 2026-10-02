@@ -138,7 +138,7 @@ type Stream struct {
 	bodyErr    error
 	declCL     int64 // content-length khai báo, -1 = không
 	recvd      int64
-	remoteDone bool // END_STREAM từ client
+	remoteDone bool                // END_STREAM từ client
 	trailer    []hpack.HeaderField // trailer request (P10-7), có sau bodyEOF
 	reset      bool
 	peerReset  bool // RST đến TỪ CLIENT (khác: ta RST) — §5.1 closed
