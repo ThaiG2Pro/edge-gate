@@ -354,16 +354,6 @@ go test ./internal/proxy -run TestTrailerForwarded -v
 `forward.go` D7: 101 không thuộc phase 3. WebSocket cần tunnel hai chiều sau head. Phase 7 (khi có
 mô hình connection lifetime) hoặc phase riêng.
 
-### 🔧 P3-3 · Chưa có test upstream chết giữa body response
-
-Invariant "một response cho một request" hiện chỉ đúng theo đọc code. Test: fixture Hijack ghi
-`Content-Length: 100` rồi 50 byte rồi đóng ⇒ proxy **đóng** client, không ghi 502; client
-đọc body phải nhận `io.ErrUnexpectedEOF`.
-
-```bash
-go test ./internal/proxy -run TestUpstreamDiesMidBody -v
-```
-
 ### 📏 P3-5 · G2/G3 dao động ±0.2x giữa hai lần chạy
 
 3.39x / 3.20x và 1.44x / 1.63x cùng máy, 3 tiến trình chia 6 core. Trả cùng P-env-2:
@@ -374,6 +364,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P3-3 · Test upstream chết giữa body response — trả 2026-10-02
+
+`debts_test.go:TestUpstreamDiesMidBody`: upstream gửi `Content-Length: 100` + 50 byte rồi đóng ⇒ client nhận đúng 50
+byte + `io.ErrUnexpectedEOF`, sau đó EOF sạch (không byte nào thêm), backend `fails=1` (×3 `-race`). Xanh ngay lần đầu
+— bất biến đã đúng theo code — nên kiểm bằng **đột biến**: thêm `writeError(502)` sau lỗi body trong
+`forward.go:exchange` ⇒ test đỏ `body: 100 byte, err <nil>` (50 byte body + 50 byte đầu của trang 502 dính vào body —
+đúng "hai response cho một request"); trả file về `git checkout`.
 
 ### ✅ P3-4 · G6 chạy đủ 1 000 request — trả 2026-10-02
 
