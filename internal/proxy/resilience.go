@@ -55,6 +55,7 @@ type ResilienceStats struct {
 	DrainForced   int64 // connection còn sống lúc hết hạn drain ⇒ Close cưỡng bức
 	Misdirected   int64 // phase 8: 421 (Host không thuộc vhost của SNI / không vhost nào)
 	HandshakeFail int64 // phase 8: handshake TLS hỏng hoặc quá HandshakeTimeout
+	PerIPRejected int64 // P7-2: connection bị đóng ngay vì IP vượt MaxConnsPerIP
 }
 
 type resilience struct {
@@ -69,6 +70,7 @@ type resilience struct {
 	connsActive                        atomic.Int64
 	drainedIdle, drainForced           atomic.Int64
 	misdirected, handshakeFail         atomic.Int64 // phase 8: 421, handshake hỏng
+	perIPRejected                      atomic.Int64 // P7-2
 }
 
 func (s *Server) initResilience() {
@@ -179,7 +181,7 @@ func (s *Server) ResilienceStats() ResilienceStats {
 		RateLimited: r.rateLimited.Load(), ShedQueueFull: r.shedFull.Load(), ShedTimeout: r.shedTimeout.Load(),
 		Queued: r.queued.Load(), ConnsActive: r.connsActive.Load(),
 		DrainedIdle: r.drainedIdle.Load(), DrainForced: r.drainForced.Load(),
-		Misdirected: r.misdirected.Load(), HandshakeFail: r.handshakeFail.Load(),
+		Misdirected: r.misdirected.Load(), HandshakeFail: r.handshakeFail.Load(), PerIPRejected: r.perIPRejected.Load(),
 	}
 	if r.slots != nil {
 		st.Inflight = int64(len(r.slots))

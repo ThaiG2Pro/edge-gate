@@ -1,0 +1,9 @@
+slowlab: conns=500 byte-every=10s src=127.0.0.2 duration=30s hold=12s probe=50 rps header-timeout=10s (áp dụng: true) max-conns=0 max-conns-per-ip=32 max-inflight=0
+  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)
+baseline       n=250 200:51.6% io-nohead:121
+               200: p50 1.12ms p90 1.93ms p99 2.67ms p99.9 2.73ms max 3.01ms · goodput 26/s
+attack:        proxy giữ 32 connection (trước 0); bộ nhớ tiến trình +12.2 MiB ⇒ 391.5 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 200:50.9% io-nohead:736
+               200: p50 6.22ms p90 24.3ms p99 60.54ms p99.9 84.68ms max 95.57ms · goodput 25/s
+               attacker: reconnect 1116812, dial lỗi 0; proxy giữ 32 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 0 connection

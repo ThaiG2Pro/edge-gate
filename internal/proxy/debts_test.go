@@ -168,3 +168,53 @@ func TestRequestTrailerForwarded(t *testing.T) {
 		t.Fatalf("trailer cấm Content-Length: %d, muốn 400", resp.Status)
 	}
 }
+
+// P7-2: MaxConnsPerIP 3. Năm connection rỗi từ 127.0.0.2 ⇒ 3 được giữ, 2 bị đóng
+// ngay (đọc thấy EOF, không chờ HeaderTimeout); 127.0.0.1 cùng lúc vẫn được phục
+// vụ 200; đóng bớt một connection của 127.0.0.2 ⇒ slot về (I7) ⇒ nối mới được.
+func TestMaxConnsPerIP(t *testing.T) {
+	s, p := startProxyS(t, startFixture(t), func(c *Config) { c.MaxConnsPerIP = 3 })
+	dialFrom := func(src string) net.Conn {
+		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(src)}}
+		c, err := d.Dial("tcp", p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Close() })
+		return c
+	}
+	closedFast := func(c net.Conn) bool {
+		c.SetReadDeadline(time.Now().Add(300 * time.Millisecond)) // ≪ HeaderTimeout 2 s
+		_, err := c.Read(make([]byte, 1))
+		return err == io.EOF
+	}
+	var attacker []net.Conn
+	for i := 0; i < 5; i++ {
+		attacker = append(attacker, dialFrom("127.0.0.2"))
+	}
+	closed := 0
+	for _, c := range attacker {
+		if closedFast(c) {
+			closed++
+		}
+	}
+	rc := dialRaw(t, p) // 127.0.0.1
+	resp, _ := rc.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+	st := s.ResilienceStats()
+	t.Logf("127.0.0.2: %d/5 bị đóng ngay; 127.0.0.1: %d; PerIPRejected=%d ConnsActive=%d", closed, resp.Status, st.PerIPRejected, st.ConnsActive)
+	if closed != 2 || st.PerIPRejected != 2 || resp.Status != 200 {
+		t.Fatalf("muốn 2/5 bị đóng, IP khác 200: closed=%d status=%d %+v", closed, resp.Status, st)
+	}
+	// Trả slot: đóng một connection đang được giữ ⇒ connection mới từ 127.0.0.2 được nhận.
+	for _, c := range attacker {
+		c.Close()
+		break
+	}
+	deadline := time.Now().Add(time.Second)
+	for s.ResilienceStats().ConnsActive > 3 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if c := dialFrom("127.0.0.2"); closedFast(c) {
+		t.Fatal("slot perIP không được trả khi connection đóng (I7)")
+	}
+}

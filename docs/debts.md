@@ -171,15 +171,15 @@ outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D tr�
 go test ./internal/proxy -run 'TestLBKillRevive' -count=3 -v
 ```
 
-### 🔧 P7-2 · Không có trần connection theo IP — HeaderTimeout không giới hạn SỐ connection
+### 📏 P7-2b · Trần theo IP đổi RAM lấy CPU: đóng ngay ⇒ attacker nối lại liên tục
 
-`bench/p7-slowlab.txt`: attacker một IP nối lại mỗi 10 s (1 500 reconnect) ⇒ proxy giữ 500 connection
-suốt bài, 20.7 KiB mỗi cái. Thêm `MaxConnsPerIP` (khoá = **peer**, không XFF — trước khi đọc head thì chưa
-có XFF), vượt ⇒ đóng ngay sau Accept. Test fail trước: slowlab đòi proxy giữ ≤ trần từ `127.0.0.2`, probe
-từ `127.0.0.1` 100 %.
+slowlab 500 conn, `-max-conns-per-ip 100`: proxy giữ 100 thay vì 500, nhưng attacker bị đóng ngay nên nối lại
+**828 913** lần / 30 s (không trần: 1 500) ⇒ p99 probe **4.71 → 88.88 ms** (attacker + proxy + probe cùng tiến trình,
+không ghim core — một phần là CPU của chính attacker). Hướng: tarpit (giữ connection bị từ chối không đọc, đóng sau
+vài trăm ms — tốn fd thay CPU) hoặc trần ở kernel (`iptables connlimit`, SYN). Đo trên Linux thuần, attacker tách máy:
 
 ```bash
-go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 32
+taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 100   # × {đóng ngay, tarpit 200 ms}
 ```
 
 ### ⏳ P7-3 · Trần eject 50 % + half-open: hành vi nảy ra, chưa đăng ký
@@ -320,6 +320,16 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P7-2 · Trần connection theo IP — trả 2026-10-02
+
+`Config.MaxConnsPerIP` (khoá = IP peer; `proxy.go:track` đếm dưới `mu`, `untrack` trả — I7, xoá key về 0); vượt ⇒
+đóng ngay sau Accept, trước goroutine/bufio; `ResilienceStats.PerIPRejected`; `edgegate` `max_conns_per_ip`, `slowlab
+-max-conns-per-ip`. `TestMaxConnsPerIP` (×3 `-race`): 5 conn rỗi từ 127.0.0.2 với trần 3 ⇒ 2 bị đóng ngay (EOF
+< 300 ms ≪ HeaderTimeout), 127.0.0.1 vẫn 200, đóng một conn ⇒ slot về. slowlab 500 conn (`bench/p7-2-slowlab-perip100.txt`):
+proxy giữ **100** (phase 7: 500), probe 100 % cả baseline lẫn lúc tấn công. Lệnh ghi trong sổ (`-max-conns-per-ip 32`)
+chọn sai ngưỡng: probe có 64 worker keep-alive cùng một IP ⇒ baseline chỉ 51.6 % 200 (`bench/p7-2-slowlab-perip.txt`) —
+trần đếm mọi connection phải lớn hơn độ đồng thời hợp lệ của một IP. Cái giá mới đo được ⇒ P7-2b.
 
 ### ✅ P6-2 · P2C chia lệch trên 4 node giống hệt — trả 2026-10-02
 

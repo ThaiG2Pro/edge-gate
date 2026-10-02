@@ -69,6 +69,12 @@ type Config struct {
 	// 0 = không trần (mặc định). CHỈ để chứng minh G3: trần này chính là thứ
 	// Slowloris cần; shed theo request (Shed) mới là cách đúng.
 	MaxConns int
+	// MaxConnsPerIP (P7-2, trả 2026-10-02): trần connection đồng thời mỗi IP
+	// PEER (không XFF — lúc Accept chưa có byte nào). Vượt ⇒ đóng ngay sau Accept.
+	// HeaderTimeout giới hạn THỜI GIAN một connection Slowloris sống, không giới
+	// hạn SỐ connection một IP mở lại liên tục (phase 7: 500 conn × 20.7 KiB).
+	// 0 = không trần.
+	MaxConnsPerIP int
 	// ReusePort (D9): SO_REUSEPORT ở ListenAndServe — hai instance cùng port.
 	ReusePort bool
 	// DrainIdleGrace (D8′, phase 7 turn 2): lúc Drain, connection RỖI được chờ
@@ -196,6 +202,8 @@ type Server struct {
 	// Phase 10: connection h2 đã nhận, bộ đếm stream cộng dồn.
 	h2conns atomic.Int64
 	h2stats h2.Stats
+	// P7-2: số connection đang mở theo IP peer (dưới mu).
+	perIP map[string]int
 }
 
 // SpliceStats (phase 9 D5): số response có body đi bằng splice, và số byte.
@@ -322,7 +330,16 @@ func (s *Server) Serve(ln net.Listener) error {
 			}
 			return err
 		}
-		st := s.track(c)
+		st, ok := s.track(c)
+		if !ok {
+			// P7-2: IP này đã đủ MaxConnsPerIP — đóng trước khi có goroutine/bufio.
+			c.Close()
+			s.res.perIPRejected.Add(1)
+			if s.res.connSem != nil {
+				<-s.res.connSem
+			}
+			continue
+		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -391,21 +408,42 @@ type connState struct {
 	up atomic.Pointer[net.Conn]
 	// pre: byte đầu đọc lúc rỗi khi không cầm bufio (phase 9 D2).
 	pre prefixReader
+	ip  string // P7-2: khoá perIP ("" = không đếm)
 	// h2: connection đã sang h2c (phase 10) — Drain gửi GOAWAY qua đây.
 	h2 atomic.Pointer[h2.Conn]
 }
 
-func (s *Server) track(c net.Conn) *connState {
+func (s *Server) track(c net.Conn) (*connState, bool) {
 	st := &connState{}
 	s.mu.Lock()
+	if lim := s.cfg.MaxConnsPerIP; lim > 0 {
+		ip := c.RemoteAddr().String()
+		if h, _, err := net.SplitHostPort(ip); err == nil {
+			ip = h
+		}
+		if s.perIP == nil {
+			s.perIP = map[string]int{}
+		}
+		if s.perIP[ip] >= lim {
+			s.mu.Unlock()
+			return nil, false
+		}
+		s.perIP[ip]++
+		st.ip = ip
+	}
 	s.conns[c] = st
 	s.mu.Unlock()
 	s.res.connsActive.Add(1)
-	return st
+	return st, true
 }
 
 func (s *Server) untrack(c net.Conn) {
 	s.mu.Lock()
+	if st := s.conns[c]; st != nil && st.ip != "" {
+		if s.perIP[st.ip]--; s.perIP[st.ip] <= 0 {
+			delete(s.perIP, st.ip) // map không phình theo số IP từng thấy
+		}
+	}
 	delete(s.conns, c)
 	s.mu.Unlock()
 	s.res.connsActive.Add(-1)

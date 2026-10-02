@@ -41,6 +41,7 @@ func main() {
 	rate := flag.Float64("probe-rate", 50, "probe rps (open-loop)")
 	headerTO := flag.Duration("header-timeout", 10*time.Second, "Limits.HeaderTimeout")
 	maxConns := flag.Int("max-conns", 0, "Config.MaxConns (D3) — 0 = không trần")
+	perIP := flag.Int("max-conns-per-ip", 0, "Config.MaxConnsPerIP (P7-2) — 0 = không trần")
 	inflight := flag.Int("max-inflight", 0, "Shed.MaxInflight (D7) — 0 = tắt")
 	target := flag.String("target", "proxy", "proxy | null — null: attacker nối vào listener chỉ accept rồi giữ (không goroutine, không buffer) ⇒ hiệu chuẩn phần bộ nhớ của CHÍNH attacker")
 	flag.Parse()
@@ -52,7 +53,7 @@ func main() {
 	defer stop()
 	lim := httpx.DefaultLimits()
 	lim.HeaderTimeout = *headerTO
-	srv := proxy.New(proxy.Config{Listen: "127.0.0.1:0", Upstream: up, Limits: lim, MaxConns: *maxConns,
+	srv := proxy.New(proxy.Config{Listen: "127.0.0.1:0", Upstream: up, Limits: lim, MaxConns: *maxConns, MaxConnsPerIP: *perIP,
 		Shed: proxy.ShedConfig{MaxInflight: *inflight, MaxQueue: *inflight}, Logf: func(string, ...any) {}})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -81,8 +82,8 @@ func main() {
 		}()
 		atkAddr = nl.Addr().String()
 	}
-	fmt.Printf("slowlab: conns=%d byte-every=%s src=%s duration=%s hold=%s probe=%.0f rps header-timeout=%s (áp dụng: %v) max-conns=%d max-inflight=%d\n",
-		*conns, *every, *src, *dur, *hold, *rate, *headerTO, headerTimeoutApplied(), *maxConns, *inflight)
+	fmt.Printf("slowlab: conns=%d byte-every=%s src=%s duration=%s hold=%s probe=%.0f rps header-timeout=%s (áp dụng: %v) max-conns=%d max-conns-per-ip=%d max-inflight=%d\n",
+		*conns, *every, *src, *dur, *hold, *rate, *headerTO, headerTimeoutApplied(), *maxConns, *perIP, *inflight)
 	fmt.Println("  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)")
 
 	probe := func(d time.Duration) (loadgen.Summary, time.Duration) {

@@ -76,7 +76,8 @@ type fileConfig struct {
 	DrainTimeoutMs     int     `json:"drain_timeout_ms"`
 	DrainIdleGraceMs   *int    `json:"drain_idle_grace_ms"` // nil ⇒ 1000 (D8′); 0 ⇒ đóng connection rỗi ngay
 	ReusePort          bool    `json:"reuse_port"`
-	SpliceBody         bool    `json:"splice_body"` // phase 9 D5
+	MaxConnsPerIP      int     `json:"max_conns_per_ip"` // P7-2: 0 = không trần
+	SpliceBody         bool    `json:"splice_body"`      // phase 9 D5
 	// Phase 10 D7: h2c prior knowledge trên listener plaintext (cùng port h1).
 	H2C bool `json:"h2c"`
 	H2  struct {
@@ -152,13 +153,14 @@ func main() {
 			MaxIdle:     fc.Pool.MaxIdle,
 			MaxIdleTime: ms(fc.Pool.MaxIdleTimeMs),
 		},
-		LB:          lbCfg(fc),
-		RateLimit:   proxy.RateLimitConfig{Rate: fc.RateLimit.Rate, Burst: fc.RateLimit.Burst, MaxKeys: fc.RateLimit.MaxKeys},
-		Shed:        proxy.ShedConfig{MaxInflight: fc.Shed.MaxInflight, MaxQueue: fc.Shed.MaxQueue, QueueTimeout: ms(fc.Shed.QueueTimeoutMs)},
-		RetryBudget: proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
-		ReusePort:   fc.ReusePort,
-		SpliceBody:  fc.SpliceBody || *splice,
-		H2C:         fc.H2C || *h2c,
+		LB:            lbCfg(fc),
+		RateLimit:     proxy.RateLimitConfig{Rate: fc.RateLimit.Rate, Burst: fc.RateLimit.Burst, MaxKeys: fc.RateLimit.MaxKeys},
+		Shed:          proxy.ShedConfig{MaxInflight: fc.Shed.MaxInflight, MaxQueue: fc.Shed.MaxQueue, QueueTimeout: ms(fc.Shed.QueueTimeoutMs)},
+		RetryBudget:   proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
+		ReusePort:     fc.ReusePort,
+		MaxConnsPerIP: fc.MaxConnsPerIP,
+		SpliceBody:    fc.SpliceBody || *splice,
+		H2C:           fc.H2C || *h2c,
 		H2: h2.Config{
 			MaxConcurrentStreams: fc.H2.MaxConcurrentStreams,
 			InitialWindow:        fc.H2.InitialWindow,
