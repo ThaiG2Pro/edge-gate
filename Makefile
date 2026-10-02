@@ -176,17 +176,25 @@ proxylab:
 
 # Số đo G2/G3/G4: tự chạy upstream + proxy (2 lần: -nodelay=true / false).
 # Closed-loop, 1 conn, cùng máy — chỉ đo OVERHEAD TƯƠNG ĐỐI của hop L7.
+# P-ops-1 (trả 2026-10-02): một recipe shell, trap EXIT dọn mọi tiến trình nền kể cả
+# khi một bước giữa chừng lỗi (bản cũ: `-kill $$(cat pid)` ở cuối không chạy khi bước
+# trước lỗi ⇒ upstream phase 3 còn sống tới phase 5). `go build` mỗi dòng một lệnh.
+# PROXYLAB=false ⇒ giả lập bước lỗi để kiểm trap.
+PROXYLAB ?= ./bin/proxylab
 proxybench:
-	go build -o bin/edgegate ./cmd/edgegate && go build -o bin/upstream ./cmd/upstream && go build -o bin/proxylab ./cmd/proxylab
-	./bin/upstream -addr :8081 & echo $$! > /tmp/upstream.pid; sleep 0.5
-	./bin/edgegate -config config/dev.json & echo $$! > /tmp/edgegate.pid; sleep 0.5
-	./bin/proxylab -mode overhead -n 2000
-	./bin/proxylab -mode keepalive -n 2000
-	./bin/proxylab -mode nagle -n 100 -chunkms 0 -label "[nodelay=true]"
-	-kill $$(cat /tmp/edgegate.pid); sleep 0.5
-	./bin/edgegate -config config/dev.json -nodelay=false & echo $$! > /tmp/edgegate.pid; sleep 0.5
-	./bin/proxylab -mode nagle -n 100 -chunkms 0 -label "[nodelay=false]"
-	-kill $$(cat /tmp/edgegate.pid) $$(cat /tmp/upstream.pid); rm -f /tmp/edgegate.pid /tmp/upstream.pid
+	go build -o bin/edgegate ./cmd/edgegate
+	go build -o bin/upstream ./cmd/upstream
+	go build -o bin/proxylab ./cmd/proxylab
+	@set -e; UP=; PX=; \
+	 trap 'kill $$PX $$UP 2>/dev/null; wait 2>/dev/null; true' EXIT; \
+	 ./bin/upstream -addr :8081 & UP=$$!; sleep 0.5; \
+	 ./bin/edgegate -config config/dev.json & PX=$$!; sleep 0.5; \
+	 $(PROXYLAB) -mode overhead -n 2000; \
+	 $(PROXYLAB) -mode keepalive -n 2000; \
+	 $(PROXYLAB) -mode nagle -n 100 -chunkms 0 -label "[nodelay=true]"; \
+	 kill $$PX; wait $$PX 2>/dev/null || true; \
+	 ./bin/edgegate -config config/dev.json -nodelay=false & PX=$$!; sleep 0.5; \
+	 $(PROXYLAB) -mode nagle -n 100 -chunkms 0 -label "[nodelay=false]"
 
 # Tắt hai phòng tuyến (drain body khi upstream chết; framing thay io.Copy thô)
 # ⇒ TestDrainOnUpstreamDown và TestRawCopyTrap PHẢI đỏ. Xanh là thất bại.
@@ -426,9 +434,10 @@ h2lab-tcphol: h2-bins
 # G2: h2spec (go install github.com/summerwind/h2spec/cmd/h2spec@latest) chống edgegate -h2c.
 H2SPEC ?= $(HOME)/go/bin/h2spec
 h2spec: h2-bins
-	@./bin/epolllab -impl epoll -loops 1 -addr 127.0.0.1:18100 & UP=$$!; \
+	@UP=; PX=; trap 'kill $$PX $$UP 2>/dev/null; wait 2>/dev/null; true' EXIT; \
+	 ./bin/epolllab -impl epoll -loops 1 -addr 127.0.0.1:18100 & UP=$$!; \
 	 ./bin/edgegate -config config/h2.json >/dev/null 2>&1 & PX=$$!; sleep 1; \
-	 $(H2SPEC) -h 127.0.0.1 -p 18093 -o 5 | tail -40; kill $$PX $$UP
+	 $(H2SPEC) -h 127.0.0.1 -p 18093 -o 5 | tail -40
 
 # Phản chứng D6 + P10-4: bản không phòng tuyến phải đỏ đúng 8 test.
 h2-nodefense:

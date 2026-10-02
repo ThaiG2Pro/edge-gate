@@ -333,12 +333,6 @@ tới 13 (session khác), closed-loop. Chạy lại trên Linux thuần, hai má
 taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 5   # × {8×8 vs 64, 1×1 vs 1}
 ```
 
-### 🔧 P-ops-1 · `make proxybench` để sót tiến trình; `&&` + `&`
-
-`pgrep -a -x upstream` lúc 16:00 phase 5 thấy `./bin/upstream -addr :8081` pid 146978 từ phase 3.
-Target `-kill $$(cat /tmp/upstream.pid)` không chạy khi bước trước lỗi. Sửa: `trap`/`|| true` + `pkill -x
-upstream` cuối target. Luật vận hành (mắc 3 lần): `go build` **một dòng riêng**, rồi mới `./bin/x &`.
-
 ### 🔧 P3-1 · Trailer chunked từ upstream bị bỏ (D4 phase 3)
 
 `forward.go:copyBody` gọi `ChunkedWriter.Close()` không ghi trailer; `resp.Trailer()` bị bỏ.
@@ -364,6 +358,13 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P-ops-1 · `make proxybench` để sót tiến trình — trả 2026-10-02
+
+`proxybench` viết lại thành một recipe shell: `trap 'kill $PX $UP; wait' EXIT` dọn mọi tiến trình nền trên MỌI đường
+ra; `go build` mỗi dòng một lệnh; biến `PROXYLAB` để giả lập bước lỗi. Kiểm 2026-10-02: `make proxybench
+PROXYLAB=false` ⇒ `Error 1`, `pgrep -x upstream/edgegate` = 0/0; chạy thật ⇒ đủ bảng G2-G4, sót 0/0. `make h2spec`
+(cùng khuôn rủi ro, h2spec thoát 1 vì ca 3.5/2) dùng cùng trap ⇒ sót `epolllab/edgegate` 0/0.
 
 ### ✅ P3-3 · Test upstream chết giữa body response — trả 2026-10-02
 
