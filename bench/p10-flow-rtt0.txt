@@ -1,0 +1,6 @@
+flow: lượt 1 window    65535: 8388608 byte trong 26ms = 319.78 MB/s
+flow: lượt 1 window  8388608: 8388608 byte trong 15ms = 569.94 MB/s
+flow: lượt 2 window    65535: 8388608 byte trong 22ms = 383.64 MB/s
+flow: lượt 2 window  8388608: 8388608 byte trong 15ms = 575.54 MB/s
+flow: lượt 3 window    65535: 8388608 byte trong 20ms = 413.60 MB/s
+flow: lượt 3 window  8388608: 8388608 byte trong 13ms = 630.95 MB/s

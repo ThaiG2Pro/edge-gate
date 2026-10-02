@@ -1,9 +1,9 @@
 # Phase 10 — (tùy chọn) HTTP/2 h2c: frame, HPACK, multiplexing, flow control
 
-- **Thời lượng dự kiến:** 3-4 ngày · **thực tế:** đang làm (turn 1 2026-10-01 17:46-18:16)
+- **Thời lượng dự kiến:** 3-4 ngày · **thực tế:** đang làm (turn 1 2026-10-01 17:46-18:16, turn 2 2026-10-02 11:48-13:40)
 - **Bắt đầu:** 2026-10-01 17:46 · **Kết thúc:** —
-- **Trạng thái:** 🚧 turn 1 xong (code + test + phản chứng), chưa đo — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase; D6 a′ thêm 18:08, trước khi đo.
-- **Commit:** — (commit nền `9a45ac3`)
+- **Trạng thái:** 🚧 turn 2 xong (đo G1-G8) — **2 giả thuyết sai/nửa sai** (G5 vế p99, G8 cả hai vế); G1-G4, G6, G7 đúng — giả thuyết và quyết định bên dưới viết **trước** file `.go` đầu tiên của phase; D6 a′ thêm 18:08, trước khi đo.
+- **Commit:** — (turn 1 `d4141b8`; commit nền `9a45ac3`)
 
 > **Đường đi thô, kể cả ngõ cụt:** [`phase10-log.md`](phase10-log.md). File này là bản biên tập.
 >
@@ -111,9 +111,15 @@ connection = trăm công việc: Rapid Reset, CONTINUATION flood, downgrade smug
 git checkout <commit phase 10>
 go test ./... -count=1 -race
 go test ./internal/h2/... ./internal/proxy -count=1 -tags nodefense10 -run 'Smuggle|RapidReset|Continuation'  # phải ĐỎ
+GOBIN=$HOME/go/bin go install github.com/summerwind/h2spec/cmd/h2spec@latest   # G2 — công cụ, không vào go.mod
 make h2lab          # G1, G3, G8
-make h2spec         # G2 (cần ~/go/bin/h2spec)
+make h2spec         # G2
+make h2lab-flow     # G4 vế RTT 0
+make h2lab-tcphol   # G5 phụ: RTT 0
+./bin/h2lab -mode tcphol -n 20 -par 32 -ref                                  # G5 phụ: đối chứng server net/http
+taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 3 -h2conns 1 -h2streams 1 -h1conns 1   # G8 phụ: tải thấp
 sudo tc qdisc add dev lo root netem delay 20ms && make h2lab-flow;  sudo tc qdisc del dev lo root   # G4
+sudo tc qdisc add dev lo root netem delay 10ms && make h2lab-tcphol; sudo tc qdisc del dev lo root   # G5 đối chứng
 sudo tc qdisc add dev lo root netem delay 10ms loss 2% && make h2lab-tcphol; sudo tc qdisc del dev lo root  # G5
 ```
 
@@ -199,14 +205,177 @@ Reproduce.
 turn 2 đo ra vẫn vậy thì chi phí đến từ connection h2 của chính mình, không phải từ TCP: mọi DATA đi qua một `wmu` +
 Flush mỗi frame, và window mặc định là 65 535. Phải tách hai thứ này ra trước khi chấm G5.
 
+### 2026-10-02 11:48-13:40 — Turn 2: đo G1-G8; h2spec 143 → 144/145; sửa một bug stream state
+
+Chi tiết + ngõ cụt: [`phase10-log.md` §2](phase10-log.md). Máy: load nền 1.6 lúc bắt đầu, nhảy 13.15 lúc 11:54
+(tiến trình ngoài `MainThread` pid 128249, 179 % CPU, session khác — không đụng), 0.8-2.5 lúc đo netem. Raw: `bench/p10-*.txt`.
+
+**G2 — h2spec 2.0.0** (`edgegate -config config/h2.json`, upstream `epolllab`):
+
+```console
+$ ~/go/bin/h2spec -h 127.0.0.1 -p 18093 -o 5        # lần ĐẦU, chưa sửa gì (bench/p10-h2spec-1.txt)
+      × 2: Sends invalid connection preface
+           Expected: Connection closed
+             Actual: Error: http2: failed reading the frame payload: unexpected EOF, note that the frame header looked like an HTTP/1.1 header
+      × 8: closed: Sends a DATA frame after sending RST_STREAM frame
+           Expected: GOAWAY Frame (Error Code: STREAM_CLOSED)
+                     RST_STREAM Frame (Error Code: STREAM_CLOSED)
+             Actual: WINDOW_UPDATE Frame (length:4, flags:0x00, stream_id:0)
+145 tests, 143 passed, 0 skipped, 2 failed
+$ ~/go/bin/h2spec -h 127.0.0.1 -p 18093 -o 5        # sau khi sửa 5.1/8 (bench/p10-h2spec-2.txt; ×3 lần như nhau)
+145 tests, 144 passed, 0 skipped, 1 failed
+$ # cùng lệnh trên bin/edgegate-nodefense10 (bench/p10-h2spec-nodefense10.txt)
+        × 1: Sends a HEADERS frame that contains the header field name in uppercase letters
+          × 1: Sends a HEADERS frame that contains the connection-specific header field
+          × 2: Sends a HEADERS frame that contains the TE header field with any value other than "trailers"
+          × 1: Sends a HEADERS frame with the "content-length" header field which does not equal the DATA frame payload length
+          × 2: Sends a HEADERS frame with the "content-length" header field which does not equal the sum of the multiple DATA frames payload length
+145 tests, 139 passed, 0 skipped, 6 failed
+```
+
+**Đọc kết quả:** 98.6 % → 99.3 %. Hai ca fail lần đầu, hai loại khác nhau:
+- **5.1/8 là bug hiểu sai spec.** RFC 9113 §5.1 (closed) chỉ cho "minimally process and then discard" frame tới sau RST
+  **do mình gửi**. Code dùng một cờ `reset` cho cả hai hướng, nên DATA sau RST **của client** bị bỏ qua lặng lẽ. Sửa:
+  cờ `peerReset` ⇒ STREAM_CLOSED. Viết test cho ca ngược lại thì lộ thêm bug thứ hai: TA RST, handler thoát, stream rời
+  map ⇒ DATA đang bay bị RST lần nữa. Sửa: nhớ id mình đã RST, FIFO trần 256 (`TestDataAfterRST`).
+- **3.5/2 là hệ quả cố ý của D7.** h2spec gửi `INVALID CONNECTION PREFACE\r\n\r\n`; trên port dùng chung, chuỗi đó là một
+  request h1 sai cú pháp ⇒ trả `400` rồi đóng là đúng cho h1. Không sửa.
+
+h2spec không có ca nào về Rapid Reset hay CONTINUATION flood. Bản `nodefense10` chỉ fail thêm 5 ca, cả 5 thuộc
+`validateDowngrade`. **Pass spec ≠ chịu được tấn công.**
+
+**G1 — HPACK** (`bench/p10-hpack.txt`, ×3 lượt như nhau, tất định):
+
+```console
+$ ./bin/h2lab -mode hpack -n 100
+  HEADERS #1        = 318 byte
+  HEADERS #2..#100    trung vị = 12 byte (min 12, max 12)
+  head h1 tương đương = 508 byte
+  tỉ số #1 / trung vị #2+   = 26.5x
+  tỉ số h1 / trung vị h2 #2+ = 42.3x
+```
+
+**G3 — HOL tầng HTTP** (RTT loopback, `bench/p10-hol.txt`):
+
+```console
+$ ./bin/h2lab -mode hol -n 20     # ×3 lượt
+  /fast một mình (h2)  p50 0.59 | 0.59 | 0.41 ms
+  /fast sau /slow, h2  p50 0.84 | 0.71 | 0.66 ms
+  /fast sau /slow, h1  p50 490.63 | 490.56 | 490.52 ms
+  h2 / một mình = 1.44x | 1.20x | 1.60x ; h1 / h2 = 581.3x | 694.8x | 746.6x
+```
+
+**G4 — trần flow control** (`bench/p10-flow-rtt0.txt`, `bench/p10-flow-rtt40.txt`):
+
+```console
+$ ./bin/h2lab -mode flow -rounds 3                          # RTT 0
+flow: lượt 1 window    65535: 8388608 byte trong 26ms = 319.78 MB/s
+flow: lượt 1 window  8388608: 8388608 byte trong 15ms = 569.94 MB/s
+  ... lượt 2: 383.64 / 575.54 MB/s; lượt 3: 413.60 / 630.95 MB/s
+$ tc qdisc show dev lo; ping -c 3 -q 127.0.0.1 | tail -1     # người dùng bật netem delay 20ms
+qdisc netem 8001: root refcnt 2 limit 1000 delay 20ms
+rtt min/avg/max/mdev = 40.075/40.307/40.662/0.254 ms
+$ ./bin/h2lab -mode flow -rounds 3
+flow: lượt 1 window    65535: 8388608 byte trong 5.562s = 1.51 MB/s
+flow: lượt 1 window  8388608: 8388608 byte trong 411ms = 20.43 MB/s
+flow: lượt 2 window    65535: 8388608 byte trong 5.327s = 1.57 MB/s
+flow: lượt 2 window  8388608: 8388608 byte trong 371ms = 22.61 MB/s
+flow: lượt 3 window    65535: 8388608 byte trong 5.371s = 1.56 MB/s
+flow: lượt 3 window  8388608: 8388608 byte trong 381ms = 22.02 MB/s
+```
+
+**Đọc kết quả:** 65 535 B / 40.3 ms = 1.63 MB/s lý thuyết; đo 1.51-1.57 (93-96 % trần). Đúng một window mỗi RTT —
+đây là cách window 64 KiB "mặc định hợp lý" của RFC trở thành trần 1.6 MB/s trên đường xuyên lục địa.
+
+**G5 — HOL tầng TCP** (32 GET 64 KiB song song × 20 vòng; `bench/p10-tcphol-*.txt`):
+
+```console
+$ ./bin/h2lab -mode tcphol -n 20 -par 32       # netem delay 10ms (RTT 20.2 ms), loss 0 — ×3
+  h2 1 conn × 32 stream: p50 48.7 | 47.7 | 47.6 ms   p99 79.9 | 81.1 | 81.1
+  h1 32 conn            : p50 42.0 | 41.8 | 41.9 ms   p99 44.9 | 44.1 | 45.0
+  h2/h1: p50 1.16x | 1.14x | 1.14x   p99 1.78x | 1.84x | 1.80x
+$ ./bin/h2lab -mode tcphol -n 20 -par 32       # netem delay 10ms loss 2% (ping: 5 % mất trên 20 gói) — ×3
+  h2 1 conn × 32 stream: p50 112.2 | 115.9 | 124.0 ms   p99 332.2 | 309.5 | 328.4   max 1246.1 | 349.4 | 343.6
+  h1 32 conn            : p50 42.3 | 42.2 | 42.3 ms     p99 293.3 | 293.2 | 299.7   max 525.4 | 568.3 | 535.9
+  h2/h1: p50 2.65x | 2.74x | 2.93x   p99 1.13x | 1.06x | 1.10x
+```
+
+**Đọc kết quả:** mất gói làm h2 tệ ở **trung vị** (2.7x), không ở đuôi (1.1x). Lý do: với h1, một gói mất chỉ chặn
+request trên connection đó — 2 % gói ⇒ vài phần trăm request dính RTO, đúng bằng p99 của h1 (≈ 293 ms ≈ RTO tối
+thiểu 200 ms + RTT). Với h2, một gói mất chặn **mọi** stream đang bay trên connection (byte sau chỗ mất nằm trong
+kernel chờ retransmit, không stream nào đọc được) ⇒ gần như request nào cũng dính ⇒ trung vị dịch lên, đuôi giữ nguyên
+cỡ (vẫn là một RTO). HOL ở tầng TCP **phân bố lại** cái giá của mất gói từ vài request sang tất cả. Đây chính là lý
+do QUIC tách stream xuống tầng transport.
+
+Phụ (RTT 0, không netem): h2/h1 p50 2.82x. Đối chứng cùng bài trên server `net/http` của Go (`-ref`, không qua
+EdgeGate) cũng 1.89-2.97x ⇒ chậm là của "32 stream dồn vào một socket" (một goroutine đọc ở client, ghi tuần tự), không
+phải của cài đặt h2 này. Ở RTT 0, CPU là đường ống hẹp; RTT 20 ms che đi gần hết (1.15x).
+
+**G8 — CPU/request** (proxy tiến trình con `taskset 0-1`, `GOMAXPROCS=2`; client `taskset 4-5`; closed-loop 10 s —
+*coordinated omission chưa loại trừ, chỉ đọc CPU/req*; `bench/p10-cpu.txt`, `bench/p10-cpu-1x1.txt`):
+
+```console
+$ taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 3 -dur 10s          # h2 8 conn × 8 stream vs h1 64 conn
+  lượt 1 h2: 192105 req (19202 rps), CPU proxy 13.01 s = 67.7 µs/req, ctxsw 0.136 /req
+  lượt 1 h1: 213059 req (21298 rps), CPU proxy 11.21 s = 52.6 µs/req, ctxsw 0.163 /req
+  lượt 2 h2: 233867 req (23385 rps), CPU proxy 14.77 s = 63.2 µs/req, ctxsw 0.132 /req
+  lượt 2 h1: 212769 req (21272 rps), CPU proxy 13.73 s = 64.5 µs/req, ctxsw 0.151 /req
+  lượt 3 h2: 183408 req (18336 rps), CPU proxy 12.63 s = 68.9 µs/req, ctxsw 0.182 /req
+  lượt 3 h1: 211127 req (21111 rps), CPU proxy 11.82 s = 56.0 µs/req, ctxsw 0.177 /req
+$ taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 3 -dur 10s -h2conns 1 -h2streams 1 -h1conns 1   # tải thấp
+  lượt 1 h2: 18381 req (1838 rps), CPU proxy 6.94 s = 377.6 µs/req, ctxsw 8.260 /req
+  lượt 1 h1: 33077 req (3308 rps), CPU proxy 5.35 s = 161.7 µs/req, ctxsw 4.720 /req
+  lượt 2 h2: 30366 req (3037 rps), CPU proxy 7.66 s = 252.3 µs/req, ctxsw 7.484 /req
+  lượt 2 h1: 35732 req (3573 rps), CPU proxy 5.07 s = 141.9 µs/req, ctxsw 4.505 /req
+  lượt 3 h2: 32520 req (3252 rps), CPU proxy 7.90 s = 242.9 µs/req, ctxsw 7.398 /req
+  lượt 3 h1: 40811 req (4081 rps), CPU proxy 5.21 s = 127.7 µs/req, ctxsw 4.386 /req
+```
+
+**Đọc kết quả:** ở cấu hình đã đăng ký, h2/h1 CPU 1.29 | 0.98 | 1.23x (trung vị 1.23, ngưỡng ≥ 1.3), ctxsw
+0.83 | 0.87 | 1.03x (ngưỡng ≥ 2x) ⇒ sai cả hai vế. Ở tải thấp (1 stream vs 1 conn): CPU 2.34 | 1.78 | 1.90x, ctxsw
+1.75 | 1.66 | 1.69x. Giả thuyết đã nhầm đơn vị: `voluntary_ctxt_switches` đếm lần **luồng OS** ngủ, không đếm lần
+chuyển goroutine. Proxy bận liên tục ⇒ goroutine đọc giao việc cho goroutine stream mà luồng không ngủ ⇒ hand-off gần
+như miễn phí. Tải thưa ⇒ mỗi hand-off đánh thức một luồng (trên WSL2: đánh thức vCPU, phase 9 — sàn 770 µs/req) ⇒ h2
+tốn gần 2x. Giá của kiến trúc hand-off phụ thuộc **độ bận**, không phải hằng số mỗi request.
+
+**G6, G7** (`bench/p10-g6g7.txt`, 13:37): số khớp turn 1 — mặc định: upstream thấy `[]` ở cả 3 ca smuggle, peak handler
+100, header block 65 542 B, upstream nhận 143 request; `nodefense10`: `["POST /" "GET /smuggled"]`, 5 000, 4 194 310 B,
+4 872.
+
+**Đang nghĩ gì:** turn 3 cần đọc:
+- RFC 9113 §5.2 (vì sao flow control tồn tại).
+- RFC 9113 §10.5 (DoS).
+- Bài CVE-2023-44487 / CVE-2024-27316, nếu tải được nguyên văn.
+
+Nợ cũng phải chốt lại; các món dự kiến ghi ở log §1, cộng thêm ca 3.5/2 của h2spec.
+
 ## Giả thuyết sai
 
 | Tôi tưởng là | Thực tế là | Lệnh + output đã lật tẩy | Đã sửa thế nào |
 |---|---|---|---|
+| G5 vế p99: mất gói 2 % làm h2 (1 conn) tệ hơn h1 (32 conn) ≥ 1.5x **cả ở đuôi** | Đuôi gần bằng nhau (1.06-1.13x); cái tệ nằm ở **trung vị** (2.65-2.93x) | `h2lab -mode tcphol` dưới `delay 10ms loss 2%`: p99 h2 309-332 ms vs h1 293-300 ms; p50 112-124 vs 42 ms | Hiểu lại HOL tầng TCP: không làm đuôi dài hơn (đuôi vẫn là một RTO), mà kéo **mọi** stream vào cùng một lần chờ RTO ⇒ dời giá từ vài request sang tất cả |
+| G8: h2 tốn CPU ≥ 1.3x và context switch ≥ 2x so với h1 vì hand-off goroutine đọc ⇄ goroutine stream | Ở 8×8 vs 64 conn: CPU 1.23x (trung vị), ctxsw 0.83-1.03x. Ở 1×1: CPU 1.8-2.3x, ctxsw 1.7x | `h2lab -mode cpu` mặc định và `-h2conns 1 -h2streams 1 -h1conns 1` | `voluntary_ctxt_switches` đếm luồng OS ngủ, không đếm chuyển goroutine; bận ⇒ hand-off không làm luồng ngủ. Đo thêm ở tải thấp; kết luận: giá hand-off tỉ lệ với độ **thưa** của tải |
+| (lỗi spec, không phải giả thuyết) "Frame tới sau RST đều bỏ qua" | Chỉ frame tới sau RST **của mình** được bỏ qua; sau RST của peer ⇒ STREAM_CLOSED | h2spec 5.1/8 `Actual: WINDOW_UPDATE Frame` | Cờ `peerReset`; nhớ id mình RST (FIFO 256); `TestDataAfterRST` |
 
 ## Số đo
 
-*(turn 2)*
+2026-10-02, commit `d4141b8` + sửa turn 2, máy WSL2 6 core (`bench/env-GOTIT-00663.txt`), Go 1.26.2. Latency G3/G5:
+lặp tuần tự theo vòng (không phải open-loop có rate — mỗi vòng chờ vòng trước), coi như closed-loop. G8 closed-loop,
+chỉ đọc CPU/req. RTT: loopback ~0.05 ms, hoặc netem như ghi.
+
+| # | Đại lượng | Đo được | Kỳ vọng | Chấm |
+|---|---|---|---|---|
+| G1 | HEADERS #1 / trung vị #2-#100; head h1 / HEADERS h2 #2+ | 26.5x; 42.3x | ≥ 5x; ≥ 10x | ✅ |
+| G2 | h2spec lần đầu → sau sửa | 98.6 % (143/145) → 99.3 % (144/145) | ≥ 85 % → ≥ 95 % | ✅ |
+| G3 | `/fast` sau `/slow` trên một conn: h1 p50; h2 / một mình; h1 / h2 | 490.5 ms; 1.20-1.60x (trung vị 1.44); 581-747x | ≥ 490 ms; ≤ 1.5x; ≥ 50x | ✅ (vế h2: 1/3 lượt vượt 1.5x) |
+| G4 | RTT 40 ms window 65 535; 8 MiB / 65 535; RTT 0 cùng tỉ số | 1.51-1.57 MB/s; 13.5-14.4x; 1.50-1.78x | ∈ [0.8, 2.4]; ≥ 8x; ≤ 2x | ✅ |
+| G5 | loss 2 %: h2/h1 p50; p99; loss 0: p50 | 2.65-2.93x; 1.06-1.13x; 1.14-1.16x | ≥ 1.5x; ≥ 1.5x; ∈ [0.67, 1.5] | ½ — p99 ❌ |
+| G6 | `/smuggled` tới upstream: mặc định / nodefense10 | 0 / 1 | 0 / ≥ 1 | ✅ |
+| G7 | handler đồng thời; header block đệm (mặc định / nodefense10) | 100 / 5 000; 65 542 B / 4 194 310 B | ≤ 100 / ≥ 1 000; ≤ 80 KiB / ≥ 4 MiB | ✅ |
+| G8 | h2/h1 CPU/req; ctxsw/req (8×8 vs 64) | 0.98-1.29x (trung vị 1.23); 0.83-1.03x | ≥ 1.3x; ≥ 2x | ❌ |
+
+Phụ, không chấm: tcphol RTT 0 h2/h1 p50 2.82x (EdgeGate) vs 1.89-2.97x (server `net/http`, `-ref`); G8 tải thấp 1×1:
+CPU 1.78-2.34x, ctxsw 1.66-1.75x; Rapid Reset qua proxy: upstream nhận 143 vs 4 872 request.
 
 ## Invariant + lệnh kiểm chứng
 

@@ -104,6 +104,12 @@ type Conn struct {
 	closed     bool
 	wg         sync.WaitGroup
 
+	// localReset: id stream TA đã RST và đã rời map (handler thoát) — frame
+	// client gửi trước khi thấy RST vẫn có thể tới (§5.1 closed: "minimally
+	// process and then discard"). Có trần (FIFO) — I2.
+	localReset  map[uint32]struct{}
+	localResetQ []uint32
+
 	// D6 a′: RST của client trong cửa sổ 1 s (Rapid Reset ở tầng tốc độ).
 	rstWindow time.Time
 	rstCount  int
@@ -130,6 +136,7 @@ type Stream struct {
 	recvd      int64
 	remoteDone bool // END_STREAM từ client
 	reset      bool
+	peerReset  bool // RST đến TỪ CLIENT (khác: ta RST) — §5.1 closed
 	exited     bool // handler đã thoát
 	slotFreed  bool // nodefense10: slot đã trả lúc RST
 	bodyTimer  *time.Timer
@@ -342,9 +349,22 @@ func (c *Conn) onData(f *Frame) error {
 	}
 	c.recvWindow -= n
 	s := c.streams[f.Stream]
+	if s != nil && s.peerReset {
+		// Client đã RST rồi vẫn gửi DATA: frame trên stream closed (§5.1).
+		// Turn 2 (h2spec 5.1/8): bản đầu gộp với ca dưới và lặng lẽ bỏ qua.
+		c.mu.Unlock()
+		c.refundConn(n)
+		return StreamError{f.Stream, ErrStreamClosed, "DATA sau RST_STREAM của client"}
+	}
 	if s != nil && s.reset && !s.remoteDone {
-		// Ta (hoặc client) đã RST: frame đang bay tới là chuyện bình thường
-		// (§5.4.2) — trả window connection, KHÔNG RST thêm lần nữa.
+		// TA đã RST: frame client gửi trước khi thấy RST của ta là chuyện bình
+		// thường (§5.1: "minimally process and then discard") — trả window
+		// connection, KHÔNG RST thêm lần nữa.
+		c.mu.Unlock()
+		c.refundConn(n)
+		return nil
+	}
+	if _, ok := c.localReset[f.Stream]; s == nil && ok {
 		c.mu.Unlock()
 		c.refundConn(n)
 		return nil
@@ -589,6 +609,9 @@ func (c *Conn) exitStream(s *Stream) {
 		c.active--
 	}
 	delete(c.streams, s.id)
+	if s.reset && !s.peerReset && !s.remoteDone {
+		c.rememberLocalReset(s.id)
+	}
 	// Body chưa đọc hết: window connection đã bị trừ cho số byte đó ⇒ trả lại.
 	unread := int64(len(s.body))
 	s.body = nil
@@ -612,6 +635,21 @@ func (c *Conn) resetStream(id uint32, code ErrCode) {
 	c.mu.Unlock()
 	c.Stats.ResetsSent.Add(1)
 	c.write(func(fr *Framer) error { return fr.WriteRSTStream(id, code) })
+}
+
+const maxLocalReset = 256
+
+// rememberLocalReset: dưới c.mu.
+func (c *Conn) rememberLocalReset(id uint32) {
+	if c.localReset == nil {
+		c.localReset = map[uint32]struct{}{}
+	}
+	c.localReset[id] = struct{}{}
+	c.localResetQ = append(c.localResetQ, id)
+	if len(c.localResetQ) > maxLocalReset {
+		delete(c.localReset, c.localResetQ[0])
+		c.localResetQ = c.localResetQ[1:]
+	}
 }
 
 func (s *Stream) stopBodyTimer() {
@@ -694,6 +732,7 @@ func (c *Conn) onRST(f *Frame) error {
 			return ConnError{ErrEnhanceYourCalm, fmt.Sprintf("%d RST_STREAM trong 1 s (Rapid Reset)", c.rstCount)}
 		}
 	}
+	s.peerReset = true
 	s.markReset(errStreamReset)
 	if !holdSlotUntilExit && !s.exited {
 		c.active-- // nodefense10: Rapid Reset — slot về ngay, handler vẫn chạy

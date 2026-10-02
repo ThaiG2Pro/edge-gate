@@ -65,3 +65,27 @@
 - Drain (phase 7 D8) chưa gửi GOAWAY NO_ERROR cho connection h2 — Close đóng cứng.
 - Trailer request/response h2 bị bỏ (như P3-1).
 - Upload body h2 → upstream luôn chép qua bufio (không splice) — h2 không splice được về bản chất (framing).
+
+## §2 Turn 2 — 2026-10-02 11:48 → 13:40
+
+- 11:48 suite vẫn xanh trên đĩa (phiên mới). 11:50 cài h2spec: `GOBIN=$HOME/go/bin go install
+  github.com/summerwind/h2spec/cmd/h2spec@latest` (`GOBIN` mặc định trỏ vào thư mục mise — đặt tường minh); `--version`
+  in `2.0.0`, module cache là `v2.2.1+incompatible`. `go.mod` không đổi.
+- 11:51 h2spec lần đầu 143/145. Đọc source h2spec (`http2/3_5_http2_connection_preface.go`: gửi
+  `INVALID CONNECTION PREFACE\r\n\r\n`, chờ đóng; `http2/5_1_stream_states.go`: HEADERS, **client** RST, DATA ⇒ chờ
+  STREAM_CLOSED) và RFC 9113 §5.1 "closed" (tải lại — scratchpad phiên trước đã mất).
+- Sửa 5.1/8 bằng `peerReset`. `TestDataAfterRST` viết cả ca ngược (ta RST rồi DATA đang bay) ⇒ đỏ: stream đã rời map
+  ⇒ RST STREAM_CLOSED lần hai. Sửa: `localReset` FIFO 256. 11:53 h2spec 144/145 ×3.
+- h2spec trên `nodefense10`: 139/145 — 5 ca thêm, cả 5 của `validateDowngrade`; 0 ca về Rapid Reset/CONTINUATION.
+- **Lỗi thao tác:** dọn tiến trình bằng `pkill -f -x "./bin/edgegate-nodefense10 -config config/h2.json"` — trái luật
+  "chỉ `pkill -x`" (phase 9: `pkill -f` giết shell). Lần này khớp đúng chuỗi nên shell sống; từ đó chỉ `pkill -x`
+  (comm cắt 15 ký tự: `edgegate-nodefe`).
+- 11:54 G1 ×3 tất định. Load nhảy 13.15 — `ps`: `MainThread` pid 128249 179 % CPU (session khác). Không đụng; đo xen
+  kẽ, đọc tỉ số.
+- 11:54 G3 ×3. 11:56 G8 ×3 ⇒ ctxsw h2 **không** cao hơn ⇒ thêm cờ `-h2conns/-h2streams/-h1conns`, đo 1×1 ⇒ h2 1.7x
+  ctxsw, ~2x CPU. Chấm G8 theo cấu hình đăng ký (sai), 1×1 ghi là phụ.
+- 11:58 G4/G5 RTT 0: tcphol h2/h1 2.82x không mất gói ⇒ nghi cài đặt. Thêm `-ref` (server `net/http` h1+h2c trực tiếp)
+  ⇒ 1.89-2.97x ⇒ không phải cài đặt; là "một socket".
+- 13:31 người dùng bật `netem delay 20ms` (ping 40.3 ms) ⇒ G4. 13:33 đổi `delay 10ms` ⇒ G5 đối chứng. 13:33 đổi
+  `delay 10ms loss 2%` ⇒ G5. 13:36 người dùng tháo; kiểm: `qdisc noqueue`, ping 0.047 ms, không tiến trình sót.
+- 13:37 G6/G7 hai build. Suite `-race` xanh, `make h2-nodefense` đỏ 6.

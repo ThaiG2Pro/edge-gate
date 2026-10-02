@@ -1,0 +1,7 @@
+cpu: proxy pid 132334 (taskset 0-1, GOMAXPROCS=2), upstream epoll (taskset 2-3), closed-loop 10s/lượt — chỉ đọc CPU/req; h2 1 conn × 1 stream, h1 1 conn
+  lượt 1 h2: 18381 req (1838 rps), CPU proxy 6.94 s = 377.6 µs/req, ctxsw 8.260 /req
+  lượt 1 h1: 33077 req (3308 rps), CPU proxy 5.35 s = 161.7 µs/req, ctxsw 4.720 /req
+  lượt 2 h2: 30366 req (3037 rps), CPU proxy 7.66 s = 252.3 µs/req, ctxsw 7.484 /req
+  lượt 2 h1: 35732 req (3573 rps), CPU proxy 5.07 s = 141.9 µs/req, ctxsw 4.505 /req
+  lượt 3 h2: 32520 req (3252 rps), CPU proxy 7.90 s = 242.9 µs/req, ctxsw 7.398 /req
+  lượt 3 h1: 40811 req (4081 rps), CPU proxy 5.21 s = 127.7 µs/req, ctxsw 4.386 /req

@@ -47,6 +47,10 @@ var (
 	epolllab = flag.String("epolllab", "bin/epolllab", "cpu: binary upstream")
 	pinProxy = flag.String("pin-proxy", "0-1", "cpu: taskset proxy")
 	pinUp    = flag.String("pin-up", "2-3", "cpu: taskset upstream")
+	h2conns  = flag.Int("h2conns", 8, "cpu: số connection h2")
+	h2strm   = flag.Int("h2streams", 8, "cpu: stream đồng thời mỗi connection h2")
+	h1conns  = flag.Int("h1conns", 64, "cpu: số connection h1")
+	ref      = flag.Bool("ref", false, "tcphol: đo trên server net/http (h1 + h2c) của Go, KHÔNG qua EdgeGate — đối chứng cài đặt")
 )
 
 func main() {
@@ -339,8 +343,28 @@ func flowOnce(addr, path string, w uint32) time.Duration {
 // ---------------------------------------------------------------------------
 // G5: HOL tầng TCP.
 
+// refServer: net/http.Server nói cả h1 lẫn h2c (Go 1.24+), phục vụ fixture
+// trực tiếp — đối chứng: chênh h2/h1 là của EdgeGate hay của "một connection".
+func refServer() string {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatal(err)
+	}
+	var p http.Protocols
+	p.SetHTTP1(true)
+	p.SetUnencryptedHTTP2(true)
+	srv := &http.Server{Handler: fixture.Handler(), Protocols: &p}
+	go srv.Serve(ln)
+	return ln.Addr().String()
+}
+
 func runTCPHOL() {
-	addr := startProxy(fixtureUpstream())
+	var addr string
+	if *ref {
+		addr = refServer()
+	} else {
+		addr = startProxy(fixtureUpstream())
+	}
 	url := fmt.Sprintf("http://%s/large?n=%d", addr, *objSize)
 	measure := func(cl *http.Client) []float64 {
 		var mu sync.Mutex
@@ -376,7 +400,11 @@ func runTCPHOL() {
 	measure2(h1c)
 	l2 := measure(h2c)
 	l1 := measure(h1c)
-	fmt.Printf("tcphol: %d vòng × %d GET %d byte song song\n", *n, *par, *objSize)
+	target := "EdgeGate → fixture"
+	if *ref {
+		target = "net/http server trực tiếp (ref)"
+	}
+	fmt.Printf("tcphol: %d vòng × %d GET %d byte song song — %s\n", *n, *par, *objSize, target)
 	fmt.Printf("  h2 1 conn × %d stream: p50 %.1f ms  p90 %.1f  p99 %.1f  max %.1f\n", *par, median(l2), pct(l2, 0.9), pct(l2, 0.99), pct(l2, 1))
 	fmt.Printf("  h1 %d conn            : p50 %.1f ms  p90 %.1f  p99 %.1f  max %.1f\n", *par, median(l1), pct(l1, 0.9), pct(l1, 0.99), pct(l1, 1))
 	fmt.Printf("  h2/h1: p50 %.2fx  p99 %.2fx\n", median(l2)/median(l1), pct(l2, 0.99)/pct(l1, 0.99))
@@ -489,15 +517,15 @@ func runCPU() {
 	}
 	mk := func(proto string) ([]*http.Client, int) {
 		if proto == "h2" {
-			cls := make([]*http.Client, 8)
+			cls := make([]*http.Client, *h2conns)
 			for i := range cls {
-				cls[i] = &http.Client{Transport: h2cTransport()} // 8 Transport ⇒ 8 connection
+				cls[i] = &http.Client{Transport: h2cTransport()} // mỗi Transport ⇒ một connection
 			}
-			return cls, 8
+			return cls, *h2strm
 		}
-		return []*http.Client{{Transport: h1Transport(64)}}, 64
+		return []*http.Client{{Transport: h1Transport(*h1conns)}}, *h1conns
 	}
-	fmt.Printf("cpu: proxy pid %d (taskset %s, GOMAXPROCS=2), upstream epoll (taskset %s), closed-loop %v/lượt — chỉ đọc CPU/req\n", px.pid, *pinProxy, *pinUp, *dur)
+	fmt.Printf("cpu: proxy pid %d (taskset %s, GOMAXPROCS=2), upstream epoll (taskset %s), closed-loop %v/lượt — chỉ đọc CPU/req; h2 %d conn × %d stream, h1 %d conn\n", px.pid, *pinProxy, *pinUp, *dur, *h2conns, *h2strm, *h1conns)
 	for r := 0; r < *rounds; r++ {
 		for _, proto := range []string{"h2", "h1"} {
 			cls, per := mk(proto)

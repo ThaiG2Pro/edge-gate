@@ -1,0 +1,12 @@
+tcphol: 20 vòng × 32 GET 65536 byte song song — EdgeGate → fixture
+  h2 1 conn × 32 stream: p50 48.7 ms  p90 53.4  p99 79.9  max 80.1
+  h1 32 conn            : p50 42.0 ms  p90 43.5  p99 44.9  max 46.2
+  h2/h1: p50 1.16x  p99 1.78x
+tcphol: 20 vòng × 32 GET 65536 byte song song — EdgeGate → fixture
+  h2 1 conn × 32 stream: p50 47.7 ms  p90 61.9  p99 81.1  max 81.7
+  h1 32 conn            : p50 41.8 ms  p90 43.1  p99 44.1  max 44.5
+  h2/h1: p50 1.14x  p99 1.84x
+tcphol: 20 vòng × 32 GET 65536 byte song song — EdgeGate → fixture
+  h2 1 conn × 32 stream: p50 47.6 ms  p90 53.7  p99 81.1  max 82.0
+  h1 32 conn            : p50 41.9 ms  p90 42.9  p99 45.0  max 46.0
+  h2/h1: p50 1.14x  p99 1.80x

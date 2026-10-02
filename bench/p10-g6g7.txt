@@ -1,0 +1,26 @@
+== tags=mặc định
+    h2_test.go:439: streams=100 refused=4900 resets=100 peak_handlers=100
+--- PASS: TestRapidReset (0.07s)
+    h2_test.go:460: header block đệm tối đa = 65542 byte
+--- PASS: TestContinuationFlood (0.10s)
+    phase10_test.go:208: upstream thấy: []
+    phase10_test.go:208: upstream thấy: []
+    phase10_test.go:208: upstream thấy: []
+--- PASS: TestH2Smuggle (0.91s)
+    phase10_test.go:266: upstream nhận 143 request; h2 streams=202 refused=98 resets=201
+--- PASS: TestH2RapidResetProxy (0.59s)
+== tags=nodefense10
+    h2_test.go:439: streams=5000 refused=0 resets=5000 peak_handlers=5000
+    h2_test.go:441: Rapid Reset: 5000 handler đồng thời > MAX_CONCURRENT_STREAMS 100
+--- FAIL: TestRapidReset (0.07s)
+    h2_test.go:460: header block đệm tối đa = 4194310 byte
+    h2_test.go:462: CONTINUATION flood: đệm 4194310 byte > 80 KiB
+--- FAIL: TestContinuationFlood (0.11s)
+    phase10_test.go:208: upstream thấy: ["POST /" "GET /smuggled"]
+    phase10_test.go:211: SMUGGLED: upstream thấy ["POST /" "GET /smuggled"]
+    phase10_test.go:208: upstream thấy: []
+    phase10_test.go:208: upstream thấy: ["POST /"]
+--- FAIL: TestH2Smuggle (0.91s)
+    phase10_test.go:266: upstream nhận 4872 request; h2 streams=5000 refused=0 resets=5000
+    phase10_test.go:268: Rapid Reset qua proxy: upstream nhận 4872 request > 400
+--- FAIL: TestH2RapidResetProxy (1.56s)

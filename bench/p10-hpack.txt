@@ -1,0 +1,18 @@
+hpack: 100 request, một connection h2c (client net/http)
+  HEADERS #1        = 318 byte
+  HEADERS #2..#100    trung vị = 12 byte (min 12, max 12)
+  head h1 tương đương = 508 byte
+  tỉ số #1 / trung vị #2+   = 26.5x
+  tỉ số h1 / trung vị h2 #2+ = 42.3x
+hpack: 100 request, một connection h2c (client net/http)
+  HEADERS #1        = 318 byte
+  HEADERS #2..#100    trung vị = 12 byte (min 12, max 12)
+  head h1 tương đương = 508 byte
+  tỉ số #1 / trung vị #2+   = 26.5x
+  tỉ số h1 / trung vị h2 #2+ = 42.3x
+hpack: 100 request, một connection h2c (client net/http)
+  HEADERS #1        = 318 byte
+  HEADERS #2..#100    trung vị = 12 byte (min 12, max 12)
+  head h1 tương đương = 508 byte
+  tỉ số #1 / trung vị #2+   = 26.5x
+  tỉ số h1 / trung vị h2 #2+ = 42.3x

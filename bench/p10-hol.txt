@@ -1,0 +1,15 @@
+hol: 20 vòng, RTT loopback, /slow=500 ms, /fast gửi sau 10 ms trên CÙNG connection
+  /fast một mình (h2)     p50 0.59 ms
+  /fast sau /slow, h2     p50 0.84 ms  p99 1.52 ms
+  /fast sau /slow, h1     p50 490.63 ms  p99 491.36 ms
+  h2 / một mình = 1.44x ; h1 / h2 = 581.3x
+hol: 20 vòng, RTT loopback, /slow=500 ms, /fast gửi sau 10 ms trên CÙNG connection
+  /fast một mình (h2)     p50 0.59 ms
+  /fast sau /slow, h2     p50 0.71 ms  p99 1.11 ms
+  /fast sau /slow, h1     p50 490.56 ms  p99 491.33 ms
+  h2 / một mình = 1.20x ; h1 / h2 = 694.8x
+hol: 20 vòng, RTT loopback, /slow=500 ms, /fast gửi sau 10 ms trên CÙNG connection
+  /fast một mình (h2)     p50 0.41 ms
+  /fast sau /slow, h2     p50 0.66 ms  p99 1.13 ms
+  /fast sau /slow, h1     p50 490.52 ms  p99 491.33 ms
+  h2 / một mình = 1.60x ; h1 / h2 = 746.6x

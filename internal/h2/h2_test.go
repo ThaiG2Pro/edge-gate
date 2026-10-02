@@ -496,3 +496,45 @@ func TestServeConnExits(t *testing.T) {
 		t.Fatal("ServeConn không thoát sau khi client đóng")
 	}
 }
+
+// h2spec 5.1/8 (turn 2): client RST rồi gửi DATA ⇒ STREAM_CLOSED. Ngược lại,
+// TA RST rồi client gửi DATA (đang bay) ⇒ bỏ qua, không RST thêm (§5.1 closed).
+func TestDataAfterRST(t *testing.T) {
+	hold := make(chan struct{})
+	s := startServer(t, Config{}, func(w *Stream, r *Request) {
+		if r.Path == "/self-reset" {
+			w.Reset(ErrCancel)
+			return
+		}
+		<-hold
+	})
+	defer close(hold)
+	c := rawConn(t, s)
+	c.Headers(1, false, POST("a", "/")...)
+	time.Sleep(20 * time.Millisecond) // stream đã mở trong server
+	c.RST(1, ErrCancel)
+	c.Frame(FrameData, FlagEndStream, 1, []byte("test"))
+	if f := expect(t, c, FrameRSTStream, 1); RSTCode(f) != ErrStreamClosed {
+		t.Fatalf("client RST rồi DATA: RST %v, muốn STREAM_CLOSED", RSTCode(f))
+	}
+
+	c.Headers(3, false, POST("a", "/self-reset")...)
+	if f := expect(t, c, FrameRSTStream, 3); RSTCode(f) != ErrCancel {
+		t.Fatalf("server RST: %v", RSTCode(f))
+	}
+	c.Frame(FrameData, 0, 3, []byte("đang bay"))
+	c.Frame(FramePing, 0, 0, []byte("12345678"))
+	c.NC.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		f, err := c.Fr.ReadFrame()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.Type == FrameRSTStream && f.Stream == 3 {
+			t.Fatalf("RST lần hai cho stream 3 (%v) — phải bỏ qua DATA đang bay", RSTCode(f))
+		}
+		if f.Type == FramePing && f.Has(FlagAck) {
+			return // PING sau DATA đã về: DATA đã được xử lý mà không RST
+		}
+	}
+}
