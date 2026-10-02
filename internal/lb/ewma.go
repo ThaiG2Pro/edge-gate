@@ -15,8 +15,8 @@ import (
 // ⇒ lại được thử ⇒ có mẫu mới. Decay theo SỐ REQUEST (tag nodefenselb) không
 // có đường về đó — bẫy ROADMAP phase 6, xem TestP2CRecovers.
 //
-// Cold-start: chưa có mẫu ⇒ 0 (được thử ngay). Finagle cho penalty lớn ngược
-// lại; ta theo ROADMAP và ghi giá của lựa chọn ở diary.
+// Cold-start: chưa có mẫu ⇒ 0 (được thử ngay). P6-3: điểm 0 chỉ đúng cho lượt
+// THỬ ĐẦU — Backend.score phạt node chưa mẫu mà đang có inflight (Finagle).
 type ewma struct {
 	mu   sync.Mutex
 	v    float64

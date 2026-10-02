@@ -99,8 +99,21 @@ func (p2c) Pick(all []*Backend, now time.Time, _ string) *Backend {
 	return b
 }
 
+// noSamplePenalty: điểm của node CHƯA có mẫu mà đang gánh request — lớn hơn mọi
+// ewma×(inflight+1) thực tế (1 s latency × 1000 inflight = 1e12 ns).
+const noSamplePenalty = 1e13
+
 func (b *Backend) score(now time.Time) float64 {
-	return b.ewma.score(now) * float64(b.inflight.Load()+1)
+	e := b.ewma.score(now)
+	n := b.inflight.Load()
+	if e == 0 && n > 0 {
+		// P6-3 (trả 2026-10-02), như Finagle PeakEwma: "if (lcost == 0.0 &&
+		// pending != 0) Penalty + pending". Bản cũ: 0 × (n+1) = 0 ⇒ node mới/vừa
+		// hồi phục hút MỌI lượt bốc trúng nó trong lúc chờ mẫu đầu (10/32 với
+		// 5 node). Giờ: lượt thử đầu (n == 0) vẫn được ngay, lượt sau phải đợi mẫu.
+		return noSamplePenalty + float64(n)
+	}
+	return e * float64(n+1)
 }
 
 // ---- Consistent hashing -----------------------------------------------------

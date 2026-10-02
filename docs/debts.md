@@ -152,13 +152,6 @@ lại: nối `cmd/lblab` vào nó và đo lại `-flap -recover` ở ~85 % capac
 với tau 1 s mỗi mẫu sau nặng ~5·10⁻⁴ ⇒ thứ hạng vài trăm ms đầu là may rủi. Test fail trước: `make lblab`
 đòi max/min share P2C ≤ 1.2. Sửa thử: không cho mẫu có dial vào EWMA, hoặc khởi tạo bằng trung vị cụm.
 
-### 🔧 P6-3 · Node chưa có mẫu được điểm 0 kể cả khi đang có request
-
-`ewma.go:score` trả 0 khi `n == 0` ⇒ mọi request trong lúc chờ mẫu đầu đều đổ vào node mới/hồi phục.
-Finagle `PeakEwma.get`: `if (lcost == 0.0 && pending != 0) Penalty + pending`. Test fail trước: 4 backend
-dưới tải 32 conn, thêm backend thứ 5 (hoặc revive), đếm inflight đỉnh của nó trước `Done` đầu tiên —
-đòi ≤ 1.
-
 ### 📏 P6-4 · `consecutive_5xx` chậm ở rps thấp
 
 Kỳ vọng ~586 request tới chuỗi 5 lỗi đầu với lỗi 30 % ⇒ 0.17 s ở 3 400 rps nhưng ~1 phút ở 10 rps.
@@ -323,6 +316,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P6-3 · Node chưa có mẫu được điểm 0 khi đang có request — trả 2026-10-02
+
+`lb/picker.go:Backend.score`: node chưa có mẫu (`ewma == 0`) mà đang có inflight ⇒ `noSamplePenalty + inflight` (Finagle
+PeakEwma "Penalty + pending"); lượt thử đầu (inflight 0) vẫn được ngay. Test viết trước, đỏ trên code cũ:
+`TestP2CNoSampleNotFlooded` (4 node ấm EWMA 1 ms + 1 node mới, 32 lượt chọn chưa Done) ⇒ `node chưa có mẫu nhận 10/32`.
+Sau: ≤ 1 trong 20/20 lượt; `TestP2CColdStartSpreads` (cold-start mọi node) và `TestP2CRecovers` (46/200) vẫn xanh;
+`-tags nodefenselb` đỏ đúng `TestP2CRecovers` như HEAD.
 
 ### ✅ P10-7 · Trailer h2 bị bỏ — trả 2026-10-02
 

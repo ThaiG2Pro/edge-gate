@@ -479,3 +479,27 @@ func TestPickExcept(t *testing.T) {
 		t.Fatalf("một backend, loại nó ⇒ phải nil, có %s", b.Addr)
 	}
 }
+
+// P6-3: node CHƯA có mẫu (mới thêm / vừa hồi phục) được điểm 0 ⇒ trong lúc chờ
+// mẫu đầu, mọi lượt P2C bốc trúng nó đều chọn nó. 4 node ấm (EWMA 1 ms) + 1 node
+// mới, 32 lượt chọn chưa lượt nào Done (32 request đang bay): node mới phải
+// nhận ≤ 1 (lượt thử), như Finagle PeakEwma "Penalty + pending".
+func TestP2CNoSampleNotFlooded(t *testing.T) {
+	for round := 0; round < 20; round++ {
+		bl := newTest(t, "p2c", addrs(5)...)
+		now := time.Now()
+		for _, b := range bl.backends[:4] {
+			b.ewma.observe(time.Millisecond, now)
+		}
+		fresh := bl.backends[4]
+		got := 0
+		for i := 0; i < 32; i++ {
+			if bl.Pick("") == fresh {
+				got++
+			}
+		}
+		if got > 1 {
+			t.Fatalf("lượt %d: node chưa có mẫu nhận %d/32 request đang bay (muốn ≤ 1)", round, got)
+		}
+	}
+}
