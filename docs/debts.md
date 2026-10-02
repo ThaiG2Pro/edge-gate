@@ -364,10 +364,6 @@ Invariant "một response cho một request" hiện chỉ đúng theo đọc cod
 go test ./internal/proxy -run TestUpstreamDiesMidBody -v
 ```
 
-### 🔧 P3-4 · G6 đăng ký 1000 request, test chạy 200
-
-`TestNoGoroutineLeak` nâng lên 1000 (nửa keep-alive) và giữ `≤ before+2`, `-race -count=3`.
-
 ### 📏 P3-5 · G2/G3 dao động ±0.2x giữa hai lần chạy
 
 3.39x / 3.20x và 1.44x / 1.63x cùng máy, 3 tiến trình chia 6 core. Trả cùng P-env-2:
@@ -378,6 +374,12 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P3-4 · G6 chạy đủ 1 000 request — trả 2026-10-02
+
+`TestNoGoroutineLeak` chạy đúng số G6 đăng ký: 1 000 request, chia ba h1 keep-alive / h1 mỗi request một connection /
+h2c (phase 10: goroutine đọc + goroutine stream cũng phải về, I8). `-race -count=3`: goroutine trước 5, sau 6
+(≤ before+2) sau 20 ms.
 
 ### ✅ P10-9 · `TestIdleClosedUpstream` chập chờn dưới tải — trả 2026-10-02
 

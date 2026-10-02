@@ -390,15 +390,22 @@ func TestBadRequestGets400AndClose(t *testing.T) {
 }
 
 // G6: không leak goroutine sau nhiều request, nửa keep-alive nửa close.
+// P3-4 (trả 2026-10-02): G6 đăng ký 1000 request mà test cũ chạy 200. Giờ 1000,
+// chia ba: h1 keep-alive, h1 mỗi request một connection, và h2c (phase 10 —
+// goroutine đọc + goroutine stream cũng phải về hết, I8).
 func TestNoGoroutineLeak(t *testing.T) {
-	p := startProxy(t, startFixture(t), nil)
+	p := startProxy(t, startFixture(t), func(c *Config) { c.H2C = true })
 	before := runtime.NumGoroutine()
 	ka := &http.Client{Timeout: 5 * time.Second}
 	nk := oracleClient()
-	for i := 0; i < 200; i++ {
+	h2 := h2cClient()
+	for i := 0; i < 1000; i++ {
 		c := ka
-		if i%2 == 1 {
+		switch i % 3 {
+		case 1:
 			c = nk
+		case 2:
+			c = h2
 		}
 		resp, err := c.Get("http://" + p + "/hello")
 		if err != nil {
@@ -409,6 +416,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 	}
 	ka.CloseIdleConnections()
 	nk.CloseIdleConnections()
+	h2.CloseIdleConnections()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if n := runtime.NumGoroutine(); n <= before+2 {
