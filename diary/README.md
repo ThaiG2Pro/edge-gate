@@ -5,7 +5,7 @@ sai, số đo nói gì); `phaseN-log.md` là nhật ký thao tác theo giờ. C�
 
 ## Trạng thái một dòng
 
-**Mười phase xong.** 42 nợ đã trả, **23 còn mở** — toàn bộ là `📏` (cần Linux thuần / netem /
+**Mười phase xong.** 43 nợ đã trả, **22 còn mở** — toàn bộ là `📏` (cần Linux thuần / netem /
 nhiều core) hoặc `⏳` (chờ số đo thật). Không còn nợ `🔧`.
 
 - Sổ nợ: [`../docs/debts.md`](../docs/debts.md)
@@ -42,6 +42,7 @@ Chín nợ trả + công cụ đo:
 | P8-3 | Health probe bắt tay TLS khi `UpstreamTLS` (`lb.HealthConfig.Dial` hook) |
 | P7-3 | Chốt test trần eject + half-open (`TestBreakerUnderEjectCap`) |
 | P9-7 | Splice body mặc định BẬT; chaoslab body 256 KiB PASS; cờ `-nosplice` |
+| P6-5 | Passive outlier cắt cửa sổ dial lỗi: active-only 116-122 fails vs outlier-on 8 (đo bằng test, valid WSL2) |
 | P4-6 | Oracle thứ hai/ba nginx+h2o (`make oracle-ext`): bare LF + Connection:Host cả hai origin nhận ⇒ strict đúng |
 | P-env-2 | Công cụ xong (`make pinlab`, kiểm lag generator); số chốt cần Linux thuần |
 
@@ -50,6 +51,6 @@ Công cụ tái hiện đã dựng: `scripts/linux-measure.sh`, cờ `netlab -di
 
 ## Còn lại
 
-23 nợ `📏`/`⏳` chờ máy Linux thuần hoặc số đo thật (PUT replay P5-4b, upload splice P9-2). Thứ tự
+22 nợ `📏`/`⏳` chờ máy Linux thuần hoặc số đo thật (PUT replay P5-4b, upload splice P9-2). Thứ tự
 đề xuất khi có máy: P-env-2 (mở khoá hầu hết món 📏) → phase 9/10 → phần netem (cần sudo). Chi tiết
 lệnh và tiêu chí đạt trong [`../docs/REPRODUCE-LINUX.md`](../docs/REPRODUCE-LINUX.md).

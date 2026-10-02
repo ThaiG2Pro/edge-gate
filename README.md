@@ -60,7 +60,7 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 
 ### Nợ kỹ thuật (2026-10-03)
 
-Mười phase xong. **42 nợ đã trả, 23 còn mở** — tất cả là nợ `📏` (cần Linux thuần / netem / nhiều
+Mười phase xong. **43 nợ đã trả, 22 còn mở** — tất cả là nợ `📏` (cần Linux thuần / netem / nhiều
 core) hoặc `⏳` (P5-4b, P9-2: chờ số đo PUT thật / workload upload thật). **Không còn nợ `🔧`** (sửa
 được ngay trên máy này). Phiên 2026-10-02/03 trả P2-5, P4-3, P10-5, P10-6, P3-2, P8-3, P7-3, P9-7,
 P4-6 và dựng công cụ cho P-env-2.

@@ -134,15 +134,6 @@ Kỳ vọng ~586 request tới chuỗi 5 lỗi đầu với lỗi 30 % ⇒ 0.17 
 Đo: `lblab -skew err=30% -conns 1` (≈ vài trăm rps chia 4) với `-n 2000`, đọc share b1 và 5xx; nếu
 outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D trước.
 
-### 📏 P6-5 · Passive outlier cắt cửa sổ dial lỗi của active — chưa đo
-
-`TestLBKillRevive` tắt outlier ⇒ 111-120 dial lỗi trong 500 ms trước khi active đánh dấu b3. Dự đoán
-"bật outlier ⇒ ~5" chưa có số. Thêm sub-test cùng kịch bản với `Outlier{Consecutive: 5}`, log `Fails`:
-
-```bash
-go test ./internal/proxy -run 'TestLBKillRevive' -count=3 -v
-```
-
 ### 📏 P7-2b · Trần theo IP đổi RAM lấy CPU: đóng ngay ⇒ attacker nối lại liên tục
 
 slowlab 500 conn, `-max-conns-per-ip 100`: proxy giữ 100 thay vì 500, nhưng attacker bị đóng ngay nên nối lại
@@ -259,6 +250,19 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P6-5 · Passive outlier cắt cửa sổ dial lỗi của active — trả 2026-10-03
+
+Đo được trên WSL2 vì là ĐẾM qua máy trạng thái (số request đập vào backend chết trước khi bị loại), không phải
+percentile latency. `TestLBKillRevive` tách hai sub-test chung helper `killReviveScenario`: `active-only` (chỉ active
+health, Fall 3×200 ms) vs `outlier-on` (Consecutive 5, BaseEject 150 ms). `-count=5`:
+**active-only 116-122 fails, outlier-on 8 fails mọi lượt** (ổn định tuyệt đối) — passive cắt cửa sổ ~15×. Khớp dự
+đoán cũ "~5" (8 = 5 ban đầu + ~3 probe half-open qua cửa sổ 600 ms). Client thấy TOÀN 200 cả hai (dial lỗi được D9 né
+sang backend khác). `active-only` còn khẳng định unhealthy ⇒ 0 pick thêm; `outlier-on` half-open cho vài probe.
+
+```bash
+go test ./internal/proxy -run 'TestLBKillRevive' -count=5 -v
+```
 
 ### ✅ P4-6 · Oracle thứ hai + thứ ba cho `TestSmugglingOracle` — trả 2026-10-03
 

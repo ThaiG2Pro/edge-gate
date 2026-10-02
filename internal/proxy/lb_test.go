@@ -315,6 +315,41 @@ func TestMaxIdleTimeShorterThanUpstream(t *testing.T) {
 // TestLBDeadBackend chỉ phủ "chết từ đầu"; ca này phủ pool đang giữ connection
 // tới b3 lúc nó chết (probe MSG_PEEK phase 5 phải bắt FIN, rồi dial lỗi ⇒ D9).
 func TestLBKillRevive(t *testing.T) {
+	// P6-5: so cửa sổ dial lỗi (số request đập vào backend chết trước khi bị
+	// loại) giữa chỉ-active-health và có-passive-outlier. Active mất Fall×Interval
+	// = 3×200 ms = 600 ms mới đánh dấu down; passive (Consecutive 5) loại sau ~5
+	// lỗi (~5 ms ở 1 ms/request). Đây là ĐẾM qua máy trạng thái, không phải
+	// percentile latency ⇒ đo được cả trên WSL2.
+	t.Run("active-only", func(t *testing.T) {
+		fails, growth := killReviveScenario(t, nil)
+		t.Logf("active-only: fails trong cửa sổ = %d (cửa sổ rộng vì chỉ active 600 ms)", fails)
+		if fails < 50 {
+			t.Fatalf("active-only: cửa sổ phải rộng, fails=%d (kỳ vọng ~110)", fails)
+		}
+		if growth != 0 {
+			t.Fatalf("active-only: unhealthy rồi không được pick nữa, nhưng picks tăng %d", growth)
+		}
+	})
+	t.Run("outlier-on", func(t *testing.T) {
+		fails, _ := killReviveScenario(t, func(c *Config) {
+			c.LB.Outlier = lb.OutlierConfig{Consecutive: 5, BaseEject: 150 * time.Millisecond,
+				MaxEject: 150 * time.Millisecond, MaxEjectPercent: 50}
+		})
+		// Passive loại sau 5 lỗi; eject 150 ms, hết hạn ⇒ half-open cho 1 probe
+		// (dial lỗi, D9 né sang backend khác ⇒ client vẫn 200). Qua ~600 ms cửa
+		// sổ down: ~5 + vài probe. Phải « ~110 của active-only.
+		t.Logf("outlier-on: fails trong cửa sổ = %d (passive cắt còn ~1 con số)", fails)
+		if fails > 30 {
+			t.Fatalf("outlier-on: passive phải cắt cửa sổ, fails=%d (active-only ~110)", fails)
+		}
+	})
+}
+
+// killReviveScenario: b0..b2 sống + b3; giết b3, chờ active đánh dấu down, hồi
+// sinh b3, chờ về healthy. Trả (fails trong cửa sổ down, số picks tăng SAU khi
+// down). Client keep-alive phải thấy TOÀN 200 (dial lỗi được D9 né sang backend
+// khác). mut tinh chỉnh Config (vd bật outlier).
+func killReviveScenario(t *testing.T, mut func(*Config)) (fails int64, growthAfterDown int64) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -324,6 +359,9 @@ func TestLBKillRevive(t *testing.T) {
 	go us.Serve(ln)
 	s, p, _ := startLB(t, "rr", 3, []string{b3}, func(c *Config) {
 		c.LB.Health = lb.HealthConfig{Interval: 200 * time.Millisecond, Timeout: 200 * time.Millisecond, Fall: 3, Rise: 2}
+		if mut != nil {
+			mut(c)
+		}
 	})
 	b3st := func() lb.BackendStats {
 		for _, b := range s.LBStats().Backends {
@@ -410,10 +448,8 @@ func TestLBKillRevive(t *testing.T) {
 	if st[200] == 0 || len(st) != 1 {
 		t.Fatalf("client phải thấy toàn 200: %v", st)
 	}
-	if picksAfter != picksDown.Picks {
-		t.Fatalf("b3 unhealthy mà vẫn được chọn: %d → %d", picksDown.Picks, picksAfter)
-	}
 	if down > time.Second || up > time.Second {
 		t.Fatalf("health quá chậm: down %s up %s", down, up)
 	}
+	return picksDown.Fails, picksAfter - picksDown.Picks
 }

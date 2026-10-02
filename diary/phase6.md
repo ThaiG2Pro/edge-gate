@@ -522,7 +522,7 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
   đỉnh của nó trước mẫu đầu.
 - [ ] **P6-4** 📏 — Outlier `consecutive_5xx` bắt node lỗi 30 % sau ~586 request: 0.17 s ở 3 400 rps,
   ~1 phút ở 10 rps. Đo ở rps thấp; nếu chậm, thêm `success_rate` kiểu Envoy.
-- [ ] **P6-5** 📏 — "Passive cắt cửa sổ 111-120 dial lỗi xuống ~5" là dự đoán chưa đo:
+- [x] **P6-5** ✅ (2026-10-03) 📏 — "Passive cắt cửa sổ 111-120 dial lỗi xuống ~5" là dự đoán chưa đo:
   `TestLBKillRevive` tắt outlier. Chạy cùng ca với outlier bật, đếm `Fails`.
 - [x] **P5-2**, **P5-3**, **P5-5** — trả ở turn 1 (bằng chứng ở câu 7 và bảng invariant).
 - P0-6 (netem có jitter cho `lblab-skew`) **vẫn mở**: phase này dùng service time giả lập nên không
