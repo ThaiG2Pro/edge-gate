@@ -251,7 +251,7 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
   phase 3 bật cùng lúc. Tách tag theo phase, hoặc ghi rõ trong Makefile.
 - [ ] **P4-5** 🔧 — Bộ ca chưa có: `Expect: 100-continue`, chunk-ext dài quá `MaxLineBytes`, `Content-Length`
   trên GET có body qua proxy, header bomb e2e, `HTTP/1.1` với SP thừa cuối request-line.
-- [ ] **P4-6** 📏 — Oracle thứ hai (nginx/h2o qua docker) cho `TestSmugglingOracle`: một backend
+- [x] **P4-6** ✅ (2026-10-03) 📏 — Oracle thứ hai (nginx/h2o qua docker) cho `TestSmugglingOracle`: một backend
   không đủ để nói "hướng an toàn".
 - [x] **P2-3** — đóng: CL+TE ⇒ `ErrAmbiguousFraming` 400, phản chứng đỏ (ca 01-03, 10, 12, 90).
 - [x] **P-arch-1** — đóng: Host giữ nguyên (D4) + một nguồn authority (D5/D6/D7).

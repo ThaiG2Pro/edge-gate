@@ -9,7 +9,7 @@
 	lblab lblab-even lblab-skew lblab-flap lblab-recover lblab-nodefense \
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab tlslab-nodefense tlslab-rtt \
-	perflab perflab-nodefense perf-bins idlelab l4l7lab pproflab bench-vs-nginx epolllab \
+	perflab perflab-nodefense perf-bins idlelab l4l7lab pproflab bench-vs-nginx epolllab pinlab oracle-ext \
 	h2-bins h2lab h2lab-flow h2lab-tcphol h2spec h2spec-tls h2-nodefense \
 	rtt-up rtt-down
 
@@ -430,6 +430,20 @@ pinlab: perf-bins
 	  taskset -c 3-5 ./bin/perflab -mode open -rate $$rate -duration 10s -workers 256 -label pin$$r \
 	    -up "taskset -c 2 bin/epolllab -impl epoll -loops 1" \
 	    -spawn "env GOMAXPROCS=2 taskset -c 0-1 bin/edgegate -config config/bench.json" 2>&1 | grep -v 'epolllab:\|edgegate:'; done; done
+
+# P4-6: oracle thứ hai (nginx) + thứ ba (h2o) cho testdata/smuggle. Cần docker.
+# Phát lại 59 ca request-kind qua TCP trần, so ba cột mình/nginx/h2o. Không vào
+# `go test` (cần docker); chạy tay hoặc CI.
+oracle-ext:
+	go build -o bin/smuggleoracle ./cmd/smuggleoracle
+	-docker rm -f edgegate-oracle-nginx edgegate-oracle-h2o >/dev/null 2>&1
+	docker run -d --rm --name edgegate-oracle-nginx --network host \
+	  -v "$(PWD)/config/oracle/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.25-alpine >/dev/null
+	docker run -d --rm --name edgegate-oracle-h2o --network host \
+	  -v "$(PWD)/config/oracle/h2o.conf:/h2o.conf:ro" lkwg82/h2o-http2-server h2o -c /h2o.conf >/dev/null
+	@sleep 2
+	-./bin/smuggleoracle | tee bench/p4-6-oracle-ext.txt
+	docker rm -f edgegate-oracle-nginx edgegate-oracle-h2o >/dev/null 2>&1
 
 # G8: EdgeGate / nginx / httputil.ReverseProxy — cần docker + image nginx:1.25-alpine.
 bench-vs-nginx: perf-bins

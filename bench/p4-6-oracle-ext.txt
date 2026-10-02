@@ -1,0 +1,110 @@
+ca                                 mình       nginx      h2o       
+--------------------------------------------------------------------
+01-clte-basic.txt                  400        400        404       
+02-tecl-basic.txt                  400        400        404       
+03-clte-cl-zero.txt                400        400        404       
+10-tete-double-header.txt          400        400        400       
+11-tete-chunked-chunked.txt        501        501        400       
+12-tete-xchunked.txt               400        501        400       
+13-tete-space-before-colon.txt     400        400        400       
+14-tete-identity-chunked.txt       501        501        400       
+15-tete-chunked-identity.txt       501        501        400       
+16-te-http10.txt                   400        400        404       
+17-te-vertical-tab.txt             400        501        400       
+18-te-obs-fold.txt                 400        400        400       
+19-te-name-nul.txt                 400        400        400       
+20-cl-dup-diff.txt                 400        400        404       
+21-cl-dup-same.txt                 400        400        404       
+22-cl-plus.txt                     400        400        400       
+23-cl-hex.txt                      400        400        400       
+24-cl-comma-list.txt               400        400        400       
+25-cl-negative.txt                 400        400        400       
+26-cl-overflow.txt                 400        400        400       
+27-cl-trailing-space-inner.txt     400        400        400       
+30-bare-lf-request-line.txt        400        200        404       
+31-bare-lf-header.txt              400        200        404       
+32-stray-cr-in-value.txt           400        400        400       
+33-request-line-trailing-sp.txt    400        200        400       
+40-chunk-size-leading-space.txt    body-400   400        400       
+41-chunk-size-trailing-space.txt   body-400   200        404       
+42-chunk-size-hex-prefix.txt       body-400   400        404       
+43-chunk-size-ext-space.txt        body-400   200        404       
+44-chunk-data-no-crlf.txt          body-400   400        400       
+45-trailer-content-length.txt      body-400   200        404       
+46-trailer-transfer-encoding.txt   body-400   200        404       
+47-trailer-host.txt                body-400   200        404       
+48-chunk-ext-too-long.txt          body-431   200        404       
+50-connection-host.txt             400        200        404       
+51-connection-content-length.txt   400        200        404       
+52-connection-bad-token.txt        400        200        404       
+53-header-count-bomb.txt           431        200        400       
+60-host-dup.txt                    400        400        404       
+61-host-missing-11.txt             400        400        404       
+62-host-space.txt                  400        400        404       
+63-host-slash.txt                  400        400        404       
+64-host-at.txt                     400        200        404       
+65-absolute-form-host-mismatch.txt 400        200        404       
+66-absolute-form-https.txt         400        200        404       
+67-asterisk-get.txt                400        400        404       
+68-connect.txt                     501        400        404       
+69-target-space.txt                400        400        400       
+70-target-network-path.txt         400        200        404       
+71-absolute-form-no-host.txt       400        400        404       
+80-ok-cl.txt                       ok         200        404       
+81-ok-chunked.txt                  ok         200        404       
+82-ok-chunked-uppercase.txt        ok         200        404       
+83-ok-absolute-form.txt            ok         200        404       
+84-ok-options-asterisk.txt         ok         400        404       
+85-ok-http10-no-host.txt           ok         200        404       
+86-ok-host-ipv6-port.txt           ok         200        404       
+87-ok-get-cl-body.txt              ok         200        404       
+88-ok-expect-continue.txt          ok         100        100       
+
+59 ca request
+46 cặp (ca × origin) origin lenient hơn — proxy ta đứng trước nó phải chặn:
+  01-clte-basic.txt: h2o nhận khung (404) — mình 400
+  02-tecl-basic.txt: h2o nhận khung (404) — mình 400
+  03-clte-cl-zero.txt: h2o nhận khung (404) — mình 400
+  16-te-http10.txt: h2o nhận khung (404) — mình 400
+  20-cl-dup-diff.txt: h2o nhận khung (404) — mình 400
+  21-cl-dup-same.txt: h2o nhận khung (404) — mình 400
+  30-bare-lf-request-line.txt: h2o nhận khung (404) — mình 400
+  30-bare-lf-request-line.txt: nginx nhận khung (200) — mình 400
+  31-bare-lf-header.txt: h2o nhận khung (404) — mình 400
+  31-bare-lf-header.txt: nginx nhận khung (200) — mình 400
+  33-request-line-trailing-sp.txt: nginx nhận khung (200) — mình 400
+  41-chunk-size-trailing-space.txt: h2o nhận khung (404) — mình body-400
+  41-chunk-size-trailing-space.txt: nginx nhận khung (200) — mình body-400
+  42-chunk-size-hex-prefix.txt: h2o nhận khung (404) — mình body-400
+  43-chunk-size-ext-space.txt: h2o nhận khung (404) — mình body-400
+  43-chunk-size-ext-space.txt: nginx nhận khung (200) — mình body-400
+  45-trailer-content-length.txt: h2o nhận khung (404) — mình body-400
+  45-trailer-content-length.txt: nginx nhận khung (200) — mình body-400
+  46-trailer-transfer-encoding.txt: h2o nhận khung (404) — mình body-400
+  46-trailer-transfer-encoding.txt: nginx nhận khung (200) — mình body-400
+  47-trailer-host.txt: h2o nhận khung (404) — mình body-400
+  47-trailer-host.txt: nginx nhận khung (200) — mình body-400
+  48-chunk-ext-too-long.txt: h2o nhận khung (404) — mình body-431
+  48-chunk-ext-too-long.txt: nginx nhận khung (200) — mình body-431
+  50-connection-host.txt: h2o nhận khung (404) — mình 400
+  50-connection-host.txt: nginx nhận khung (200) — mình 400
+  51-connection-content-length.txt: h2o nhận khung (404) — mình 400
+  51-connection-content-length.txt: nginx nhận khung (200) — mình 400
+  52-connection-bad-token.txt: h2o nhận khung (404) — mình 400
+  52-connection-bad-token.txt: nginx nhận khung (200) — mình 400
+  53-header-count-bomb.txt: nginx nhận khung (200) — mình 431
+  60-host-dup.txt: h2o nhận khung (404) — mình 400
+  61-host-missing-11.txt: h2o nhận khung (404) — mình 400
+  62-host-space.txt: h2o nhận khung (404) — mình 400
+  63-host-slash.txt: h2o nhận khung (404) — mình 400
+  64-host-at.txt: h2o nhận khung (404) — mình 400
+  64-host-at.txt: nginx nhận khung (200) — mình 400
+  65-absolute-form-host-mismatch.txt: h2o nhận khung (404) — mình 400
+  65-absolute-form-host-mismatch.txt: nginx nhận khung (200) — mình 400
+  66-absolute-form-https.txt: h2o nhận khung (404) — mình 400
+  66-absolute-form-https.txt: nginx nhận khung (200) — mình 400
+  67-asterisk-get.txt: h2o nhận khung (404) — mình 400
+  68-connect.txt: h2o nhận khung (404) — mình 501
+  70-target-network-path.txt: h2o nhận khung (404) — mình 400
+  70-target-network-path.txt: nginx nhận khung (200) — mình 400
+  71-absolute-form-no-host.txt: h2o nhận khung (404) — mình 400

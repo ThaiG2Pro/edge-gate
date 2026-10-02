@@ -79,11 +79,6 @@ make pinlab | tee bench/p-env-2-pinlab-linux.txt     # không dòng GENERATOR n�
 ns/op ± 10-37 % (`bench/p4-bench-readrequest.txt`); chỉ allocs/op và CPU share tin được. Trả cùng
 P-env-2/P3-5 trên Linux thuần: `taskset`, `-count 20`, benchstat hai commit `b3e08f0` vs `989b060`.
 
-### 📏 P4-6 · Oracle thứ hai cho `TestSmugglingOracle`
-
-Chỉ so với Go. "Hướng an toàn" mới đúng với backend Go. Dựng nginx và h2o (docker) nhận cùng 61 payload
-qua `nc`, ghi status, so ba cột. Đặc biệt các ca 21 (CL trùng), 30/31 (bare LF), 50 (`Connection: Host`).
-
 ### 📏 P5-1 · G1/G2 đo lúc máy ồn (load 9 trên 6 core)
 
 `bench/p5-poollab-rtt20.txt`: mẫu qua proxy +5-7 ms ngoài mô hình 3 RTT / 2 RTT, mẫu thẳng +0.5 ms.
@@ -261,6 +256,28 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P4-6 · Oracle thứ hai + thứ ba cho `TestSmugglingOracle` — trả 2026-10-03
+
+`cmd/smuggleoracle` + `make oracle-ext` (docker): phát lại 59 ca request-kind qua TCP trần vào nginx 1.25-alpine và
+h2o, ghi status, so ba cột `mình/nginx/h2o` (`bench/p4-6-oracle-ext.txt`). h2o trả 404 cho mọi head hợp lệ (không có
+file) ⇒ harness phân loại **nhận khung** (2xx/3xx/404/405/100) vs **từ chối khung** (400/501/431/đóng), tìm hướng
+nguy hiểm = mình từ chối mà origin nhận khung.
+
+Ba ca điểm danh trong nợ xác nhận chọn strict là đúng, không phải lập dị:
+- **21 (CL trùng lặp giống nhau)**: mình 400, **nginx cũng 400**, h2o 404 — ít nhất một oracle độc lập cùng từ chối.
+- **30/31 (bare LF)**: mình 400, **nginx 200 + h2o nhận** — proxy strict đứng trước hai backend lenient là đúng kịch
+  bản smuggling (RFC 9112 §2.2 "MAY recognize"); nếu ta cũng lenient thì bare LF thành ranh giới lệch.
+- **50 (`Connection: Host`)**: mình 400, **nginx 200 + h2o nhận** — D7 (xoá token Connection điều khiển Host) chặn
+  đúng thứ hai backend bỏ lọt.
+
+46/118 cặp (ca × origin) origin lenient hơn — gồm cả ca chính sách (host/absolute-form/đếm header, ca 60-71) lẫn ca
+khung thật (bare LF, chunk-size, trailer, Connection-token). Mọi ca "ok" của mình đều được ≥ 1 origin nhận (không có
+hướng nguy hiểm ngược: mình nhận mà cả hai origin từ chối). Không ca nào origin từ chối-khung mà mình nhận.
+
+```bash
+make oracle-ext   # cần docker + image nginx:1.25-alpine, lkwg82/h2o-http2-server
+```
 
 ### ✅ P9-7 · `SpliceBody` tắt mặc định — trả 2026-10-02
 
