@@ -210,7 +210,7 @@ proxylab-nodefense:
 # TestSmugglingOracle in bảng "mình strict hơn net/http ở đâu" (G2 phase 4).
 smugglelab:
 	go test ./internal/httpx/ -run 'TestSmuggling' -v -count=1
-	go test ./internal/proxy/ -run 'TestSmugglingE2E|TestXFF|TestAbsoluteForm' -v -count=1
+	go test ./internal/proxy/ -run 'TestSmugglingE2E|TestXFF|TestAbsoluteForm|TestExpectContinue' -v -count=1
 
 # Tắt 7 phòng tuyến (internal/httpx/defense_nodefense.go) -> bộ test PHẢI fail.
 # Nếu vẫn xanh thì bộ test không chứng minh gì cả. XANH ở đây là một thất bại.

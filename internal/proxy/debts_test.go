@@ -218,3 +218,90 @@ func TestMaxConnsPerIP(t *testing.T) {
 		t.Fatal("slot perIP không được trả khi connection đóng (I7)")
 	}
 }
+
+// P4-5: Expect: 100-continue. RFC 9110 §10.1.1: proxy PHẢI hoặc trả ngay một
+// status final, hoặc forward request-line + header cho server kế. Ta forward;
+// server kế trả 100 thì 100 đó phải về tới client — trước đây D7 (phase 3)
+// nuốt mọi 1xx, client chờ 100 tới hết timeout của chính nó (curl 1 s, Go
+// Transport ExpectContinueTimeout) trong khi proxy chờ body ⇒ deadlock mềm.
+func TestExpectContinue(t *testing.T) {
+	head := "POST /echo HTTP/1.1\r\nHost: h\r\nContent-Length: 5\r\nExpect: 100-continue\r\n\r\n"
+
+	t.Run("upstream-100", func(t *testing.T) {
+		p := startProxy(t, startFixture(t), nil)
+		rc := dialRaw(t, p)
+		rc.c.SetDeadline(time.Now().Add(3 * time.Second))
+		io.WriteString(rc.c, head)
+		// Client "nghiêm": chưa có 100 thì KHÔNG gửi body. 500 ms ≪ BodyTimeout.
+		rc.c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		r1, err := httpx.ReadResponse(rc.br, httpx.DefaultLimits(), "POST")
+		if err != nil {
+			t.Fatalf("không nhận được 100 Continue trong 500 ms: %v", err)
+		}
+		if r1.Status != 100 {
+			t.Fatalf("response đầu %d, muốn 100", r1.Status)
+		}
+		rc.c.SetDeadline(time.Now().Add(3 * time.Second))
+		io.WriteString(rc.c, "hello")
+		r2, err := httpx.ReadResponse(rc.br, httpx.DefaultLimits(), "POST")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r2.Body)
+		if r2.Status != 200 || string(b) != "hello" {
+			t.Fatalf("final %d %q, muốn 200 hello", r2.Status, b)
+		}
+	})
+
+	t.Run("upstream-final-early", func(t *testing.T) {
+		// Upstream từ chối không đọc body (413). Status final đó về client
+		// ngay; body client chưa gửi nằm lại trên connection ⇒ phải đóng.
+		up := rawServer(t, func(c net.Conn, br *bufio.Reader) {
+			if _, err := httpx.ReadRequest(br, httpx.DefaultLimits()); err != nil {
+				return
+			}
+			io.WriteString(c, "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 3\r\n\r\nbig")
+			time.Sleep(time.Second) // giữ connection mở: proxy không được chờ EOF
+		})
+		p := startProxy(t, up, nil)
+		rc := dialRaw(t, p)
+		rc.c.SetDeadline(time.Now().Add(3 * time.Second))
+		io.WriteString(rc.c, head)
+		rc.c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		r, err := httpx.ReadResponse(rc.br, httpx.DefaultLimits(), "POST")
+		if err != nil {
+			t.Fatalf("không nhận được status final trong 500 ms: %v", err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		if r.Status != 413 || string(b) != "big" || !r.Close {
+			t.Fatalf("có %d %q close=%v, muốn 413 big + Connection: close", r.Status, b, r.Close)
+		}
+	})
+
+	t.Run("upstream-silent", func(t *testing.T) {
+		// Upstream kiểu HTTP/1.0 không bao giờ gửi 100: client hết chờ thì
+		// tự gửi body (RFC 9110 §10.1.1) — proxy phải vẫn chuyển body đi.
+		up := rawServer(t, func(c net.Conn, br *bufio.Reader) {
+			req, err := httpx.ReadRequest(br, httpx.DefaultLimits())
+			if err != nil {
+				return
+			}
+			b, _ := io.ReadAll(req.Body)
+			fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", len(b), b)
+		})
+		p := startProxy(t, up, nil)
+		rc := dialRaw(t, p)
+		rc.c.SetDeadline(time.Now().Add(5 * time.Second))
+		io.WriteString(rc.c, head)
+		time.Sleep(300 * time.Millisecond) // "timeout" của client
+		io.WriteString(rc.c, "hello")
+		r, err := httpx.ReadResponse(rc.br, httpx.DefaultLimits(), "POST")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		if r.Status != 200 || string(b) != "hello" {
+			t.Fatalf("có %d %q, muốn 200 hello", r.Status, b)
+		}
+	})
+}

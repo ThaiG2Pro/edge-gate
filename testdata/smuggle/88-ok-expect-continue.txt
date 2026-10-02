@@ -1,0 +1,15 @@
+# name: OK: Expect: 100-continue + CL=5 (parser; hành vi proxy ở TestExpectContinue)
+# expect: ok
+# body: hello
+# rest: NEXT
+# target: /
+# host: h
+# source: RFC 9110 §10.1.1
+# why: Parser không đổi ranh giới vì Expect; client có thể gửi body ngay không chờ 100
+---
+POST / HTTP/1.1\r\n
+Host: h\r\n
+Expect: 100-continue\r\n
+Content-Length: 5\r\n
+\r\n
+helloNEXT

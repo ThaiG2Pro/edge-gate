@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -141,7 +142,7 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 		// gấp vài lần trả lời), tau 1 s ⇒ thứ hạng giây đầu là may rủi (P2C
 		// 15/28/29/28 % trên 4 node giống hệt nhau). Dial lỗi vẫn Done(start) ở trên.
 		xstart := time.Now()
-		keep, retry, upFail := s.exchange(c, bw, req, up, pc)
+		keep, retry, upFail := s.exchange(c, br, bw, req, up, pc)
 		st.up.Store(nil)
 		if !retry {
 			bl.Done(be, time.Since(xstart), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
@@ -173,7 +174,7 @@ func canRetry(pc *pooledConn, req *httpx.Request) bool {
 // quyết. upFail=true ⇔ lỗi thuộc về UPSTREAM (transport hoặc 5xx) — nuôi
 // outlier ejection (phase 6 D7); client bỏ đi giữa body KHÔNG tính cho upstream.
 // Mọi đường ra đều qua release: pc về pool chỉ khi clean (D2), còn lại đóng.
-func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, pc *pooledConn) (keep, retry, upFail bool) {
+func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, up *httpx.Request, pc *pooledConn) (keep, retry, upFail bool) {
 	lim := s.cfg.Limits
 	uc, ubr, ubw := pc.c, pc.br, pc.bw
 	pc.in.n = 0
@@ -195,12 +196,27 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 	c.SetReadDeadline(time.Now().Add(lim.BodyTimeout)) // I3: body client có deadline
 	writeErr := up.WriteHead(ubw)
 	var readErr error
-	if writeErr == nil {
+	hasBody := req.ContentLength != 0 || req.Chunked
+	var early *httpx.Response // P4-5: status final upstream trả TRƯỚC khi nhận body
+	if writeErr == nil && hasBody && expect100(req) && br.Buffered() == 0 {
+		var cerr error
+		early, cerr, writeErr = s.awaitContinue(bw, uc, ubr, ubw, req.Method)
+		if cerr != nil {
+			return false, false, false // client đi mất khi nhận 100
+		}
+		if writeErr != nil {
+			// Body chưa đọc khỏi br ⇒ không giữ client; không retry (D4 c).
+			s.cfg.Logf("proxy: chờ 100-continue: %v", writeErr)
+			s.writeError(c, bw, 502, "upstream hỏng khi chờ 100-continue", false)
+			return false, false, true
+		}
+	}
+	if writeErr == nil && early == nil {
 		// req.Body là stream ĐÚNG ranh giới (lengthReader / chunkedReader /
 		// eofReader) trên br — nó trả io.EOF khi hết body, KHÔNG phải khi
 		// client đóng. Đây là "một dòng" tránh bẫy #1: không bao giờ
 		// io.Copy(upstream, c).
-		if req.ContentLength != 0 || req.Chunked {
+		if hasBody {
 			// Phase 9 turn 3 (P9-3): GET không body không cần buffer 32 KiB.
 			readErr, writeErr = copyBodyT(ubw, req.Body, req.Chunked, req.Trailer)
 		}
@@ -214,8 +230,14 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 		// Client cắt cụt body (ErrUnexpectedEOF) hoặc quá BodyTimeout: chưa
 		// gửi gì cho client nên còn trả được 400/408, nhưng phải đóng.
 		status, detail := 400, "body request cắt cụt"
-		if isTimeout(readErr) {
+		var pe *httpx.ProtoError
+		switch {
+		case isTimeout(readErr):
 			status, detail = 408, "quá BodyTimeout khi đọc body"
+		case errors.As(readErr, &pe):
+			// P4-5: lỗi framing giữa body (chunk-size bẩn 400, chunk-ext quá
+			// MaxLineBytes 431) giữ status của parser — giống lỗi ở head.
+			status, detail = pe.Status, pe.Reason
 		}
 		s.writeError(c, bw, status, detail, false)
 		return false, false, false
@@ -230,11 +252,11 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 	}
 
 	// --- 4. Head response từ upstream ---------------------------------------
-	var resp *httpx.Response
+	resp := early
 	var err error
-	for {
+	for resp == nil {
 		uc.SetReadDeadline(time.Now().Add(s.cfg.UpstreamHeaderTimeout))
-		resp, err = httpx.ReadResponse(ubr, lim, req.Method)
+		r, err := httpx.ReadResponse(ubr, lim, req.Method)
 		if err != nil {
 			// D4 (b): 0 byte response đã tới VÀ không phải timeout (timeout với
 			// 0 byte = upstream sống nhưng chậm, có thể đang xử lý ⇒ không
@@ -251,12 +273,13 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 			s.writeError(c, bw, status, detail, keep)
 			return keep, false, true
 		}
-		if resp.Status/100 != 1 {
+		if r.Status/100 != 1 {
+			resp = r
 			break
 		}
 		// D7 phase 3: 1xx là interim — bỏ, đọc response kế. 101 là đổi giao
 		// thức: không tunnel, trả 502 (chưa gửi gì cho client) và đóng.
-		if resp.Status == 101 {
+		if r.Status == 101 {
 			s.writeError(c, bw, 502, "upstream đòi Upgrade (101), chưa hỗ trợ", false)
 			return false, false, false
 		}
@@ -268,7 +291,9 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 	// --- 5. Head + body về client -------------------------------------------
 	out := &httpx.Response{Proto: "HTTP/1.1", Status: resp.Status, Reason: resp.Reason, Header: resp.Header.Clone()}
 	out.Header.StripHopByHop()
-	closeClient := req.Close || s.draining.Load() // D8: đang drain ⇒ response này là cái cuối
+	// D8: đang drain ⇒ response này là cái cuối. P4-5: early ⇒ body client
+	// chưa đọc còn trên br ⇒ đóng (không drain body client chưa gửi).
+	closeClient := req.Close || s.draining.Load() || early != nil
 	const (
 		modeNone    = iota
 		modeCopy    // CL hoặc tới-EOF: chép nguyên
@@ -346,8 +371,65 @@ func (s *Server) exchange(c net.Conn, bw *bufio.Writer, req, up *httpx.Request, 
 
 	// D2: SẠCH ⇔ body đã EOF (b) ∧ không byte thừa (c) ∧ upstream không đòi
 	// đóng / không phải body-tới-EOF (d) ∧ không lỗi (e, đã return ở trên).
-	clean = bodyDone && ubr.Buffered() == 0 && !resp.Close
+	// P4-5: early ⇒ upstream đã nhận head có CL/chunked mà không có body ⇒ bẩn.
+	clean = bodyDone && ubr.Buffered() == 0 && !resp.Close && early == nil
 	return !closeClient, false, upFail
+}
+
+// expect100: request có "Expect: 100-continue" (RFC 9110 §10.1.1: so khớp
+// không phân biệt hoa thường).
+func expect100(req *httpx.Request) bool {
+	return strings.EqualFold(req.Header.Get("Expect"), "100-continue")
+}
+
+// expectWait: chờ upstream trả 100 bao lâu trước khi cứ chuyển body. Bằng
+// ExpectContinueTimeout thường dùng của client (curl 1 s): upstream im lặng
+// (HTTP/1.0) thì client cũng sẽ tự gửi body sau chừng đó.
+const expectWait = time.Second
+
+// awaitContinue (P4-5): head đã ghi vào ubw, body chưa. Flush rồi chờ upstream:
+//
+//	100            → chuyển "100 Continue" cho client, trả (nil, nil, nil): gửi body
+//	1xx khác       → bỏ (D7 phase 3), chờ tiếp
+//	status final   → trả nó làm early: KHÔNG gửi body, response này là response
+//	im lặng expectWait (0 byte) → (nil, nil, nil): cứ chuyển body
+//	lỗi / 101 / head bẩn → uerr (lỗi upstream)
+//
+// cerr: lỗi ghi về client.
+//
+// RFC 9110 §10.1.1 chỉ cho proxy TỰ sinh 100 khi tin server kế là HTTP/1.0 ⇒
+// ta không tự sinh, chỉ chuyển tiếp 100 của upstream.
+func (s *Server) awaitContinue(bw *bufio.Writer, uc net.Conn, ubr *bufio.Reader, ubw *bufio.Writer, method string) (early *httpx.Response, cerr, uerr error) {
+	if err := ubw.Flush(); err != nil {
+		return nil, nil, err
+	}
+	deadline := time.Now().Add(expectWait)
+	for {
+		uc.SetReadDeadline(deadline)
+		if _, err := ubr.Peek(1); err != nil {
+			if isTimeout(err) && ubr.Buffered() == 0 {
+				return nil, nil, nil
+			}
+			return nil, nil, err
+		}
+		uc.SetReadDeadline(time.Now().Add(s.cfg.UpstreamHeaderTimeout))
+		r, err := httpx.ReadResponse(ubr, s.cfg.Limits, method)
+		switch {
+		case err != nil:
+			return nil, nil, err
+		case r.Status == 100:
+			if _, err := io.WriteString(bw, "HTTP/1.1 100 Continue\r\n\r\n"); err != nil {
+				return nil, err, nil
+			}
+			return nil, bw.Flush(), nil
+		case r.Status == 101:
+			return nil, nil, errors.New("upstream trả 101 khi chờ 100-continue")
+		case r.Status/100 == 1:
+			continue
+		default:
+			return r, nil, nil
+		}
+	}
 }
 
 // copyBody chép src (đã framing đúng ranh giới) vào dst, Flush sau mỗi lần

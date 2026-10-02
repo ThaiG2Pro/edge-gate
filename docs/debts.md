@@ -106,12 +106,6 @@ phản chứng G3 đỏ sai chỗ vì bẫy #2. Còn nợ: phase 1/3/4 vẫn chu
 go test ./internal/proxy -run 'TestSmugglingE2E/95' -tags nodefense -v   # đỏ vì bẫy #2, không vì phase 4
 ```
 
-### 🔧 P4-5 · Ca còn thiếu trong `testdata/smuggle`
-
-`Expect: 100-continue` qua proxy (proxy phải trả 100 hay forward?), chunk-ext dài quá `MaxLineBytes`
-(⇒ 431 giữa body), `GET` có `Content-Length: 5` + body qua proxy (forward hay từ chối?), header bomb
-qua proxy thật (431 + close), request-line có SP thừa cuối. Mỗi ca một file, `expect` đăng ký trước.
-
 ### 📏 P4-6 · Oracle thứ hai cho `TestSmugglingOracle`
 
 Chỉ so với Go. "Hướng an toàn" mới đúng với backend Go. Dựng nginx và h2o (docker) nhận cùng 61 payload
@@ -323,6 +317,22 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P4-5 · Ca còn thiếu trong `testdata/smuggle` — trả 2026-10-02
+
+Năm ca mới, `expect` ghi trước khi chạy: `33-request-line-trailing-sp` (400), `48-chunk-ext-too-long` (body-431),
+`53-header-count-bomb` (431, 101 dòng), `87-ok-get-cl-body` (ok: GET đọc theo CL, `hello` không thành request kế),
+`88-ok-expect-continue` (ok ở parser). Hai lỗ lộ ra:
+
+- **48 qua proxy trả 400 thay vì 431**: lỗi body request nào cũng thành 400. Nay `*httpx.ProtoError` giữ status
+  của parser (`forward.go`, nhánh `readErr`).
+- **`Expect: 100-continue` treo**: proxy forward head nhưng D7 (phase 3) nuốt 1xx ⇒ client chờ 100 đến timeout
+  của chính nó, proxy chờ body. RFC 9110 §10.1.1 (đọc nguyên văn): proxy PHẢI trả status final ngay hoặc forward
+  head; chỉ được TỰ sinh 100 khi tin server kế là HTTP/1.0. Nay `awaitContinue`: flush head, chờ upstream ≤ 1 s
+  (`expectWait`): 100 ⇒ chuyển cho client rồi gửi body; status final ⇒ trả luôn, không gửi body, đóng cả hai
+  phía (body client còn trên br, upstream nhận head có CL mà thiếu body); im lặng ⇒ cứ chuyển body. Client đã
+  gửi body sẵn (`br.Buffered() > 0`) ⇒ không chờ. `TestExpectContinue` (3 ca) viết trước: 2 ca đỏ trên HEAD
+  (`i/o timeout` sau 500 ms), ca im lặng xanh cả hai. Không đụng h2 (client h2 gửi body không chờ).
 
 ### ✅ P4-1 · Duyệt `Connection:` cấp phát — trả 2026-10-02
 

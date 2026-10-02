@@ -1,0 +1,14 @@
+# name: OK: GET có Content-Length: 5 + body
+# expect: ok
+# body: hello
+# rest: NEXT
+# target: /
+# host: h
+# source: RFC 9110 §9.3.1 (body của GET không có ngữ nghĩa nhưng KHÔNG cấm); RFC 9112 §6.3 (CL quyết định ranh giới bất kể method)
+# why: Bỏ qua body vì 'GET không có body' ⇒ 'hello' thành đầu request kế — đúng kiểu smuggling GET. Phải đọc theo CL
+---
+GET / HTTP/1.1\r\n
+Host: h\r\n
+Content-Length: 5\r\n
+\r\n
+helloNEXT

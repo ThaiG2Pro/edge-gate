@@ -1,0 +1,8 @@
+# name: request-line có SP thừa cuối 'HTTP/1.1 '
+# expect: 400
+# source: RFC 9112 §3 (request-line = method SP request-target SP HTTP-version, đúng hai SP)
+# why: Parser tách theo SP có thể ra version 'HTTP/1.1 ' hoặc bỏ qua SP; hai cách hiểu ⇒ từ chối
+---
+GET / HTTP/1.1 \r\n
+Host: h\r\n
+\r\n
