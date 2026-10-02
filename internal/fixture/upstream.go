@@ -24,6 +24,7 @@ import (
 //	/hello          GET  → body nhỏ, net/http tự đặt Content-Length
 //	/echo           POST → trả nguyên body, Content-Length tường minh
 //	/chunked        GET  → 5 chunk cách nhau 20 ms, KHÔNG có CL ⇒ Transfer-Encoding: chunked
+//	/ws             GET  → Upgrade: echo ⇒ 101 + echo tới EOF (P3-2 tunnel)
 //	/eof            GET  → Hijack: response KHÔNG CL, KHÔNG TE, body tới EOF rồi đóng (RFC 9112 §6.3 bước 8)
 //	/nobody         GET  → 204, không body
 //	/headers        GET  → liệt kê header nhận được, mỗi dòng "Name: value" (kiểm hop-by-hop, XFF)
@@ -80,6 +81,26 @@ func Handler() http.Handler {
 		}
 		defer c.Close()
 		io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nbody until eof\n")
+	})
+	// /ws (P3-2): Upgrade: echo ⇒ 101 rồi echo byte tới EOF (tunnel hai chiều
+	// sau head — hình dạng của WebSocket mà không cần framing).
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") != "echo" {
+			http.Error(w, "cần Upgrade: echo", 426)
+			return
+		}
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", 500)
+			return
+		}
+		c, rw, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		io.WriteString(c, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n")
+		io.Copy(c, rw.Reader)
 	})
 	mux.HandleFunc("/nobody", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

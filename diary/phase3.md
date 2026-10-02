@@ -76,6 +76,7 @@ request trên một connection. Một backend hardcode trong `config/dev.json`. 
 | D5 | `X-Forwarded-For`: **append** IP client, chưa có trust list | XFF trust là phase 4 |
 | D6 | Lỗi upstream: dial/ghi lỗi ⇒ 502, đọc head quá deadline ⇒ 504. Connection client **giữ** nếu body request đã đọc hết (kể cả bằng drain), **đóng** nếu head response đã gửi | không được gửi hai response cho một request |
 | D7 | Response 1xx (trừ 101) từ upstream: **bỏ qua**, đọc response kế; 101 ⇒ 502 và đóng | Upgrade/tunnel không thuộc phase 3 |
+| D13 | **(P3-2, 2026-10-02) Tunnel 101**: client GET **không body** gửi `Connection: Upgrade` + `Upgrade: X` ⇒ hai header đó (hop-by-hop, vừa bị tước) được đặt lại cho chặng upstream (RFC 9110 §7.8; có body ⇒ tước như cũ, §7.8 cấm đổi giao thức khi body chưa nhận). Upstream 101 **khi ta đã chuyển Upgrade** ⇒ 101 về client (giữ `Upgrade`, `Connection: Upgrade`) rồi `tunnel`: chép hai chiều, client→upstream qua `br` (byte client gửi ngay sau head đã trong buffer), mỗi chiều đọc dưới deadline rỗi riêng (IdleTimeout / UpstreamBodyTimeout); một bên xong ⇒ đóng cả hai (không half-close: TLS upstream không có CloseWrite). Connection upstream **không về pool** (`clean=false`), client đóng. Upstream tự ý 101 ⇒ 502 như D7. h2 ⇒ vẫn 502 (RFC 8441 extended CONNECT: không làm) | WebSocket qua proxy là nhu cầu thật; tunnel sau 101 là chép byte, parser không còn vai trò |
 
 ## Deliverable
 
@@ -209,7 +210,7 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
 
 - [ ] **P3-1** 🔧 — Trailer chunked từ upstream bị bỏ (D4). Cần test forward `Trailer:` rồi sửa
   `copyBody` ghi trailer qua `ChunkedWriter`.
-- [ ] **P3-2** ⏳ — 101/Upgrade (WebSocket) ⇒ 502. Cần tunnel hai chiều; phase 7 hoặc sau.
+- [x] **P3-2** ✅ — 101/Upgrade tunnel (2026-10-02, D13).
 - [ ] **P3-3** 🔧 — Chưa có test upstream chết **giữa** body response: proxy phải đóng client (không
   ghi 502 sau head), client thấy body cắt cụt là `ErrUnexpectedEOF`, không phải `EOF`.
 - [ ] **P3-4** 🔧 — `TestNoGoroutineLeak` dùng 200 request, G6 đăng ký 1000. Nâng và giữ ≤ +2.

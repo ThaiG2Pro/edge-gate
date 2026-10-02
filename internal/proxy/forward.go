@@ -37,6 +37,15 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	if req.Chunked {
 		up.Header.Set("Transfer-Encoding", "chunked")
 	}
+	// P3-2 (D13): Upgrade là hop-by-hop (vừa bị tước) nhưng proxy CÓ hỗ trợ
+	// tunnel ⇒ đặt lại cho chặng kế — chỉ khi GET không body (RFC 9110 §7.8:
+	// không đổi giao thức khi body chưa nhận; §9.3.1 WebSocket chỉ GET).
+	// Có body ⇒ tước như cũ, upstream thấy request thường.
+	if proto := req.Header.Get("Upgrade"); proto != "" && req.Method == "GET" &&
+		req.ContentLength == 0 && !req.Chunked && hasToken(req.Header, "Connection", "upgrade") {
+		up.Header.Set("Connection", "Upgrade")
+		up.Header.Set("Upgrade", proto)
+	}
 	clientIP := s.forwardedHeaders(up.Header, c, st) // phase 4 D9/D12: XFF có ranh giới tin cậy
 	// Phase 4 D4 (đóng P-arch-1): Host GIỮ NGUYÊN (nginx `$host`) — reverse
 	// proxy đứng trước virtual host, đổi Host là phá routing của upstream.
@@ -293,10 +302,16 @@ func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, u
 			break
 		}
 		// D7 phase 3: 1xx là interim — bỏ, đọc response kế. 101 là đổi giao
-		// thức: không tunnel, trả 502 (chưa gửi gì cho client) và đóng.
+		// thức: chỉ khi CHÍNH TA đã chuyển Upgrade của client (D13, P3-2) ⇒
+		// tunnel; upstream tự ý 101 ⇒ 502 (chưa gửi gì cho client) và đóng.
 		if r.Status == 101 {
-			s.writeError(c, bw, 502, "upstream đòi Upgrade (101), chưa hỗ trợ", false)
-			return false, false, false
+			if !up.Header.Has("Upgrade") {
+				s.writeError(c, bw, 502, "upstream trả 101 dù client không xin Upgrade", false)
+				return false, false, false
+			}
+			headOK = true
+			s.tunnel(c, br, bw, r, uc, ubr)
+			return false, false, false // connection upstream đã thành tunnel ⇒ không về pool (clean=false)
 		}
 	}
 	headOK = true
@@ -624,4 +639,69 @@ func validHostValue(v string) bool {
 		}
 	}
 	return true
+}
+
+// hasToken: header h[name] (nhiều giá trị, mỗi giá trị nhiều token) có token
+// tok (không phân biệt hoa thường)?
+func hasToken(h httpx.Header, name, tok string) bool {
+	for _, v := range h.Values(name) {
+		for v != "" {
+			var t string
+			t, v, _ = strings.Cut(v, ",")
+			if strings.EqualFold(strings.TrimSpace(t), tok) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tunnel (D13, P3-2): upstream đã trả 101 cho Upgrade ta chuyển. Viết 101 về
+// client (giữ Upgrade + Connection: Upgrade — hop-by-hop nhưng là NỘI DUNG của
+// 101), rồi chép hai chiều tới khi một bên đóng: client → upstream đọc qua br
+// (byte client gửi ngay sau head đã nằm trong buffer), upstream → client qua
+// ubr. Mỗi chiều đọc dưới deadline rỗi riêng (IdleTimeout phía client,
+// UpstreamBodyTimeout phía upstream) — tunnel im lặng quá lâu thì đóng, như
+// nginx proxy_read_timeout với WebSocket. Một bên xong ⇒ đóng cả hai (không
+// half-close: TLS upstream không có CloseWrite). Kết thúc ⇒ caller đóng
+// client (keep=false) và discard connection upstream.
+func (s *Server) tunnel(c net.Conn, br *bufio.Reader, bw *bufio.Writer, r *httpx.Response, uc net.Conn, ubr *bufio.Reader) {
+	out := &httpx.Response{Proto: "HTTP/1.1", Status: 101, Reason: r.Reason, Header: r.Header.Clone()}
+	out.Header.StripHopByHop()
+	out.Header.Set("Connection", "Upgrade")
+	if v := r.Header.Get("Upgrade"); v != "" {
+		out.Header.Set("Upgrade", v)
+	}
+	c.SetWriteDeadline(time.Now().Add(s.cfg.Limits.BodyTimeout))
+	if err := out.WriteHead(bw); err != nil {
+		return
+	}
+	if err := bw.Flush(); err != nil {
+		return
+	}
+	c.SetDeadline(time.Time{})
+	uc.SetDeadline(time.Time{})
+	s.res.tunnels.Add(1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		io.Copy(uc, &idleReader{r: br, c: c, idle: s.cfg.Limits.IdleTimeout})
+		uc.Close() // kéo chiều kia khỏi Read
+	}()
+	io.Copy(c, &idleReader{r: ubr, c: uc, idle: s.cfg.UpstreamBodyTimeout})
+	c.Close()
+	<-done
+}
+
+// idleReader: mỗi Read đặt lại deadline đọc trên c — "rỗi quá idle thì thôi"
+// cho một luồng không có ranh giới message.
+type idleReader struct {
+	r    io.Reader
+	c    net.Conn
+	idle time.Duration
+}
+
+func (ir *idleReader) Read(p []byte) (int, error) {
+	ir.c.SetReadDeadline(time.Now().Add(ir.idle))
+	return ir.r.Read(p)
 }

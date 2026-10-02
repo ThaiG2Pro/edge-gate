@@ -265,11 +265,6 @@ tới 13 (session khác), closed-loop. Chạy lại trên Linux thuần, hai má
 taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 5   # × {8×8 vs 64, 1×1 vs 1}
 ```
 
-### ⏳ P3-2 · 101 Switching Protocols ⇒ 502
-
-`forward.go` D7: 101 không thuộc phase 3. WebSocket cần tunnel hai chiều sau head. Phase 7 (khi có
-mô hình connection lifetime) hoặc phase riêng.
-
 ### 📏 P3-5 · G2/G3 dao động ±0.2x giữa hai lần chạy
 
 3.39x / 3.20x và 1.44x / 1.63x cùng máy, 3 tiến trình chia 6 core. Trả cùng P-env-2:
@@ -280,6 +275,14 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P3-2 · 101 Switching Protocols ⇒ 502 — trả 2026-10-02
+
+D13 phase 3. `roundTrip` đặt lại `Connection: Upgrade` + `Upgrade` cho upstream khi GET không body; `exchange` gặp 101
+mà ta đã chuyển Upgrade ⇒ `tunnel()` (101 về client, chép hai chiều qua `br`/`ubr`, deadline rỗi mỗi chiều, đóng cả hai
+khi một bên xong, connection upstream discard). Fixture `/ws`: `Upgrade: echo` ⇒ 101 + echo. `TestUpgradeTunnel`
+(byte đầu gửi liền sau head vẫn tới; 3 vòng echo; đóng client ⇒ `DropDirty ≥ 1`, `Idle 0`), `TestUpgradeNotRequested`
+(POST + Upgrade ⇒ tước ⇒ upstream 426; upstream tự ý 101 ⇒ 502). `ResilienceStats.Tunnels` đếm. h2 vẫn 502.
 
 ### ✅ P10-6 · h2spec 3.5/2 fail vì h1 + h2c chung port — trả 2026-10-02
 
