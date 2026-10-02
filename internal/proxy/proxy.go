@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/thaivro/edgegate/internal/h2"
 	"github.com/thaivro/edgegate/internal/httpx"
 	"github.com/thaivro/edgegate/internal/lb"
 )
@@ -88,6 +89,12 @@ type Config struct {
 	// SpliceBody (phase 9 D5): body response CL ≥ 64 KiB đi bằng splice(2)
 	// khi cả hai phía là TCP trần (không TLS). Mặc định tắt.
 	SpliceBody bool
+
+	// Phase 10 D7: H2C nhận HTTP/2 cleartext prior knowledge trên listener
+	// plaintext (cùng port với h1; phân biệt bằng preface). H2: SETTINGS/trần;
+	// timeout zero ⇒ lấy từ Limits.
+	H2C bool
+	H2  h2.Config
 
 	Logf func(format string, args ...any)
 }
@@ -186,6 +193,9 @@ type Server struct {
 	upTLSCache tls.ClientSessionCache
 	// Phase 9 D5: body response đi bằng splice — số response và số byte.
 	spliced, splicedBytes atomic.Int64
+	// Phase 10: connection h2 đã nhận, bộ đếm stream cộng dồn.
+	h2conns atomic.Int64
+	h2stats h2.Stats
 }
 
 // SpliceStats (phase 9 D5): số response có body đi bằng splice, và số byte.
@@ -426,6 +436,7 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 		}
 	}()
 	st.pre.r = c
+	first := true
 	for {
 		// Rỗi: chờ byte đầu của request kế tiếp trong IdleTimeout. Hết hạn hay
 		// client đóng (io.EOF) đều là kết thúc bình thường, không trả gì.
@@ -462,6 +473,16 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 			}
 		}
 		st.idle.Store(false)
+		// Phase 10 D7: chỉ byte ĐẦU TIÊN của connection quyết h2c (prior
+		// knowledge) — không đổi giao thức giữa chừng.
+		if first && s.cfg.H2C && s.tlsCfg == nil {
+			c.SetReadDeadline(time.Now().Add(lim.HeaderTimeout))
+			if isH2Preface(br) {
+				s.serveH2(c, st, br)
+				return
+			}
+		}
+		first = false
 		// Có byte đầu: đồng hồ Slowloris bắt đầu. Toàn bộ head phải xong trong
 		// HeaderTimeout tính từ ĐÂY, không phải từ mỗi byte.
 		if headerTimeoutOn {

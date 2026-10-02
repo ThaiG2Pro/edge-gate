@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thaivro/edgegate/internal/h2"
 	"github.com/thaivro/edgegate/internal/lb"
 	"github.com/thaivro/edgegate/internal/proxy"
 	"github.com/thaivro/edgegate/internal/tlsx"
@@ -76,6 +77,13 @@ type fileConfig struct {
 	DrainIdleGraceMs   *int    `json:"drain_idle_grace_ms"` // nil ⇒ 1000 (D8′); 0 ⇒ đóng connection rỗi ngay
 	ReusePort          bool    `json:"reuse_port"`
 	SpliceBody         bool    `json:"splice_body"` // phase 9 D5
+	// Phase 10 D7: h2c prior knowledge trên listener plaintext (cùng port h1).
+	H2C bool `json:"h2c"`
+	H2  struct {
+		MaxConcurrentStreams uint32 `json:"max_concurrent_streams"`
+		InitialWindow        uint32 `json:"initial_window"`
+		ConnWindow           uint32 `json:"conn_window"`
+	} `json:"h2"`
 	// Phase 8: listener TLS thứ hai, vhost theo SNI (D2/D10). Mỗi vhost dùng
 	// thuật toán/health/outlier của khối lb ở trên. SIGHUP ⇒ đọc lại cert.
 	TLS *struct {
@@ -100,6 +108,7 @@ func main() {
 	algo := flag.String("algo", "", "ghi đè lb.algo: rr|leastconn|p2c|chash")
 	pprofAddr := flag.String("pprof", "", "listener admin net/http/pprof (phase 9 D10), vd 127.0.0.1:6061; rỗng = tắt")
 	splice := flag.Bool("splice", false, "bật splice_body (phase 9 D5) bất kể config")
+	h2c := flag.Bool("h2c", false, "nhận HTTP/2 cleartext prior knowledge (phase 10 D7) bất kể config")
 	flag.Parse()
 	if *pprofAddr != "" {
 		startPprof(*pprofAddr)
@@ -149,6 +158,12 @@ func main() {
 		RetryBudget: proxy.RetryBudgetConfig{Percent: fc.RetryBudgetPercent / 100},
 		ReusePort:   fc.ReusePort,
 		SpliceBody:  fc.SpliceBody || *splice,
+		H2C:         fc.H2C || *h2c,
+		H2: h2.Config{
+			MaxConcurrentStreams: fc.H2.MaxConcurrentStreams,
+			InitialWindow:        fc.H2.InitialWindow,
+			ConnWindow:           fc.H2.ConnWindow,
+		},
 		DrainIdleGrace: func() time.Duration {
 			if fc.DrainIdleGraceMs == nil {
 				return time.Second // phase 7 turn 2: đóng ngay mất ~99 % request kế của connection rỗi (G8 b)

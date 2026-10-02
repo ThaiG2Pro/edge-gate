@@ -10,6 +10,7 @@
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab tlslab-nodefense tlslab-rtt \
 	perflab perflab-nodefense perf-bins idlelab l4l7lab pproflab bench-vs-nginx epolllab \
+	h2-bins h2lab h2lab-flow h2lab-tcphol h2spec h2-nodefense \
 	rtt-up rtt-down
 
 all: fmt vet test
@@ -400,6 +401,39 @@ epolllab: perf-bins
 # G8: EdgeGate / nginx / httputil.ReverseProxy — cần docker + image nginx:1.25-alpine.
 bench-vs-nginx: perf-bins
 	./scripts/bench-vs-nginx.sh    # 3 cột: EdgeGate / nginx / httputil.ReverseProxy
+
+# --- Phase 10: HTTP/2 h2c -------------------------------------------------
+h2-bins:
+	go build -o bin/edgegate ./cmd/edgegate
+	go build -tags nodefense10 -o bin/edgegate-nodefense10 ./cmd/edgegate
+	go build -o bin/epolllab ./cmd/epolllab
+	go build -o bin/h2lab ./cmd/h2lab
+
+# G1 (HPACK), G3 (HOL tầng HTTP), G8 (CPU/req h2 vs h1; client core 4-5).
+h2lab: h2-bins
+	./bin/h2lab -mode hpack -n 100
+	./bin/h2lab -mode hol -n 20
+	taskset -c 4-5 ./bin/h2lab -mode cpu -rounds 3 -dur 10s
+
+# G4: chạy hai lần — RTT 0, và sau `sudo tc qdisc add dev lo root netem delay 20ms`.
+h2lab-flow: h2-bins
+	./bin/h2lab -mode flow -rounds 3
+
+# G5: chạy dưới netem `delay 10ms` và `delay 10ms loss 2%` (sudo, người dùng tự bật/tháo).
+h2lab-tcphol: h2-bins
+	./bin/h2lab -mode tcphol -n 20 -par 32
+
+# G2: h2spec (go install github.com/summerwind/h2spec/cmd/h2spec@latest) chống edgegate -h2c.
+H2SPEC ?= $(HOME)/go/bin/h2spec
+h2spec: h2-bins
+	@./bin/epolllab -impl epoll -loops 1 -addr 127.0.0.1:18100 & UP=$$!; \
+	 ./bin/edgegate -config config/h2.json >/dev/null 2>&1 & PX=$$!; sleep 1; \
+	 $(H2SPEC) -h 127.0.0.1 -p 18093 -o 5 | tail -40; kill $$PX $$UP
+
+# Phản chứng D6: bản không phòng tuyến phải đỏ đúng 6 test.
+h2-nodefense:
+	! go test ./internal/h2 ./internal/proxy -count=1 -tags nodefense10 \
+	  -run 'TestMalformedStreamReset|TestContentLengthMismatch|TestRapidReset|TestContinuationFlood|TestH2Smuggle|TestH2RapidResetProxy' -v
 
 check: fmt vet test
 	@echo "== nợ kỹ thuật chưa trả =="
