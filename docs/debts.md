@@ -255,11 +255,6 @@ nginx (`client_header_buffer_size`, giải phóng buffer khi keep-alive) và ch�
 An toàn ranh giới đã có test (đủ CL, ngắn ⇒ đóng, pool sạch), nhưng chưa qua `make chaoslab` và chưa có P9-1.
 Bật mặc định sau khi trả P9-1 và chaoslab với body lớn xanh.
 
-### ⏳ P10-6 · h2spec 3.5/2 fail vì h1 + h2c chung port
-
-Preface sai ⇒ hiểu là h1 hỏng ⇒ `400` (D7, cố ý). Nếu cần pass 145/145: tuỳ chọn listener `h2c_only` (không fallback
-h1). Lệnh trả: `make h2spec` với `config/h2-only.json` ⇒ `145 passed`.
-
 ### 📏 P10-8 · G5/G8 đo trên WSL2 loopback + netem
 
 G5: 640 mẫu mỗi cột, p99 = ~6 mẫu; netem trên `lo` mất gói **cả hai chiều** và cả chặng proxy→upstream. G8: load nền
@@ -285,6 +280,13 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-6 · h2spec 3.5/2 fail vì h1 + h2c chung port — trả 2026-10-02
+
+D12 phase 10: `Config.H2COnly` / `"h2c_only"` — listener plaintext bỏ sniff preface, mọi connection vào `serveH2`;
+preface sai ⇒ đóng (h2.Conn), không 400. `TestH2COnlyRefusesH1` (h1 GET ⇒ 0 byte + EOF; h2c client vẫn 200).
+`make h2spec H2CFG=config/h2-only.json`: **145/145**; `make h2spec` mặc định (chung port) vẫn 144/145 — 3.5/2 là
+đánh đổi cố ý của D7, nay có công tắc. Qua TLS (P10-5) cũng 145/145.
 
 ### ✅ P10-5 · ALPN `h2` trên TLS — trả 2026-10-02
 

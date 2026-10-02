@@ -82,7 +82,9 @@ type fileConfig struct {
 	H2C bool `json:"h2c"`
 	// P10-5: ALPN "h2" trên listener TLS (cipher TLS 1.2 còn ECDHE+AEAD).
 	H2ALPN bool `json:"h2_alpn"`
-	H2     struct {
+	// P10-6: listener plaintext chỉ h2c, không fallback h1 (h2spec 145/145).
+	H2COnly bool `json:"h2c_only"`
+	H2      struct {
 		MaxConcurrentStreams uint32 `json:"max_concurrent_streams"`
 		InitialWindow        uint32 `json:"initial_window"`
 		ConnWindow           uint32 `json:"conn_window"`
@@ -164,6 +166,7 @@ func main() {
 		SpliceBody:    fc.SpliceBody || *splice,
 		H2C:           fc.H2C || *h2c,
 		H2ALPN:        fc.H2ALPN,
+		H2COnly:       fc.H2COnly,
 		H2: h2.Config{
 			MaxConcurrentStreams: fc.H2.MaxConcurrentStreams,
 			InitialWindow:        fc.H2.InitialWindow,

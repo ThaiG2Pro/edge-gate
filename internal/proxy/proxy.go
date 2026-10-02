@@ -109,6 +109,10 @@ type Config struct {
 	// được "h2" ⇒ serveH2 ngay sau handshake. Kéo theo cipher TLS 1.2 bị
 	// giới hạn còn ECDHE+AEAD (RFC 9113 §9.2.2) cho mọi client của listener đó.
 	H2ALPN bool
+	// H2COnly (P10-6): listener plaintext chỉ nhận h2c — byte đầu không phải
+	// preface ⇒ h2.Conn từ chối và đóng, không rơi về h1 400 (D7 chung port).
+	// Cần H2C. Dùng khi listener dành riêng cho h2 (h2spec 145/145).
+	H2COnly bool
 
 	Logf func(format string, args ...any)
 }
@@ -533,7 +537,7 @@ func (s *Server) serveConn(c net.Conn, st *connState) {
 		// knowledge) — không đổi giao thức giữa chừng.
 		if first && s.cfg.H2C && s.tlsCfg == nil {
 			c.SetReadDeadline(time.Now().Add(lim.HeaderTimeout))
-			if isH2Preface(br) {
+			if s.cfg.H2COnly || isH2Preface(br) {
 				s.serveH2(c, st, br)
 				return
 			}

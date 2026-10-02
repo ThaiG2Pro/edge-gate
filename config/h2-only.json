@@ -1,0 +1,31 @@
+{
+  "listen": "127.0.0.1:18093",
+  "upstreams": [
+    "127.0.0.1:18100"
+  ],
+  "dial_timeout_ms": 2000,
+  "upstream_header_timeout_ms": 5000,
+  "upstream_body_timeout_ms": 30000,
+  "trusted_proxies": [],
+  "pool": {
+    "disabled": false,
+    "max_idle": 64,
+    "max_idle_time_ms": 30000
+  },
+  "lb": {
+    "algo": "rr",
+    "health": {
+      "disabled": true
+    },
+    "outlier": {
+      "disabled": true
+    }
+  },
+  "h2c": true,
+  "h2": {
+    "max_concurrent_streams": 100
+  },
+  "drain_timeout_ms": 2000,
+  "drain_idle_grace_ms": 0,
+  "h2c_only": true
+}

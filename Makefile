@@ -446,11 +446,13 @@ h2lab-tcphol: h2-bins
 	./bin/h2lab -mode tcphol -n 20 -par 32
 
 # G2: h2spec (go install github.com/summerwind/h2spec/cmd/h2spec@latest) chống edgegate -h2c.
+# H2CFG=config/h2-only.json (P10-6, `h2c_only`) ⇒ 145/145; mặc định chung port h1 ⇒ 3.5/2 đỏ cố ý (D7).
 H2SPEC ?= $(HOME)/go/bin/h2spec
+H2CFG ?= config/h2.json
 h2spec: h2-bins
 	@UP=; PX=; trap 'kill $$PX $$UP 2>/dev/null; wait 2>/dev/null; true' EXIT; \
 	 ./bin/epolllab -impl epoll -loops 1 -addr 127.0.0.1:18100 & UP=$$!; \
-	 ./bin/edgegate -config config/h2.json >/dev/null 2>&1 & PX=$$!; sleep 1; \
+	 ./bin/edgegate -config $(H2CFG) >/dev/null 2>&1 & PX=$$!; sleep 1; \
 	 $(H2SPEC) -h 127.0.0.1 -p 18093 -o 5 | tail -40
 
 # P10-5: h2spec qua TLS (ALPN h2) — `-t -k`, port 18443, cert tự ký của gencert.

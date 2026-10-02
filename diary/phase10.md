@@ -96,6 +96,7 @@ connection = trăm công việc: Rapid Reset, CONTINUATION flood, downgrade smug
 | D9 | **Peer kiểm tra**: (1) test thô bằng Framer + Encoder của chính `internal/h2` cho các ca biên (mình viết cả hai đầu — chỉ để tạo byte xấu); (2) `net/http` client h2c (`_test.go`) — interop thật; (3) `curl --http2-prior-knowledge` (nghttp2) trong lab; (4) `h2spec` (turn 2). HPACK kiểm bằng **toàn bộ** vector RFC 7541 Appendix C (C.2-C.6) | Peer độc lập > test tự viết |
 | D10 | **`cmd/h2lab`**: mode `hpack` (G1), `hol` (G3), `flow` (G4 — client h2 tối giản của `internal/h2` để tự đặt window), `tcphol` (G5), `cpu` (G8, proxy là tiến trình con như phase 9 D6). `config/h2.json` cho `cmd/edgegate -h2c`. `h2spec`: `go install github.com/summerwind/h2spec/cmd/h2spec@latest` vào `~/go/bin` ở turn 2 (công cụ, không phải dependency của module) | Cùng khuôn đo phase 9 |
 | D11 | **(P10-5, 2026-10-02) ALPN `h2` trên TLS**: `Config.H2ALPN` (`"h2_alpn"`) ⇒ `CertStore.ServerConfig(h2=true)` công bố `["h2","http/1.1"]` (server ưu tiên, RFC 7301 §3.2 — client chào `[http/1.1 h2]` vẫn được h2) và **giới hạn cipher TLS 1.2 còn ECDHE+AEAD** (`tlsx.H2CipherSuites`, RFC 9113 §9.2.2) ở tầng handshake — client CBC-only thấy handshake hỏng, không bắt tay rồi GOAWAY INADEQUATE_SECURITY. `NegotiatedProtocol == "h2"` ⇒ `serveH2` ngay sau handshake, không sniff preface (h2.Conn vẫn kiểm preface §3.4). Tắt mặc định: listener TLS cũ giữ cipher rộng cho h1. `make h2spec-tls` (`config/h2-tls.json`, `-t -k -p 18443`): **145/145** — 3.5/2 xanh vì ALPN đã quyết giao thức, không còn mơ hồ chung port | Một ALPN quyết một lần, không đoán byte |
+| D12 | **(P10-6, 2026-10-02) `Config.H2COnly` (`"h2c_only"`)**: listener plaintext chỉ h2c — byte đầu đi thẳng `serveH2`, preface sai ⇒ h2.Conn đóng, không rơi về h1 400. Mặc định tắt: D7 chung port giữ nguyên (3.5/2 đỏ cố ý). `make h2spec H2CFG=config/h2-only.json` ⇒ **145/145**; mặc định vẫn 144/145 | Hai chế độ tường minh thay vì đoán |
 
 ## Deliverable
 
@@ -517,6 +518,6 @@ Chi tiết + lệnh trả trong [`../docs/debts.md`](../docs/debts.md).
 - [x] **P10-4** 🔧 PING / SETTINGS / malformed khuếch đại — **trả 2026-10-02**: gộp Flush phản hồi điều khiển (100 001 → 111 Flush / 100 000 PING), SETTINGS áp một lần (1.8-2.8 ms → 51-106 µs / frame); không cần trần tốc độ
 - [x] **P10-9** 🔧 `TestIdleClosedUpstream` chập chờn dưới tải — **trả 2026-10-02**: chờ sự kiện upstream đã Close thay vì sleep 20 ms (cùng bài tải: 1/30 đỏ → 0/30, 0/60)
 - [x] **P10-5** ✅ ALPN `h2` trên TLS (2026-10-02, D11)
-- [ ] **P10-6** ⏳ h2spec 3.5/2 (listener `h2c_only` nếu cần 145/145)
+- [x] **P10-6** ✅ h2spec 3.5/2 — `h2c_only` (2026-10-02, D12)
 - [x] **P10-7** ⏳ Trailer h2 bị bỏ — **trả 2026-10-02**: WriteTrailers + Stream.Trailer, hai chiều (TestH2Trailers: Grpc-Status/X-Echo-Sig tới client)
 - [ ] **P10-8** 📏 G5/G8 trên Linux thuần, `tc` chỉ chiều client↔proxy, nhiều mẫu hơn
