@@ -280,6 +280,28 @@ func TestIdleClosedUpstream(t *testing.T) {
 		}
 		t.Logf("%d × 502 xen kẽ %d × 200; %+v", n/2, n/2, st)
 	})
+	t.Run("noprobe-POST-nobody-502", func(t *testing.T) {
+		// P5-4 (2026-10-02): RFC 9110 §9.2.2 "A proxy MUST NOT automatically
+		// retry non-idempotent requests." POST không body vẫn là POST — D4 cũ
+		// chỉ xét body nên retry nó. Muốn: như POST có body, xen kẽ 502/200.
+		up, closed := idleClosingUpstream(t)
+		s, p := startProxyS(t, up, func(c *Config) { f := false; c.Pool.Probe = &f })
+		rc := dialRaw(t, p)
+		empty := "POST /x HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n"
+		rc.do(t, "POST", empty)
+		got := ""
+		for i := 0; i < n; i++ {
+			if i == 0 || strings.HasSuffix(got, "2") {
+				waitUpstreamClosed(t, closed)
+			}
+			resp, _ := rc.do(t, "POST", empty)
+			got += map[int]string{200: "2", 502: "5"}[resp.Status]
+		}
+		st := s.PoolStats()
+		if want := strings.Repeat("52", n/2); got != want || st.Retries != 0 {
+			t.Fatalf("POST không body bị retry: muốn %q retries=0, có %q: %+v", want[:10], got[:10], st)
+		}
+	})
 }
 
 // G5 — MaxIdle: 16 client song song × 50 request, MaxIdle=4 ⇒ idle == 4 sau

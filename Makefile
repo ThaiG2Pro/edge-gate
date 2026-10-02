@@ -5,7 +5,7 @@
 	httplab fuzz-http difffuzz difffuzz-chunk \
 	proxylab proxybench upstream \
 	smugglelab smugglelab-nodefense \
-	poollab poollab-rtt poollab-nodefense \
+	poollab poollab-rtt poollab-idlerace poollab-nodefense \
 	lblab lblab-even lblab-skew lblab-flap lblab-recover lblab-nodefense \
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab tlslab-nodefense tlslab-rtt \
@@ -227,6 +227,10 @@ smugglelab-nodefense:
 # ---------------------------------------------------------------------------
 poollab:
 	go run ./cmd/poollab -pool both -n 2000
+
+# P5-4: upstream đóng rỗi ngẫu nhiên 1-50 ms; POST 1 KiB; đếm 502 probe on/off.
+poollab-idlerace:
+	go run ./cmd/poollab -idlerace -n 10000 -conns 32
 
 poollab-rtt: rtt-up
 	-go run ./cmd/poollab -pool both -n 200

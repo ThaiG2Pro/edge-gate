@@ -200,7 +200,7 @@ func (s *Server) h2exchange(w *h2.Stream, r *h2.Request, up *httpx.Request, pc *
 	if !w.SetCancel(func() { uc.Close() }) {
 		return false, false
 	}
-	canRetry := pc.reused && !hasBody
+	canRetry := pc.reused && !hasBody && idempotent(r.Method) // P5-4: RFC 9110 §9.2.2
 
 	uc.SetWriteDeadline(time.Now().Add(s.cfg.UpstreamBodyTimeout))
 	err := up.WriteHead(ubw)

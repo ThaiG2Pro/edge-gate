@@ -163,10 +163,25 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 }
 
 // canRetry: điều kiện (a) và (c) của D4 — connection là đồ dùng lại VÀ request
-// không có body (không replay được body đã stream sang connection chết).
-// Điều kiện (b) — lỗi I/O khi 0 byte response — do exchange kiểm tại chỗ lỗi.
+// không có body (không replay được body đã stream sang connection chết) VÀ
+// method idempotent (P5-4). Điều kiện (b) — lỗi I/O khi 0 byte response — do
+// exchange kiểm tại chỗ lỗi.
 func canRetry(pc *pooledConn, req *httpx.Request) bool {
-	return pc.reused && req.ContentLength == 0 && !req.Chunked
+	return pc.reused && req.ContentLength == 0 && !req.Chunked && idempotent(req.Method)
+}
+
+// idempotent (P5-4, trả 2026-10-02): RFC 9110 §9.2.2 "A proxy MUST NOT
+// automatically retry non-idempotent requests." Idempotent theo §9.2.2: PUT,
+// DELETE và các method safe (§9.2.1: GET, HEAD, OPTIONS, TRACE). Method phân
+// biệt hoa thường (§9.1) ⇒ so đúng chữ. D4 cũ chỉ xét body ⇒ retry cả POST
+// không body. D9 (dial lỗi ⇒ chọn backend khác) không phải retry: chưa byte
+// nào của request đi ra.
+func idempotent(method string) bool {
+	switch method {
+	case "GET", "HEAD", "OPTIONS", "TRACE", "PUT", "DELETE":
+		return true
+	}
+	return false
 }
 
 // exchange: bước 3-5 trên MỘT connection upstream pc. Trả (keep, retry, upFail):

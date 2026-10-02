@@ -111,12 +111,16 @@ taskset -c 0,1 go run ./cmd/poollab -pool both -n 2000 | tee bench/p5-poollab-rt
 make poollab-rtt 2>&1 | tee bench/p5-poollab-rtt20-quiet.txt
 ```
 
-### 🔧 P5-4 · Body vào connection chết giữa probe và `Write` ⇒ 502
+### ⏳ P5-4b · Replay body ≤ 64 KiB cho PUT/DELETE khi connection reused chết
 
-D4 (c) không retry request có body vì body đã stream (I2). `TestIdleClosedUpstream/noprobe-POST-body-502`
-cho mẫu 25/50 khi tắt probe; với probe là 0/50 nhưng cửa sổ probe→Write vẫn mở. Đo tần suất thật:
-upstream đóng rỗi ngẫu nhiên 1-50 ms sau response, 10k POST, đếm 502. Nếu > 0.1 %: buffer body
-≤ 64 KiB để replay đúng một lần — đổi I2 có điều kiện, đăng ký D trước khi code.
+RFC 9110 §9.2.2 cho proxy retry method idempotent ⇒ PUT/DELETE có body replay được nếu buffer. P5-4 đo
+0.09-0.13 % 502 với POST (không được replay) trên idle timeout đối nghịch 1-50 ms; PUT có body hiếm hơn
+GET/POST. Làm khi có số đo PUT thật. Đăng ký D (đổi I2 có điều kiện) trước khi code. Đo lại trên Linux yên:
+
+```bash
+uptime   # load < 1
+make poollab-idlerace 2>&1 | tee bench/p5-4-idlerace-linux.txt
+```
 
 ### 📏 P6-1 · Bench LB closed-loop không biến capacity bỏ phí thành p99 — **trả một phần (phase 7)**
 
@@ -306,6 +310,20 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P5-4 · Body vào connection chết giữa probe và `Write` ⇒ 502 — trả 2026-10-02
+
+`cmd/poollab -idlerace` (`make poollab-idlerace`): upstream raw đóng rỗi sau 1-50 ms ngẫu nhiên mỗi response,
+32 worker POST 1 KiB nghỉ 0-60 ms, 10k request. `bench/p5-4-idlerace.txt` (WSL2, load 5.45), 3 lượt:
+**probe on 13 / 13 / 9 ⇒ 0.09-0.13 %** (≈ 3 % số lần upstream đóng rỗi lọt cửa sổ probe→Write);
+probe off 3.6-3.7 %. Vượt ngưỡng 0.1 % đăng ký, nhưng replay POST bị cấm: RFC 9110 §9.2.2 (đọc nguyên văn)
+"A proxy MUST NOT automatically retry non-idempotent requests." ⇒ 502 là câu trả lời đúng cho POST;
+client (biết ngữ nghĩa) tự quyết. Replay cho PUT/DELETE có body tách thành P5-4b.
+
+Lỗ lộ ra khi đọc §9.2.2: **D4 retry cả POST không body** (chỉ xét body, không xét method).
+`TestIdleClosedUpstream/noprobe-POST-nobody-502` viết trước, đỏ: `Retries:50`, muốn 0. Nay `canRetry`
+(h1) và `h2exchange` đòi `idempotent(method)` = GET/HEAD/OPTIONS/TRACE/PUT/DELETE (§9.2.1 + §9.2.2).
+D9 không đổi: dial lỗi ⇒ chưa byte nào đi, không phải retry.
 
 ### ✅ P4-4 · Tag `nodefense` chung cho phase 1/3/4 — trả 2026-10-02
 

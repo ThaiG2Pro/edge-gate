@@ -35,7 +35,12 @@ func main() {
 	conns := flag.Int("conns", 1, "số client song song (closed-loop mỗi client)")
 	upstreamAddr := flag.String("upstream", "", "upstream ngoài (mặc định: fixture in-process)")
 	target := flag.String("target", "/hello", "request-target")
+	idlerace := flag.Bool("idlerace", false, "P5-4: đếm 502 khi upstream đóng rỗi ngẫu nhiên 1-50 ms (POST có body)")
 	flag.Parse()
+	if *idlerace {
+		runIdleRace(*n, *conns)
+		return
+	}
 
 	up := *upstreamAddr
 	if up == "" {

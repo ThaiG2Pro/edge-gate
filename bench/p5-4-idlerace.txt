@@ -1,0 +1,27 @@
+P5-4 idlerace: upstream đóng rỗi sau 1-50 ms ngẫu nhiên · POST 1 KiB · n=10000 · conns=32 · nghỉ 0-60 ms
+
+  probe=true · 9.687s · upstream đóng rỗi 399 lần
+    status map[200:9987 502:13] · lỗi client 0 · 502 = 13/10000 = 0.130 %
+    pool {Dials:399 Reuses:9601 Puts:9987 Retries:0 DropDirty:13 DropFull:0 DropExpired:0 DeadOnProbe:383 Idle:3}
+
+  probe=false · 9.607s · upstream đóng rỗi 373 lần
+    status map[200:9629 502:371] · lỗi client 0 · 502 = 371/10000 = 3.710 %
+    pool {Dials:373 Reuses:9627 Puts:9629 Retries:0 DropDirty:371 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:2}
+P5-4 idlerace: upstream đóng rỗi sau 1-50 ms ngẫu nhiên · POST 1 KiB · n=10000 · conns=32 · nghỉ 0-60 ms
+
+  probe=true · 9.598s · upstream đóng rỗi 382 lần
+    status map[200:9987 502:13] · lỗi client 0 · 502 = 13/10000 = 0.130 %
+    pool {Dials:382 Reuses:9618 Puts:9987 Retries:0 DropDirty:13 DropFull:0 DropExpired:0 DeadOnProbe:367 Idle:2}
+
+  probe=false · 9.606s · upstream đóng rỗi 366 lần
+    status map[200:9638 502:362] · lỗi client 0 · 502 = 362/10000 = 3.620 %
+    pool {Dials:366 Reuses:9634 Puts:9638 Retries:0 DropDirty:362 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:4}
+P5-4 idlerace: upstream đóng rỗi sau 1-50 ms ngẫu nhiên · POST 1 KiB · n=10000 · conns=32 · nghỉ 0-60 ms
+
+  probe=true · 9.634s · upstream đóng rỗi 382 lần
+    status map[200:9991 502:9] · lỗi client 0 · 502 = 9/10000 = 0.090 %
+    pool {Dials:382 Reuses:9618 Puts:9991 Retries:0 DropDirty:9 DropFull:0 DropExpired:0 DeadOnProbe:370 Idle:3}
+
+  probe=false · 9.692s · upstream đóng rỗi 370 lần
+    status map[200:9633 502:367] · lỗi client 0 · 502 = 367/10000 = 3.670 %
+    pool {Dials:370 Reuses:9630 Puts:9633 Retries:0 DropDirty:367 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:3}
