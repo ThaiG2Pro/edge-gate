@@ -136,10 +136,15 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 			return keep
 		}
 		st.up.Store(&pc.c) // Close cưỡng bức đóng được cả chiều upstream
+		// P6-2 (2026-10-02): EWMA đo thời gian BACKEND trả lời, tính từ khi có
+		// connection — không tính dial. Mẫu đầu mỗi connection gồm dial (≈ 1 ms,
+		// gấp vài lần trả lời), tau 1 s ⇒ thứ hạng giây đầu là may rủi (P2C
+		// 15/28/29/28 % trên 4 node giống hệt nhau). Dial lỗi vẫn Done(start) ở trên.
+		xstart := time.Now()
 		keep, retry, upFail := s.exchange(c, bw, req, up, pc)
 		st.up.Store(nil)
 		if !retry {
-			bl.Done(be, time.Since(start), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
+			bl.Done(be, time.Since(xstart), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
 			return keep
 		}
 		// D4 (a)(b)(c) đã thoả trong exchange. Chỉ một lần, cùng backend, và

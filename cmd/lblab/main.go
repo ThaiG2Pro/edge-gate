@@ -65,6 +65,7 @@ func main() {
 	outlier := flag.Bool("outlier", true, "passive outlier ejection (5 lỗi liên tiếp, eject 2 s)")
 	health := flag.Bool("health", true, "active health check 200 ms")
 	sessions := flag.Int("sessions", 1000, "số giá trị X-Session (khoá chash)")
+	maxRatio := flag.Float64("max-share-ratio", 0, "P6-2: >0 ⇒ thoát 1 nếu max/min share của một algo vượt ngưỡng (chỉ có nghĩa với backend giống hệt)")
 	flag.Parse()
 
 	// --- backend giả lập ----------------------------------------------------
@@ -146,6 +147,22 @@ func main() {
 		rows = append(rows, r)
 	}
 	printTable(rows, *flap, *recov)
+	if *maxRatio > 0 {
+		bad := false
+		for _, r := range rows {
+			mx, mn := 0.0, 101.0
+			for _, v := range r.share {
+				mx, mn = max(mx, v), min(mn, v)
+			}
+			if mn == 0 || mx/mn > *maxRatio {
+				fmt.Printf("FAIL %s: max/min share %.2f > %.2f\n", r.algo, mx/mn, *maxRatio)
+				bad = true
+			}
+		}
+		if bad {
+			os.Exit(1)
+		}
+	}
 }
 
 func errOf(s *fixture.Sim) string {

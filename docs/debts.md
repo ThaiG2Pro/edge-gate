@@ -146,11 +146,15 @@ go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -rate 1200 -n 20
 Phase 7 dựng xong công cụ: `internal/loadgen` (open-loop, latency từ giờ hẹn, `loadgen.Print`). Còn
 lại: nối `cmd/lblab` vào nó và đo lại `-flap -recover` ở ~85 % capacity.
 
-### 🔧 P6-2 · P2C chia lệch 20.3-31.7 % trên 4 node giống hệt nhau
+### 📏 P6-2b · Cơ chế chi tiết của lệch P2C lúc khởi động chưa chứng minh
 
-`bench/p6-lblab-even.txt`: max/min 1.56x (least-conn 1.01x). EWMA khởi từ mẫu đầu (có dial ≈ 1 ms),
-với tau 1 s mỗi mẫu sau nặng ~5·10⁻⁴ ⇒ thứ hạng vài trăm ms đầu là may rủi. Test fail trước: `make lblab`
-đòi max/min share P2C ≤ 1.2. Sửa thử: không cho mẫu có dial vào EWMA, hoặc khởi tạo bằng trung vị cụm.
+P6-2 sửa được (A/B 0/10 vs 6/10) và lệch chỉ có khi tiến trình lạnh, nhưng mô phỏng sự kiện rời rạc với outlier ngẫu nhiên
+độc lập trong 3 mẫu đầu KHÔNG tái hiện (bản cũ 1.09x). Nghi: outlier khởi động **tương quan** (cả loạt request đầu của
+một node chậm cùng lúc), không độc lập. Lệnh trả: ghi latency từng request 200 ms đầu theo backend trong lblab, so bản cũ.
+
+```bash
+git stash; make lblab-even; git stash pop   # bản cũ: phải thấy FAIL; thêm dump latency 200 ms đầu rồi so
+```
 
 ### 📏 P6-4 · `consecutive_5xx` chậm ở rps thấp
 
@@ -316,6 +320,20 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P6-2 · P2C chia lệch trên 4 node giống hệt — trả 2026-10-02
+
+Hai thay đổi, chốt bằng A/B trên lblab thật (không bằng mô phỏng):
+1. `lb/ewma.go:observe` — trong tau đầu kể từ mẫu đầu, EWMA = **trung bình cộng** mọi mẫu (bản cũ: `v = mẫu đầu`, mẫu sau
+   nặng ~dt/tau ≈ 4·10⁻⁴ ở 2.5k rps/node ⇒ mẫu đầu thống trị cả giây). Sau tau: EWMA theo thời gian như cũ.
+2. `forward.go`/`h2.go` — latency cho EWMA tính từ khi có connection (không tính dial); dial lỗi vẫn `Done(start, true)`.
+
+`make lblab-even` (mới): 10 lượt `lblab -algos p2c,rr,leastconn -max-share-ratio 1.2`, **p2c chạy đầu tiên** — chỉ lúc
+tiến trình còn lạnh mới có outlier khởi động (`max` 37-94 ms); bản đầu của target chạy p2c sau rr/leastconn ⇒ tiến
+trình đã ấm ⇒ ngay bản cũ cũng xanh (bẫy); bản thứ hai đếm mã thoát của `grep` thay vì lblab (in FAIL mà vẫn "0/10").
+A/B cùng lệnh, liền nhau, load 2.4-3.2: **mới 0/10, HEAD 6/10** (1.53-2.00x). Riêng (2): 4/10 vẫn lệch — dial không
+phải nguyên nhân chính. Mô phỏng sự kiện rời rạc (32 client, outlier ngẫu nhiên trong 3 mẫu đầu) KHÔNG tái hiện lệch
+kể cả trên bản cũ (tệ nhất 1.09) ⇒ xoá, không giữ test chưa từng đỏ; cơ chế chi tiết ⇒ P6-2b.
 
 ### ✅ P6-3 · Node chưa có mẫu được điểm 0 khi đang có request — trả 2026-10-02
 

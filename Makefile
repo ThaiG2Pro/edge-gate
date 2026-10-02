@@ -6,7 +6,7 @@
 	proxylab proxybench upstream \
 	smugglelab smugglelab-nodefense \
 	poollab poollab-rtt poollab-nodefense \
-	lblab lblab-skew lblab-flap lblab-recover lblab-nodefense \
+	lblab lblab-even lblab-skew lblab-flap lblab-recover lblab-nodefense \
 	chaoslab slowlab ratelab deadlinelab slowlab-nodefense ratelab-nodefense breakerlab-nodefense retrylab shedlab drainlab \
 	tlslab tlslab-nodefense tlslab-rtt \
 	perflab perflab-nodefense perf-bins idlelab l4l7lab pproflab bench-vs-nginx epolllab \
@@ -243,6 +243,16 @@ poollab-nodefense:
 # ---------------------------------------------------------------------------
 lblab:
 	go run ./cmd/lblab -algos rr,leastconn,p2c,chash -n 20000
+
+# P6-2: 4 backend giống hệt ⇒ mọi algo (trừ chash: khoá ngẫu nhiên) phải chia ≤ 1.2x, 10 lượt liền.
+# p2c chạy ĐẦU TIÊN trong tiến trình: lúc đó mới có outlier khởi động (max 37-94 ms) — chạy sau rr/leastconn
+# thì tiến trình đã ấm và ngay bản lỗi cũng xanh (lần đầu viết target mắc đúng bẫy này).
+lblab-even:
+	go build -o bin/lblab ./cmd/lblab
+	@fails=0; for i in 1 2 3 4 5 6 7 8 9 10; do \
+	   out=$$(./bin/lblab -algos p2c,rr,leastconn -n 20000 -max-share-ratio 1.2) || fails=$$((fails+1)); \
+	   echo "$$out" | grep -E '^(p2c|FAIL)'; done; \
+	 echo "lblab-even: $$fails/10 lượt vượt 1.2x"; test $$fails -eq 0
 
 # G1/G2/G4: b0 chậm 10x, b1 trả 503 nhanh 30 %. Chạy hai lần: outlier tắt (least-conn dồn vào node
 # lỗi nhanh lộ rõ) rồi mặc định. Cột share là phần tải mỗi backend nhận; đừng chỉ đọc p99.

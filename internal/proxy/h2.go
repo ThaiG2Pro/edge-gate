@@ -164,9 +164,10 @@ func (s *Server) serveH2Stream(c net.Conn, st *connState, w *h2.Stream, r *h2.Re
 			h2Error(w, 502, "không dial được upstream")
 			return
 		}
+		xstart := time.Now() // P6-2: EWMA không tính dial (như forward.go)
 		retry, upFail := s.h2exchange(w, r, up, pc, hasBody)
 		if !retry {
-			bl.Done(be, time.Since(start), upFail)
+			bl.Done(be, time.Since(xstart), upFail)
 			return
 		}
 		if attempt == 0 && s.allowRetry() {
