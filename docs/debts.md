@@ -11,6 +11,9 @@ Ba loại, và cách xử lý khác hẳn nhau:
 | 📏 **đo** | Cần máy Linux thuần / mạng thật / nhiều máy mới có số đáng tin | Công cụ dựng sẵn, chạy lệnh, dán output vào diary |
 | ⏳ **phase sau** | Chưa đủ ngữ cảnh để quyết định | Ghi lại, đừng đoán non |
 
+> Trả nợ 📏: xem [`REPRODUCE-LINUX.md`](./REPRODUCE-LINUX.md) — lệnh, tiêu chí đạt, và hai
+> script `linux-baseline.sh` (phase 0–7) + `linux-measure.sh` (P-env-2, phase 8/9/10, cờ mới).
+
 ---
 
 ## Đang nợ

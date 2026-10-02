@@ -10,6 +10,7 @@ invariant và failure mode của tầng edge, và chứng minh sự hiểu đó 
 - Luật ghi nhật ký: [`skills/diary/SKILL.md`](./skills/diary/SKILL.md)
 - Nhật ký từng phase: [`diary/`](./diary/)
 - Sổ nợ kỹ thuật: [`docs/debts.md`](./docs/debts.md)
+- Tái hiện số đo trên Linux thuần (23 nợ 📏): [`docs/REPRODUCE-LINUX.md`](./docs/REPRODUCE-LINUX.md) — `./scripts/linux-measure.sh`
 
 ## Ba nguyên tắc
 

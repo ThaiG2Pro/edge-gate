@@ -5,6 +5,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -74,40 +76,59 @@ func portRange() string {
 // TIME_WAIT ~60s, và mỗi socket đó giữ một ephemeral port. ip_local_port_range
 // thường ~28k port ⇒ trần lý thuyết ~28000/60 ≈ 470 connection/giây bền vững,
 // dù CPU còn rỗi. Đây là lý do connection pool không phải "tối ưu hoá".
-func expLimits(addr string, dur time.Duration) {
-	fmt.Printf("\n--- G6: cái gì chạm trần trước khi không pool\n")
+func expLimits(addr string, dur time.Duration, dialers int) {
+	if dialers < 1 {
+		dialers = 1
+	}
+	fmt.Printf("\n--- G6: cái gì chạm trần trước khi không pool (dialers=%d)\n", dialers)
 	fmt.Printf("  ulimit -n            : %d\n", fdLimit())
 	fmt.Printf("  ip_local_port_range  : %s\n", portRange())
 	fmt.Printf("  sockstat TRƯỚC       : %s\n", sockstat())
 
 	req := request{respSize: 64}
 	deadline := time.Now().Add(dur)
-	var ok, failed int
+	// P0-4: dialers goroutine dial song song. N=1 tuần tự như cũ; so conn/s ở
+	// N=1 vs N=16 tách nghi phạm: nếu N=16 ~ N=1 thì trần là port (dùng chung),
+	// nếu tăng gần Nx thì trần là độ trễ một dialer (client tuần tự).
+	var ok, failed int64
 	var firstErr error
+	var emu sync.Mutex
 	b0, t0 := cpuBusy()
 	start := time.Now()
-	for time.Now().Before(deadline) {
-		cc, err := dial(addr, true)
-		if err != nil {
-			failed++
-			if firstErr == nil {
-				firstErr = err
+	var wg sync.WaitGroup
+	for d := 0; d < dialers; d++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for time.Now().Before(deadline) {
+				cc, err := dial(addr, true)
+				if err != nil {
+					atomic.AddInt64(&failed, 1)
+					emu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					emu.Unlock()
+					if atomic.LoadInt64(&failed) > 100 {
+						return
+					}
+					continue
+				}
+				if _, err := cc.roundtrip(req); err != nil {
+					atomic.AddInt64(&failed, 1)
+					emu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					emu.Unlock()
+				} else {
+					atomic.AddInt64(&ok, 1)
+				}
+				cc.close() // client chủ động đóng => client giữ TIME_WAIT
 			}
-			if failed > 100 {
-				break
-			}
-			continue
-		}
-		if _, err := cc.roundtrip(req); err != nil {
-			failed++
-			if firstErr == nil {
-				firstErr = err
-			}
-		} else {
-			ok++
-		}
-		cc.close() // client chủ động đóng => client giữ TIME_WAIT
+		}()
 	}
+	wg.Wait()
 	elapsed := time.Since(start)
 	b1, t1 := cpuBusy()
 

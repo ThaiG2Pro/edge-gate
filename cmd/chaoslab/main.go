@@ -38,14 +38,20 @@ import (
 )
 
 func main() {
-	scenario := flag.String("scenario", "chaos", "chaos | retry")
+	scenario := flag.String("scenario", "chaos", "chaos | retry | overload (P7-6: rate > capacity, retry budget có giá trị)")
 	dur := flag.Duration("duration", 60*time.Second, "thời gian bắn")
 	rate := flag.Float64("rate", 500, "rps open-loop")
 	tick := flag.Duration("tick", 300*time.Millisecond, "mỗi bao lâu một hành động chaos")
 	drop := flag.Float64("drop", 0.5, "retry: xác suất backend đóng connection dùng lại")
 	seed := flag.Uint64("seed", 1, "seed của chaos (in ra để chạy lại được)")
 	body := flag.Int("body", 0, "P9-7: mỗi request thứ 4 là GET /large?n=N (N ≥ 64 KiB đi splice); 0 = chỉ /hello")
+	healW := flag.Int("heal-weight", 0, "P7-4: thêm N trọng số cho hành động heal (cân lại chaoslab thiên về hại ⇒ status mix có nghĩa)")
 	flag.Parse()
+	// P7-6: overload = cơ chế retry (drop reused, outlier/health off) nhưng
+	// chạy ở rate > capacity để blind-retry khuếch đại tải thấy rõ; so
+	// budget-on vs `-tags nodefense7`.
+	retryLike := *scenario == "retry" || *scenario == "overload"
+	_ = retryLike
 
 	// Khởi động netpoller (epoll fd + eventfd) TRƯỚC khi đo nền: lần dùng mạng
 	// đầu tiên mở thêm 2 fd vĩnh viễn — đo trước đó thì nền lệch 2 tuỳ lượt.
@@ -61,7 +67,7 @@ func main() {
 			fatal(err)
 		}
 		sims[i], ups[i] = ss, ss.Addr
-		if *scenario == "retry" {
+		if retryLike {
 			ss.Sim.SetDropReused(*drop)
 		}
 	}
@@ -74,7 +80,7 @@ func main() {
 		LB: lb.Config{Algo: "p2c", Health: lb.HealthConfig{Interval: 200 * time.Millisecond, Timeout: 200 * time.Millisecond},
 			Outlier: lb.OutlierConfig{BaseEject: time.Second, MaxEject: 5 * time.Second}}}
 	cfg.LB.Logf = cfg.Logf
-	if *scenario == "retry" {
+	if retryLike {
 		cfg.LB.Outlier.Disabled = true // đo retry, không đo eject
 		cfg.LB.Health.Disabled = true
 	}
@@ -111,23 +117,26 @@ func main() {
 				i := rng.IntN(4)
 				s := sims[i]
 				var a string
-				switch rng.IntN(6) {
-				case 0:
+				// P7-4: heal chiếm 1 + healW / (6 + healW) hành động. healW=0 =
+				// như cũ (1/6 heal, 5/6 hại) ⇒ status nghiêng 5xx vô nghĩa. Tăng
+				// healW để tỉ lệ hại/lành gần thực tế hơn khi đọc status mix.
+				switch pick := rng.IntN(6 + *healW); {
+				case pick == 0:
 					s.Kill()
 					a = "kill"
-				case 1:
+				case pick == 1:
 					s.Revive()
 					a = "revive"
-				case 2:
+				case pick == 2:
 					s.Sim.SetDelay(20 * time.Millisecond)
 					a = "slow"
-				case 3:
+				case pick == 3:
 					s.Sim.SetErrRate(0.5)
 					a = "err50"
-				case 4:
+				case pick == 4:
 					s.Sim.SetHang(true)
 					a = "hang"
-				case 5:
+				default: // 5 .. 5+healW
 					s.Sim.SetDelay(2 * time.Millisecond)
 					s.Sim.SetErrRate(0)
 					s.Sim.SetHang(false)
@@ -176,7 +185,7 @@ func main() {
 	fmt.Printf("%-14s proxy: retry cho %d / từ chối %d, shed %d+%d, no-available %d, eject-refused %d\n", "",
 		rs.RetryAllowed, rs.RetryDenied, rs.ShedQueueFull, rs.ShedTimeout, st.NoAvailable, st.EjectRefused)
 
-	if *scenario == "retry" {
+	if retryLike {
 		var served, dropped int64
 		for _, s := range sims {
 			served += s.Sim.Served()

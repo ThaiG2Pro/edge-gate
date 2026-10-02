@@ -40,6 +40,7 @@ func main() {
 		duration = flag.Duration("duration", 10*time.Second, "thời lượng omission/limits")
 		svc      = flag.Duration("svc", time.Millisecond, "thời gian phục vụ nhân tạo mỗi request (omission)")
 		workers  = flag.Int("workers", 1, "số request server xử lý đồng thời = capacity")
+		dialers  = flag.Int("dialers", 1, "P0-4: số goroutine dial song song cho -exp limits (so N=1 vs N=16 để tách trần port/client)")
 		tag      = flag.String("tag", "", "nhãn ghi vào output, ví dụ 'rtt20ms' hoặc 'wsl2'")
 	)
 	flag.Parse()
@@ -66,7 +67,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "-role client cần -addr")
 			os.Exit(2)
 		}
-		runExperiments(*addr, *exp, *all, opts{*n, *respSize, *conns, *useBufio, *rate, *duration, *svc, *workers})
+		runExperiments(*addr, *exp, *all, opts{*n, *respSize, *conns, *useBufio, *rate, *duration, *svc, *workers, *dialers})
 
 	case "both":
 		a := *addr
@@ -82,7 +83,7 @@ func main() {
 		fmt.Printf("server nội bộ: %s (workers=%d bufio=%v)\n", s.addr(), *workers, *useBufio)
 		warn("chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.")
 		warn("Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.")
-		runExperiments(s.addr(), *exp, *all, opts{*n, *respSize, *conns, *useBufio, *rate, *duration, *svc, *workers})
+		runExperiments(s.addr(), *exp, *all, opts{*n, *respSize, *conns, *useBufio, *rate, *duration, *svc, *workers, *dialers})
 
 	default:
 		fmt.Fprintf(os.Stderr, "-role không hợp lệ: %s\n", *role)
@@ -99,6 +100,7 @@ type opts struct {
 	duration time.Duration
 	svc      time.Duration
 	workers  int
+	dialers  int
 }
 
 func runExperiments(addr, exp string, all bool, o opts) {
@@ -128,7 +130,7 @@ func runExperiments(addr, exp string, all bool, o opts) {
 		}
 	}
 	if want("limits") {
-		expLimits(addr, o.duration)
+		expLimits(addr, o.duration, o.dialers)
 	}
 	if !all && exp == "" {
 		fmt.Println("\nkhông chọn thí nghiệm nào. Dùng -all hoặc -exp <tên>.")
