@@ -129,7 +129,7 @@ func parseVersion(b []byte) (string, error) {
 		}
 		return "", ErrVersion
 	}
-	return "", badRequest("phiên bản không hợp lệ: %q", b)
+	return "", badRequest("phiên bản không hợp lệ: %q", clip(b))
 }
 
 // readHeaders đọc khối header tới dòng trống. Trả về header, số byte đã đọc
@@ -178,7 +178,7 @@ func readHeaders(br *bufio.Reader, lim Limits) (Header, int, error) {
 		if !isToken(name) {
 			// bao gồm cả "Transfer-Encoding : chunked" (space trước ':') —
 			// đúng vector TE.TE phase 4.
-			return nil, total, badRequest("tên header không hợp lệ: %q", name)
+			return nil, total, badRequest("tên header không hợp lệ: %q", clip(name))
 		}
 		value := trimOWS(line[i+1:])
 		if !isFieldValue(value) {
@@ -232,7 +232,7 @@ func checkConnectionTokens(h Header) error {
 				continue
 			}
 			if !isTokenString(tok) {
-				return badRequest("Connection: token không hợp lệ %q", tok)
+				return badRequest("Connection: token không hợp lệ %q", clip(tok))
 			}
 			if strings.EqualFold(tok, "Host") || strings.EqualFold(tok, "Content-Length") {
 				return ErrBadConnectionToken

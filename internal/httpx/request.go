@@ -70,7 +70,7 @@ func ReadRequest(br *bufio.Reader, lim Limits) (*Request, error) {
 	sp2 += sp1 + 1
 	method, target, version := line[:sp1], line[sp1+1:sp2], line[sp2+1:]
 	if !isToken(method) {
-		return nil, badRequest("method không hợp lệ: %q", method)
+		return nil, badRequest("method không hợp lệ: %q", clip(method))
 	}
 	if len(target) == 0 || !isVCHAR(target) {
 		return nil, badRequest("request-target không hợp lệ")

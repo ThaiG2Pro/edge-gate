@@ -29,6 +29,19 @@ func badRequest(format string, args ...any) *ProtoError {
 	return &ProtoError{Status: 400, Reason: fmt.Sprintf(format, args...)}
 }
 
+// clipMax: số byte tối đa của một trường peer gửi được chép vào Reason.
+const clipMax = 32
+
+// clip (P2-5, trả 2026-10-02): Reason chỉ mang 32 byte đầu của trường bẩn.
+// "%q" trên cả trường = ~4 byte/byte input (\xa9 → `\xa9`) cộng tăng trưởng
+// của fmt: request-line 7.4 KB cho 196 KB cấp phát, và Reason đó đi vào log.
+func clip[T ~string | ~[]byte](v T) string {
+	if len(v) <= clipMax {
+		return string(v)
+	}
+	return fmt.Sprintf("%s…(+%d byte)", v[:clipMax], len(v)-clipMax)
+}
+
 func protoError(status int, format string, args ...any) *ProtoError {
 	return &ProtoError{Status: status, Reason: fmt.Sprintf(format, args...)}
 }

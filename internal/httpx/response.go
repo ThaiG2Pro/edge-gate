@@ -70,7 +70,7 @@ func ReadResponse(br *bufio.Reader, lim Limits, method string) (*Response, error
 	code := rest[:3]
 	for _, c := range code {
 		if c < '0' || c > '9' {
-			return nil, badRequest("status code không phải số: %q", code)
+			return nil, badRequest("status code không phải số: %q", clip(code))
 		}
 	}
 	resp.Status = int(code[0]-'0')*100 + int(code[1]-'0')*10 + int(code[2]-'0')

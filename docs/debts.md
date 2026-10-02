@@ -71,19 +71,6 @@ taskset -c 3,4,5 vegeta attack -rate=5000 -duration=30s -targets=t.txt | vegeta 
 Đã ghim core vẫn chưa đủ: cần so `rps` đạt được với `rate` yêu cầu. Lệch > 2% nghĩa là
 generator không theo nổi ⇒ **số latency vô nghĩa**, không phải "proxy chậm".
 
-### 🔧 P2-5 · `FuzzReadRequest` đỏ 1/3 lượt 30 s: 164 912 byte cho input ~6.2 KB
-
-Phát hiện lúc trả P4-1 (2026-10-02): `cấp phát 164912 byte cho input 6185-6198 byte (trần 164496-164704)` — **cùng một
-số byte** ở mọi lần đỏ, trên cả HEAD trước P4-1 (1/3) lẫn sau (1/3), load 12. Chạy lại riêng input
-(`-run FuzzReadRequest/<id>`) thì xanh ở cả hai bản ⇒ không phải lỗi tất định của input. Nghi: cấp phát phụ thuộc trạng
-thái `sync.Pool` (phase 9: head/bufio pool) khác nhau giữa fuzz liên tục và chạy một lần — hằng số 164 912 gợi ý một
-buffer cố định chứ không phải nhiễu của bộ đếm toàn tiến trình. Lệnh trả: tái hiện có pool ấm (chạy input 1 000 lần
-trong một test, đo từng lần), rồi quyết: trần `allocBound` có phải cộng hằng số pool không.
-
-```bash
-for i in 1 2 3; do go test ./internal/httpx -run '^$' -fuzz FuzzReadRequest -fuzztime 30s -fuzzminimizetime 1s | tail -1; done
-```
-
 ### 📏 P4-2 · G4 đo trên WSL2 không phân giải được 5 %
 
 ns/op ± 10-37 % (`bench/p4-bench-readrequest.txt`); chỉ allocs/op và CPU share tin được. Trả cùng
@@ -310,6 +297,18 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P2-5 · `FuzzReadRequest` đỏ 1/3 lượt: 164 912 byte cho input ~6.2 KB — trả 2026-10-02
+
+Không phải `sync.Pool`. Corpus `testdata/fuzz/FuzzReadRequest/637b585bcb169468`: request-line `1 1 HTTP/1` +
+~6 K byte `\xa9`. `badRequest("phiên bản không hợp lệ: %q", b)` chép **cả trường** vào `Reason`: `%q` nở
+`\xa9` → `\xa9` (4 byte/byte) cộng tăng trưởng buffer của `fmt` ⇒ 151-196 KB cho 7 KB input, và chuỗi đó đi
+vào log. Fuzz chỉ đỏ 1/3 vì bộ đếm tầng 1 (`runtime/metrics`) đếm thiếu ~4x so với `ReadMemStats`.
+
+`TestErrorAllocBound` viết trước, đỏ trên HEAD 4/5 ca (`Reason 28 040 byte`, `151 584 byte cho input 7 016`,
+trần 44 448); ca `status` xanh sẵn vì code chỉ 3 byte. Sửa: `clip()` trong `errors.go` — mọi `%q` nhận byte của
+peer (version, method, tên header, token `Connection:`, status code) chỉ mang 32 byte đầu + `…(+N byte)`.
+Sau sửa: fuzz 3/3 lượt 30 s xanh; `TestReadRequestAllocs` vẫn 24.
 
 ### ✅ P5-4 · Body vào connection chết giữa probe và `Write` ⇒ 502 — trả 2026-10-02
 

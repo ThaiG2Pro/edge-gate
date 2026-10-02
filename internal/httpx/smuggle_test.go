@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http" // ORACLE — chỉ trong _test.go
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -241,5 +242,53 @@ func TestReadRequestAllocs(t *testing.T) {
 	t.Logf("%.0f alloc / ReadRequest", n)
 	if n > 24 {
 		t.Fatalf("%.0f alloc > 24", n)
+	}
+}
+
+// P2-5 (2026-10-02): badRequest("%q", <cả trường bẩn>) cấp phát ~4 byte/byte
+// input cộng tăng trưởng của fmt — input 7.4 KB cho 196 KB, vượt allocBound.
+// Fuzz chỉ bắt được 1/3 lượt vì tầng 1 (runtime/metrics) đếm thiếu ~4x. Đo
+// tất định ở đây, mọi chỗ %q nhận byte của peer, bằng ReadMemStats min-of-3.
+func TestErrorAllocBound(t *testing.T) {
+	junk := strings.Repeat("\xa9", 7000)
+	cases := map[string]string{
+		"version": "GET / HTTP/1" + junk + "\r\n\r\n",
+		"method":  "G" + junk + " / HTTP/1.1\r\nHost: h\r\n\r\n",
+		"name":    "GET / HTTP/1.1\r\nHost: h\r\nX" + junk + ": v\r\n\r\n",
+		"conn":    "GET / HTTP/1.1\r\nHost: h\r\nConnection: a" + junk + "\r\n\r\n",
+		"status":  "HTTP/1.1 2" + junk + " OK\r\n\r\n",
+	}
+	lim := DefaultLimits()
+	for name, in := range cases {
+		run := func() error {
+			br := bufio.NewReader(strings.NewReader(in))
+			var err error
+			if name == "status" {
+				_, err = ReadResponse(br, lim, "GET")
+			} else {
+				_, err = ReadRequest(br, lim)
+			}
+			return err
+		}
+		if err := run(); err == nil {
+			t.Fatalf("%s: muốn lỗi", name)
+		} else if e, ok := IsProtoError(err); !ok || len(e.Reason) > 256 {
+			t.Errorf("%s: Reason %d byte — không được chép nguyên trường bẩn vào lỗi", name, len(e.Reason))
+		}
+		var ms runtime.MemStats
+		min := ^uint64(0)
+		for i := 0; i < 3; i++ {
+			runtime.ReadMemStats(&ms)
+			b := ms.TotalAlloc
+			run()
+			runtime.ReadMemStats(&ms)
+			if d := ms.TotalAlloc - b; d < min {
+				min = d
+			}
+		}
+		// Trần chặt hơn allocBound của fuzz: lỗi sớm thì chỉ còn bufio + readLine.
+		if bound := uint64(4*len(in)) + 1<<14; min > bound {
+			t.Errorf("%s: cấp phát %d byte cho input %d byte (trần %d)", name, min, len(in), bound)
+		}
 	}
 }
