@@ -139,6 +139,7 @@ type Stream struct {
 	declCL     int64 // content-length khai báo, -1 = không
 	recvd      int64
 	remoteDone bool // END_STREAM từ client
+	trailer    []hpack.HeaderField // trailer request (P10-7), có sau bodyEOF
 	reset      bool
 	peerReset  bool // RST đến TỪ CLIENT (khác: ta RST) — §5.1 closed
 	exited     bool // handler đã thoát
@@ -624,11 +625,12 @@ func (c *Conn) endHeaderBlock(depErr error) error {
 			c.mu.Unlock()
 			return malformed(id, "tổng DATA ≠ content-length")
 		}
+		s.trailer = fields // P10-7: handler đọc qua Trailer() sau io.EOF
 		s.bodyEOF = true
 		s.stopBodyTimer()
 		c.cond.Broadcast()
 		c.mu.Unlock()
-		return nil // trailer bị bỏ (như P3-1 phía h1)
+		return nil
 	}
 	if id%2 == 0 {
 		c.mu.Unlock()
@@ -1114,6 +1116,37 @@ func (s *Stream) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+// Trailer: trailer request (HEADERS cuối mang END_STREAM), chỉ có nghĩa sau
+// khi Read trả io.EOF; nil nếu client không gửi (P10-7).
+func (s *Stream) Trailer() []hpack.HeaderField {
+	s.c.mu.Lock()
+	defer s.c.mu.Unlock()
+	return s.trailer
+}
+
+// WriteTrailers: HEADERS cuối mang END_STREAM sau DATA (RFC 9113 §8.1) — đường
+// duy nhất h2 chở trailer (gRPC: grpc-status). fields: tên lowercase, không pseudo.
+func (s *Stream) WriteTrailers(fields []hpack.HeaderField) error {
+	if !s.wroteHeaders {
+		return errors.New("h2: trailer trước HEADERS")
+	}
+	c := s.c
+	c.mu.Lock()
+	if s.reset {
+		c.mu.Unlock()
+		return errStreamReset
+	}
+	maxFrame := c.peerFrame
+	c.mu.Unlock()
+	err := c.write(func(fr *Framer) error {
+		return fr.WriteHeaderBlock(s.id, true, c.enc.Encode(nil, fields), maxFrame)
+	})
+	if err == nil {
+		s.ended = true
+	}
+	return err
 }
 
 // End: DATA rỗng mang END_STREAM.

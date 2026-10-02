@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -384,4 +385,75 @@ func TestH2Shed(t *testing.T) {
 	if st := s.ResilienceStats(); st.Inflight != 0 {
 		t.Fatalf("slot không trả (I7): inflight %d", st.Inflight)
 	}
+}
+
+// trailerReader: body request mà lúc EOF mới điền trailer (cách net/http cho
+// phép trailer request — giá trị phải có trước khi body trả EOF).
+type trailerReader struct {
+	r  io.Reader
+	tr http.Header
+}
+
+func (t *trailerReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if err == io.EOF {
+		t.tr.Set("X-Sig", "s1")
+	}
+	return n, err
+}
+
+// TestH2Trailers (P10-7): trailer đi cả hai chiều qua downgrade h2 → h1 → h2:
+// trailer request h2 ⇒ trailer chunked sang upstream; trailer response chunked
+// ⇒ HEADERS cuối END_STREAM (thứ gRPC cần cho grpc-status).
+func TestH2Trailers(t *testing.T) {
+	up := startRecTrailerUpstream(t)
+	_, addr := startProxyS(t, up, h2on)
+	tr := http.Header{"X-Sig": nil}
+	req, _ := http.NewRequest("POST", "http://"+addr+"/rpc", &trailerReader{r: strings.NewReader("payload"), tr: tr})
+	req.Trailer = tr
+	resp, err := h2cClient().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	t.Logf("%s body %q trailer %v", resp.Proto, b, resp.Trailer)
+	if resp.ProtoMajor != 2 || string(b) != "payload" {
+		t.Fatalf("body: %s %q", resp.Proto, b)
+	}
+	if resp.Trailer.Get("Grpc-Status") != "0" || resp.Trailer.Get("X-Echo-Sig") != "s1" {
+		t.Fatalf("trailer qua h2: %v (muốn Grpc-Status 0, X-Echo-Sig s1)", resp.Trailer)
+	}
+}
+
+// startRecTrailerUpstream: đọc request (chunked), trả lại body + trailer
+// Grpc-Status: 0 và X-Echo-Sig = trailer X-Sig của request.
+func startRecTrailerUpstream(t *testing.T) string {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				for {
+					req, err := httpx.ReadRequest(br, httpx.DefaultLimits())
+					if err != nil {
+						return
+					}
+					body, _ := io.ReadAll(req.Body)
+					sig := req.Trailer().Get("X-Sig")
+					fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nTrailer: Grpc-Status, X-Echo-Sig\r\nTransfer-Encoding: chunked\r\n\r\n%x\r\n%s\r\n0\r\nGrpc-Status: 0\r\nX-Echo-Sig: %s\r\n\r\n", len(body), body, sig)
+				}
+			}()
+		}
+	}()
+	return ln.Addr().String()
 }

@@ -208,6 +208,10 @@ var forbiddenTrailer = map[string]bool{
 	"Proxy-Authenticate": true, "Proxy-Authorization": true,
 }
 
+// ForbiddenTrailer: name (dạng canonical) không được nằm trong trailer (RFC
+// 9110 §6.5.1). Export cho proxy lọc trailer h2 trước khi ghi sang h1 (P10-7).
+func ForbiddenTrailer(name string) bool { return forbiddenTrailer[canonical(name)] }
+
 func checkTrailer(tr Header) error {
 	for name := range tr {
 		if forbiddenTrailer[name] {

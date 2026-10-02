@@ -261,15 +261,7 @@ func (s *Server) h2exchange(w *h2.Stream, r *h2.Request, up *httpx.Request, pc *
 
 	out := resp.Header.Clone()
 	out.StripHopByHop()
-	fields := make([]hpack.HeaderField, 0, len(out)+1)
-	for k, vs := range out {
-		name := strings.ToLower(k)
-		for _, v := range vs {
-			// Response h1 → h2: tên lowercase (§8.2.1); value đã qua parser
-			// h1 (không CR/LF). Sensitive giữ cho set-cookie (không index).
-			fields = append(fields, hpack.HeaderField{Name: name, Value: v, Sensitive: name == "set-cookie"})
-		}
-	}
+	fields := h2Fields(out)
 	noBody := httpx.NoBody(r.Method, resp.Status)
 	uc.SetReadDeadline(time.Now().Add(s.cfg.UpstreamBodyTimeout))
 	if err := w.WriteHeaders(resp.Status, fields, noBody); err != nil {
@@ -303,11 +295,31 @@ func (s *Server) h2exchange(w *h2.Stream, r *h2.Request, up *httpx.Request, pc *
 		w.Reset(h2.ErrInternal)
 		return false, true
 	}
-	if err := w.End(); err != nil {
+	// P10-7: trailer upstream (chunked) ⇒ HEADERS cuối END_STREAM; không có ⇒ DATA rỗng END_STREAM.
+	var endErr error
+	if tr := resp.Trailer(); len(tr) > 0 {
+		endErr = w.WriteTrailers(h2Fields(tr))
+	} else {
+		endErr = w.End()
+	}
+	if endErr != nil {
 		return false, upFail
 	}
 	clean = ubr.Buffered() == 0 && !resp.Close
 	return false, upFail
+}
+
+// h2Fields: header/trailer h1 → field h2. Tên lowercase (§8.2.1); value đã qua
+// parser h1 (không CR/LF). Sensitive giữ cho set-cookie (không index).
+func h2Fields(h httpx.Header) []hpack.HeaderField {
+	fields := make([]hpack.HeaderField, 0, len(h)+1)
+	for k, vs := range h {
+		name := strings.ToLower(k)
+		for _, v := range vs {
+			fields = append(fields, hpack.HeaderField{Name: name, Value: v, Sensitive: name == "set-cookie"})
+		}
+	}
+	return fields
 }
 
 var errBodyOverCL = errors.New("proxy: body h2 dài hơn content-length")
@@ -318,7 +330,27 @@ var errBodyOverCL = errors.New("proxy: body h2 dài hơn content-length")
 // hai (G6). Không CL ⇒ chunked.
 func (s *Server) h2copyRequestBody(ubw *bufio.Writer, src io.Reader, up *httpx.Request) (readErr, writeErr error) {
 	if up.Chunked {
-		return copyBody(ubw, src, true)
+		// P10-7: trailer request h2 ⇒ trailer chunked sang upstream; field cấm
+		// (§6.5.1) bị bỏ — h2 đã loại pseudo/CRLF (checkTrailers). CL ⇒ h1 không
+		// chở được trailer ⇒ bỏ (ghi ở sổ nợ).
+		trailer := func() httpx.Header {
+			st, ok := src.(*h2.Stream)
+			if !ok {
+				return nil
+			}
+			var h httpx.Header
+			for _, f := range st.Trailer() {
+				if httpx.ForbiddenTrailer(f.Name) {
+					continue
+				}
+				if h == nil {
+					h = httpx.Header{}
+				}
+				h.Add(f.Name, f.Value)
+			}
+			return h
+		}
+		return copyBodyT(ubw, src, true, trailer)
 	}
 	if !h2LimitBodyToCL || up.ContentLength < 0 {
 		return copyBody(ubw, src, false)

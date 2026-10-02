@@ -298,11 +298,6 @@ D7: chỉ h2c. Listener TLS phase 8 công bố `NextProtos: ["http/1.1"]` (`tlsx
 Preface sai ⇒ hiểu là h1 hỏng ⇒ `400` (D7, cố ý). Nếu cần pass 145/145: tuỳ chọn listener `h2c_only` (không fallback
 h1). Lệnh trả: `make h2spec` với `config/h2-only.json` ⇒ `145 passed`.
 
-### ⏳ P10-7 · Trailer h2 bị bỏ (cả request lẫn response)
-
-`h2/conn.go:endHeaderBlock` nhận trailer request rồi bỏ; `proxy/h2.go` không chuyển trailer chunked của upstream thành
-HEADERS cuối. Cùng họ P3-1. gRPC sống bằng trailer (`grpc-status`) ⇒ proxy h2 này chưa proxy được gRPC.
-
 ### 📏 P10-8 · G5/G8 đo trên WSL2 loopback + netem
 
 G5: 640 mẫu mỗi cột, p99 = ~6 mẫu; netem trên `lo` mất gói **cả hai chiều** và cả chặng proxy→upstream. G8: load nền
@@ -328,6 +323,17 @@ for i in 1 2 3 4 5; do taskset -c 4,5 ./bin/proxylab -mode overhead -n 2000 | gr
 ```
 
 ## Đã trả
+
+### ✅ P10-7 · Trailer h2 bị bỏ — trả 2026-10-02
+
+Cả hai chiều qua downgrade h2 → h1 → h2. Response: `h2.Stream.WriteTrailers` (HEADERS cuối END_STREAM, RFC 9113 §8.1)
+khi `resp.Trailer()` có field; không có ⇒ DATA rỗng END_STREAM như cũ. Request: `endHeaderBlock` giữ trailer trên stream
+(`Stream.Trailer()` sau io.EOF); `h2copyRequestBody` (body không CL ⇒ chunked) ghi nó thành trailer chunked, bỏ field
+cấm (`httpx.ForbiddenTrailer`, RFC 9110 §6.5.1). Còn lại có chủ ý: request h2 có `content-length` ⇒ chặng h1 dùng CL,
+không chở được trailer ⇒ bỏ; `te: trailers` không truyền sang upstream (upstream h1 vẫn được gửi trailer, client vẫn
+nhận được). Test viết trước, đỏ trên HEAD (worktree): `TestH2Trailers` `trailer map[Grpc-Status:[] X-Echo-Sig:[]]`.
+Sau (×3 `-race`): client net/http h2c nhận `Grpc-Status: 0`, `X-Echo-Sig: s1` (trailer request `X-Sig` đi tới upstream
+và quay về). h2spec vẫn 144/145.
 
 ### ✅ P3-1 · Trailer chunked bị bỏ (h1, cả hai chiều) — trả 2026-10-02
 

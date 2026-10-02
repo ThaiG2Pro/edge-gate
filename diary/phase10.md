@@ -517,5 +517,5 @@ Chi tiết + lệnh trả trong [`../docs/debts.md`](../docs/debts.md).
 - [x] **P10-9** 🔧 `TestIdleClosedUpstream` chập chờn dưới tải — **trả 2026-10-02**: chờ sự kiện upstream đã Close thay vì sleep 20 ms (cùng bài tải: 1/30 đỏ → 0/30, 0/60)
 - [ ] **P10-5** ⏳ ALPN `h2` trên TLS
 - [ ] **P10-6** ⏳ h2spec 3.5/2 (listener `h2c_only` nếu cần 145/145)
-- [ ] **P10-7** ⏳ Trailer h2 bị bỏ (chưa proxy được gRPC)
+- [x] **P10-7** ⏳ Trailer h2 bị bỏ — **trả 2026-10-02**: WriteTrailers + Stream.Trailer, hai chiều (TestH2Trailers: Grpc-Status/X-Echo-Sig tới client)
 - [ ] **P10-8** 📏 G5/G8 trên Linux thuần, `tc` chỉ chiều client↔proxy, nhiều mẫu hơn
