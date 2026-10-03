@@ -191,11 +191,17 @@ Phase 7: 20.7 KiB / connection plaintext treo. TLS thêm buffer record (tới 16
 RFC 9110 §15.5.20 (421 — hành vi retry của client), RFC 8446 §4.6.1 (thời điểm NewSessionTicket) và §8
 (anti-replay 0-RTT): công cụ fetch cắt trang ở turn 3. Đọc và trích vào `diary/phase8.md` Đọc gì.
 
-### ⏳ P9-2 · Body request (upload) không splice
+### 📏 P9-2 · Body request (upload) không splice — CODE viết sẵn 2026-10-03, số đo chờ Linux
 
-D5 chỉ làm chiều response. Upload lớn CL qua proxy vẫn đi `copyBody` userspace (32 KiB). Cùng điều kiện (CL, hai
-phía TCP trần, `br.Buffered()` chép trước). Đáng làm khi có workload upload thật; đo bằng `perflab -mode l4l7`
-chiều ngược.
+**Code trả trước số đo (chủ máy yêu cầu).** `spliceUpload` (`splice.go`) đối xứng `spliceBody`: upload CL ≥ 64 KiB,
+hai phía TCP trần, không chunked ⇒ chép từ fd client sang fd upstream bằng `splice(2)` (`upTCP.ReadFrom(LimitedReader{clientTCP})`);
+phần đã nằm trong `br` ghi chung head qua `ubw` trước. `spliceUploadClientFault` đổi vai của P9-1: EPIPE ⇒ upstream (werr),
+client chết ⇒ upload cắt (rerr). `TestSpliceUpload` (echo round-trip đúng byte 1 MiB + 100 KB, < 64 KiB đi copy, pool
+sạch, bộ đếm `SpliceUploadStats` = 2) + `TestSpliceUploadClientCut` (client đóng giữa chừng ⇒ không nuôi outlier) xanh;
+counterproof `perflab-nodefense` (nodefense9) nay gồm `TestSpliceUpload` ⇒ đỏ khi tắt splice.
+
+**Còn chờ Linux:** số đo "splice upload nhanh hơn copy userspace bao nhiêu" — cần `perflab -mode l4l7` chiều ngược
+(chưa dựng; mode l4l7 hiện chỉ đo chiều response). Retry không đổi: `canRetry` đòi CL == 0 nên upload không replay.
 
 ### 📏 P9-4 · Bảng ba cột (G8) đo trên WSL2 ồn
 

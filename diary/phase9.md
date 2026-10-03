@@ -434,7 +434,7 @@ ranh giới body là CL đã biết, phần còn lại đúng là việc của L
 `ubr` qua `bw`, rồi `ReadFrom(&io.LimitedReader{upTCP, còn lại})` ⇒ Go splice (`net/splice_linux.go`). EdgeGate +
 splice **0.92-1.01x** L4 splice. Câu "L4 LB nhanh hơn L7 LB" vì vậy đúng ở **head** (L7 phải đọc từng byte head;
 với GET nhỏ thì đó là cả request — câu 1 nói nó rẻ) và **không** đúng ở body CL. Không splice được: TLS (byte phải
-giải/mã), chunked (phải đọc khung), body tới-EOF, body nhỏ (đã nằm cả trong `ubr`), và chiều upload (chưa làm, P9-2).
+giải/mã), chunked (phải đọc khung), body tới-EOF, body nhỏ (đã nằm cả trong `ubr`), và chiều upload — code splice viết sẵn 2026-10-03 (P9-2), số đo chờ Linux.
 
 **5. epoll tự viết thắng bộ nhớ 55x, hoà tốc độ — vì netpoller chính là epoll.** Cùng giao thức tối giản, 10 000
 connection rỗi: epoll (trạng thái conn ~48 B + map entry, buffer đọc 64 KiB dùng chung mỗi loop) **0.14 KiB/conn**;
@@ -462,7 +462,7 @@ runtime/ngôn ngữ chỉ còn phần nhỏ. **Không đưa "ngang nginx" vào C
 Chi tiết + lệnh trả trong `docs/debts.md`.
 
 - [ ] **P9-1** 🔧 Splice: lỗi ghi client tính là lỗi upstream (outlier oan).
-- [ ] **P9-2** ⏳ Body request (upload) không splice.
+- [~] **P9-2** (code + test xong 2026-10-03, số đo chờ Linux) ⏳ Body request (upload) không splice.
 - [x] **P9-3** — trả turn 3: `copyBody` không gọi cho body request rỗng (`bench/p9-p93.txt`: bản trước 68 129 →
   35 361 B/op — khớp mức G1 đăng ký "≥ 33 KiB").
 - [ ] **P9-4** 📏 G8 chạy lại trên Linux thuần + đếm syscall/request của nginx vs EdgeGate.

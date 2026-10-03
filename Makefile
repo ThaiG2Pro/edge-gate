@@ -391,7 +391,7 @@ perflab:
 
 # Phản chứng D4: bản TRƯỚC phải đỏ đúng hai test (idle cầm bufio, không splice).
 perflab-nodefense:
-	! go test ./internal/proxy -run 'TestIdleReleasesBufio|TestSpliceBody$$' -count=1 -v -tags nodefense9
+	! go test ./internal/proxy -run 'TestIdleReleasesBufio|TestSpliceBody$$|TestSpliceUpload$$' -count=1 -v -tags nodefense9
 
 # G3: RSS mỗi connection rỗi của edgegate, trước / sau (D2).
 IDLE_CONNS ?= 10000

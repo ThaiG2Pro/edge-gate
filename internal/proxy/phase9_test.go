@@ -137,3 +137,63 @@ func TestSpliceBodyShortUpstream(t *testing.T) {
 		t.Fatal("upstream hỏng không được về pool")
 	}
 }
+
+// P9-2 (2026-10-03, viết trước số đo) — splice chiều UPLOAD: POST body CL ≥ 64
+// KiB qua /echo, upstream phải nhận ĐÚNG từng byte; body < 64 KiB đi copy
+// userspace. Đối xứng TestSpliceBody. Số latency là việc của Linux (P9-2 ⏳);
+// test này chốt ĐÚNG byte + ranh giới + pool sạch + bộ đếm.
+func TestSpliceUpload(t *testing.T) {
+	s, p := startProxyS(t, startFixture(t), nil)
+	rc := dialRaw(t, p)
+	post := func(n int) {
+		body := fixture.Pattern(n)
+		raw := fmt.Sprintf("POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n%s", n, body)
+		resp, b := rc.do(t, "POST", raw)
+		if resp.Status != 200 || !bytes.Equal(b, body) {
+			t.Fatalf("n=%d: status %d, nhận %d byte, đúng=%v", n, resp.Status, len(b), bytes.Equal(b, body))
+		}
+	}
+	post(1 << 20) // 1 MiB ≥ 64 KiB ⇒ splice
+	post(100_000) // ≥ 64 KiB ⇒ splice
+	post(1000)    // < 64 KiB ⇒ copy userspace, KHÔNG splice
+	// request không body sau cùng: pool phải reuse sạch.
+	resp, _ := rc.do(t, "GET", "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+	nr, nb := s.SpliceUploadStats()
+	ps := s.PoolStats()
+	t.Logf("splice upload: %d request, %d byte; pool %+v; request sau: %d", nr, nb, ps, resp.Status)
+	if nr != 2 {
+		t.Fatalf("muốn 2 upload splice (1 MiB + 100 KB), được %d", nr)
+	}
+	if nb < 1<<20 || nb > int64(1<<20+100_000) {
+		t.Fatalf("byte splice = %d, muốn ∈ [1 MiB, 1 MiB+100 KB]", nb)
+	}
+	if ps.Dials != 1 || ps.Reuses != 3 {
+		t.Fatalf("upstream phải về pool sạch sau splice upload: %+v", ps)
+	}
+}
+
+// P9-2 — upload cắt cụt giữa splice: client hứa CL lớn rồi đóng sớm ⇒ readErr
+// (upload cắt), KHÔNG tính lỗi upstream, connection đóng. Chốt phân loại rerr.
+func TestSpliceUploadClientCut(t *testing.T) {
+	s, p := startProxyS(t, startFixture(t), nil)
+	c, err := net.Dial("tcp", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	// Hứa 1 MiB, gửi head + 10 KB rồi đóng nửa ghi.
+	fmt.Fprintf(c, "POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n", 1<<20)
+	c.Write(fixture.Pattern(10_000))
+	if tc, ok := c.(*net.TCPConn); ok {
+		tc.CloseWrite()
+	}
+	br := bufio.NewReader(c)
+	c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _ = httpx.ReadResponse(br, httpx.DefaultLimits(), "POST") // 400/đóng — không panic là đủ
+	// upstream không bị tính lỗi: không có backend nào bị eject.
+	for _, b := range s.LBStats().Backends {
+		if b.Fails != 0 {
+			t.Fatalf("upload client cắt KHÔNG được tính lỗi upstream: %s fails=%d", b.Addr, b.Fails)
+		}
+	}
+}

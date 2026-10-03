@@ -83,3 +83,70 @@ func spliceClientFault(err error, client, upstream net.Conn) bool {
 	g, known := peerGone(client)
 	return known && g
 }
+
+// spliceUpload (P9-2): đối xứng spliceBody cho chiều UPLOAD (client → upstream).
+// Head đã ghi vào ubw (chưa flush), body request có CL ≥ 64 KiB, cả hai phía
+// TCP trần, không chunked ⇒ chép N byte từ fd client sang fd upstream bằng
+// splice(2). Phần body đã nằm trong br (đọc lố cùng head) chép qua ubw trước
+// (cùng head), flush, rồi `upTCP.ReadFrom(&io.LimitedReader{clientTCP, còn lại})`.
+//
+// Retry không đổi: canRetry đòi ContentLength == 0 nên request có body không bao
+// giờ replay — body stream đi là mất, hệt copyBody userspace.
+//
+// (used, rerr, werr): rerr = lỗi ĐỌC từ client (upload cắt cụt) → caller 400/408;
+// werr = lỗi GHI sang upstream (upstream chết) → caller 502. Phân loại như
+// spliceClientFault nhưng đổi vai: nguồn là client, đích là upstream.
+func (s *Server) spliceUpload(uc net.Conn, ubw *bufio.Writer, req *httpx.Request, br *bufio.Reader, c net.Conn) (used bool, rerr, werr error) {
+	if !spliceBodyOn || s.cfg.NoSplice || req.Chunked || req.ContentLength < spliceMinBody {
+		return false, nil, nil
+	}
+	ct, ok := c.(*net.TCPConn)
+	ut, ok2 := uc.(*net.TCPConn)
+	if !ok || !ok2 {
+		return false, nil, nil
+	}
+	n0 := int64(br.Buffered())
+	if n0 > req.ContentLength {
+		n0 = req.ContentLength
+	}
+	// req.Body đọc từ br; n0 byte đầu không chạm socket. Ghi chung ubw với head.
+	if _, err := io.CopyN(ubw, req.Body, n0); err != nil {
+		// Lỗi đọc n0 byte đã đệm = client; hiếm (đã trong buffer) nhưng phân đúng.
+		return true, err, nil
+	}
+	if err := ubw.Flush(); err != nil {
+		return true, nil, err // flush head+đệm sang upstream lỗi = upstream
+	}
+	rem := req.ContentLength - n0
+	n, err := ut.ReadFrom(&io.LimitedReader{R: ct, N: rem})
+	s.splicedUp.Add(1)
+	s.splicedUpBytes.Add(n)
+	if n < rem {
+		// ReadFrom một lời gọi, một lỗi. nil ⇒ client EOF sớm (upload cắt).
+		if err == nil {
+			return true, io.ErrUnexpectedEOF, nil
+		}
+		if spliceUploadClientFault(err, ct, ut) {
+			return true, err, nil // client cắt upload → rerr
+		}
+		return true, nil, err // upstream chết → werr
+	}
+	return true, nil, nil
+}
+
+// spliceUploadClientFault: đổi vai của spliceClientFault — nguồn là CLIENT, đích
+// là UPSTREAM. EPIPE (lỗi ghi) ⇒ upstream chết (werr, trả false). Còn lại dò
+// hai socket: client chết → rerr (true); upstream chết → werr (false); không rõ
+// → werr (false, coi như upstream — an toàn hơn trả 400 oan cho client).
+func spliceUploadClientFault(err error, client, upstream net.Conn) bool {
+	if err == nil {
+		return true // EOF sớm phía đọc = client (đã xử ở caller, phòng hờ)
+	}
+	if errors.Is(err, syscall.EPIPE) {
+		return false // chỉ phát sinh khi GHI ⇒ upstream
+	}
+	if g, known := peerGone(client); known && g {
+		return true
+	}
+	return false
+}

@@ -242,7 +242,11 @@ func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, u
 		// io.Copy(upstream, c).
 		if hasBody {
 			// Phase 9 turn 3 (P9-3): GET không body không cần buffer 32 KiB.
-			readErr, writeErr = copyBodyT(ubw, req.Body, req.Chunked, req.Trailer)
+			// P9-2: upload CL ≥ 64 KiB, TCP trần, không chunked ⇒ splice.
+			var spliced bool
+			if spliced, readErr, writeErr = s.spliceUpload(uc, ubw, req, br, c); !spliced {
+				readErr, writeErr = copyBodyT(ubw, req.Body, req.Chunked, req.Trailer)
+			}
 		}
 	}
 	if writeErr == nil {

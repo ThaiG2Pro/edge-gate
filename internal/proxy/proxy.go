@@ -213,6 +213,8 @@ type Server struct {
 	upTLSCache tls.ClientSessionCache
 	// Phase 9 D5: body response đi bằng splice — số response và số byte.
 	spliced, splicedBytes atomic.Int64
+	// P9-2: body request (upload) đi bằng splice — số request và số byte.
+	splicedUp, splicedUpBytes atomic.Int64
 	// Phase 10: connection h2 đã nhận, bộ đếm stream cộng dồn.
 	h2conns atomic.Int64
 	h2stats h2.Stats
@@ -223,6 +225,11 @@ type Server struct {
 // SpliceStats (phase 9 D5): số response có body đi bằng splice, và số byte.
 func (s *Server) SpliceStats() (responses, bytes int64) {
 	return s.spliced.Load(), s.splicedBytes.Load()
+}
+
+// SpliceUploadStats (P9-2): số request có body (upload) đi bằng splice, và số byte.
+func (s *Server) SpliceUploadStats() (requests, bytes int64) {
+	return s.splicedUp.Load(), s.splicedUpBytes.Load()
 }
 
 // New panic khi cấu hình LB sai (algo lạ, không upstream) — lỗi khởi động,
