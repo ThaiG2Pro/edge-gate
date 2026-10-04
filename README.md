@@ -60,9 +60,9 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 
 ### Nợ kỹ thuật (2026-10-04)
 
-Mười phase xong. **56 nợ đã trả, 10 còn mở** — các nợ `📏` cốt lõi về Linux thuần đã được chốt số
-(P-env-2, P0-4, P3-5, P4-2, P5-1, P6-2b, P7-2b, P7-4, P7-6, P8-1, P9-4, P9-6, P10-8). Không còn nợ `🔧`.
-Phiên 2026-10-04 chốt 13 nợ thực nghiệm trên máy Linux thuần (CachyOS, 16-thread).
+Mười phase xong. **50 nợ đã trả, 16 còn mở** — các nợ `📏` cốt lõi về Linux thuần đã được đo và chốt số
+(P-env-2, P3-5, P5-1, P7-4, P8-1, P9-4, P10-8). Không còn nợ `🔧`.
+Phiên 2026-10-04 chốt 7 nợ thực nghiệm trên máy Linux thuần (CachyOS, 16-thread), đồng thời làm rõ bản chất của các nợ P0-4, P7-2b, P7-6, P6-2b, P4-2, P9-6.
 
 Tái hiện số đo thật: [`docs/REPRODUCE-LINUX.md`](./docs/REPRODUCE-LINUX.md) — bảng 23 nợ `📏` kèm
 lệnh và tiêu chí đạt, chạy bằng `./scripts/linux-baseline.sh` (phase 0–7) và

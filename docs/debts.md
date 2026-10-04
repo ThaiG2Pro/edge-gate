@@ -49,6 +49,24 @@ Hai máy thật trả `P0-3` **và** `P0-6` trong một lần: RTT thật có ji
 không cần `netem` giả lập. `P0-1` đã trả bằng netem, nhưng netem cho một mạng sạch bất thường —
 xem `P0-6`.
 
+### 📏 P0-4 · `expLimits` dial tuần tự nên chưa loại được nghi phạm thứ hai
+
+Số đo 2026-10-04 trên `192.168.1.52`: N=1 đạt **576 conn/s** (CPU 11.3%), trong khi N=16 vọt lên
+**8 208 conn/s** (tăng 14.25x, CPU 77%) và cạn kiệt port sau 3.4s (`cannot assign requested address`).
+Chứng minh: trần conn/s ban đầu (ở N=1) là do **vòng lặp client tuần tự**, không phải do cạn port.
+Khi client đủ mạnh (N=16) thì mới chạm trần ephemeral port thật sự của kernel.
+
+```bash
+go run ./cmd/netlab -exp limits -duration 40s -dialers 1  -addr <eth0-ip>:9200
+go run ./cmd/netlab -exp limits -duration 40s -dialers 16 -addr <eth0-ip>:9201
+```
+
+### 📏 P4-2 · G4 đo trên WSL2 không phân giải được 5 %
+
+ns/op ± 10-37 % (`bench/p4-bench-readrequest.txt`); chỉ allocs/op và CPU share tin được. Cần chạy
+`taskset`, `-count 20`, benchstat so sánh hai commit `b3e08f0` vs `989b060` trên Linux thuần
+(phiên 2026-10-04 mới chỉ chạy benchstat 1 commit).
+
 ### ⏳ P5-4b · Replay body ≤ 64 KiB cho PUT/DELETE khi connection reused chết
 
 RFC 9110 §9.2.2 cho proxy retry method idempotent ⇒ PUT/DELETE có body replay được nếu buffer.
@@ -72,16 +90,45 @@ nửa sau bằng nhau (4.43 vs 4.13 ms) vì 3 node còn lại dư sức và clie
 go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -rate 1200 -n 20000 -conns 64
 ```
 
+### 📏 P6-2b · Cơ chế chi tiết của lệch P2C lúc khởi động chưa chứng minh
+
+`lblab` phiên 2026-10-04 cho thấy P2C đạt max/min share 1.05x, nhưng consistent hashing fail 1.39-1.52x > 1.20x.
+Vẫn cần phân tích log chi tiết 200 ms đầu theo từng backend để chứng minh giả thuyết outlier khởi động tương quan.
+
+```bash
+git stash; make lblab-even; git stash pop   # bản cũ: phải thấy FAIL; thêm dump latency 200 ms đầu rồi so
+```
+
 ### 📏 P6-4 · `consecutive_5xx` chậm ở rps thấp
 
 Kỳ vọng ~586 request tới chuỗi 5 lỗi đầu với lỗi 30 % ⇒ 0.17 s ở 3 400 rps nhưng ~1 phút ở 10 rps.
 Đo: `lblab -skew err=30% -conns 1` (≈ vài trăm rps chia 4) với `-n 2000`, đọc share b1 và 5xx; nếu
 outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D trước.
 
+### 📏 P7-2b · Trần theo IP đổi RAM lấy CPU: đóng ngay ⇒ attacker nối lại liên tục
+
+slowlab 500 conn, `-max-conns-per-ip 100`: proxy giữ 100 thay vì 500, nhưng attacker bị đóng ngay nên nối lại
+**1.57–1.61 triệu lần** / 30 s ⇒ p99 probe tăng từ **1.98 ms lên 14.69 ms** (CPU attacker ăn vào server).
+Cần giải pháp tarpit (giữ connection đóng trễ) hoặc kernel cap (`iptables connlimit`), chưa đóng được.
+
+```bash
+taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 100   # × {đóng ngay, tarpit 200 ms}
+```
+
 ### 📏 P7-5 · Half-open (G5) chỉ đo ở mức `lb`
 
 `TestBreakerHalfOpen` gọi `Pick/Done` trực tiếp. Thiếu bài qua proxy: 32 connection closed-loop, b0 trả
 5xx, đếm 5xx client thấy mỗi lần hết hạn eject — đòi 1 (nodefense7: ≈ 8).
+
+### 📏 P7-6 · Retry budget chưa đo ở kịch bản nó có giá trị
+
+Phiên 2026-10-04: Trong kịch bản `scenario overload`, backend chưa đủ nghẽn nên `blind retry` vẫn cứu được 100% request
+(goodput 1999/s, khuếch đại 1.50x), trong khi `budget-on` chỉ đạt 73.7% 200 (goodput 1474/s, khuếch đại 1.108x).
+Tiêu chí "budget-on có goodput cao hơn" đòi hỏi backend phải quá tải thực sự để retry mù làm chết cụm.
+
+```bash
+go run ./cmd/chaoslab -scenario overload -duration 20s -rate 2000
+```
 
 ### 📏 P8-4 · Bộ nhớ connection TLS treo
 
@@ -105,6 +152,20 @@ phần đã nằm trong `br` ghi chung head qua `ubw` trước.
 `reqch` sang `writeLoop`/`readLoop` (`net/http/transport.go:1994-1995, 2882-2887`). Chưa chứng minh nhân quả.
 Cần `go tool trace` (độ trễ goroutine runnable → running) hoặc block profile của `rpbaseline` dưới cùng tải.
 
+```bash
+curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"; go tool trace -pprof=sched rp.trace > sched.prof
+```
+
+### 📏 P9-6 · 8 KiB còn lại của connection rỗi chưa chia nhỏ; nginx chưa đối chiếu
+
+Số đo phiên 2026-10-04 bị lỗi do `perflab -mode idle` thiếu cờ spawn nên chưa mở được 10 000 connection tới EdgeGate
+lúc lấy pprof heap/goroutine. Cần chạy lại đúng lệnh:
+
+```bash
+./bin/perflab -mode idle -conns 10000 -spawn "bin/edgegate -config config/bench.json -pprof 127.0.0.1:6061" \
+  & sleep 25; curl -s 127.0.0.1:6061/debug/pprof/goroutine?debug=1 | head; go tool pprof -top http://127.0.0.1:6061/debug/pprof/heap
+```
+
 ## Đã trả
 
 ### ✅ P-env-2 · Generator và proxy dùng chung core — trả 2026-10-04 trên Linux thuần
@@ -113,46 +174,20 @@ Cần `go tool trace` (độ trễ goroutine runnable → running) hoặc block 
 Upstream core 15, Proxy core 0-1 (`GOMAXPROCS=2`), Generator core 2-14. Phân chia core hoàn toàn độc lập,
 loại bỏ hoàn toàn hiện tượng tranh chấp CPU proxy ảnh hưởng đến số đo latency.
 
-### ✅ P0-4 · expLimits trần port hay client — trả 2026-10-04 trên Linux thuần
-
-Đo trên IP mạng thật `192.168.1.52` (`bench/linux/*/p0-4-dialers-*.txt`): Cả `dialers 1` và `dialers 16`
-đều gặp lỗi `dial tcp 192.168.1.52: connect: cannot assign requested address` khi không gian ephemeral port
-bị cạn kiệt, trong khi CPU hoàn toàn rỗi. Chứng minh trần là do không gian ephemeral port thật sự của kernel.
-
 ### ✅ P3-5 · G2/G3 ổn định giữa các lần đo — trả 2026-10-04 trên Linux thuần
 
 Đo 5 lần liên tiếp trên Linux (`bench/linux/*/p3-5-overhead.txt`): overhead G2 p50 proxy / p50 thẳng lần lượt
 là **1.88x, 1.83x, 1.82x, 1.86x, 1.84x**. Độ dao động chỉ trong khoảng $\pm 0.03\times$, đạt xuất sắc tiêu chí $< \pm 0.1\times$.
-
-### ✅ P4-2 · G4 benchstat phân giải overhead — trả 2026-10-04 trên Linux thuần
-
-Chạy `go test ./internal/httpx -bench ReadRequest -count 10` kèm `benchstat` trên Linux (`bench/baseline/*/p4-benchstat.txt`):
-Dải tin cậy CI hẹp, loại bỏ dao động $\pm 10\text{--}37\%$ của ảo hóa loopback WSL2.
 
 ### ✅ P5-1 · G1/G2 đo trên máy Linux yên tĩnh — trả 2026-10-04 trên Linux thuần
 
 Đo `poollab -pool both` trên máy yên (`bench/linux/*/p5-1-poollab.txt`): Tiết kiệm **48 µs / req = 0.58 RTT / req**,
 tổng thời gian hoàn thành (wall time) pool-on nhanh hơn **1.49x** so với pool-off; overhead còn lại qua proxy chỉ 83 µs.
 
-### ✅ P6-2b · Phân phối tải P2C lúc khởi động — trả 2026-10-04 trên Linux thuần
-
-Đo `lblab -algos rr,leastconn,p2c,chash -max-share-ratio 1.2` (`bench/linux/*/p6-2b-lblab-even.txt`):
-P2C phân phối đều hoàn hảo trên 4 backend giống hệt (`24.7% / 25.8% / 25.0% / 24.6%`, max/min $\approx 1.05 \le 1.20$).
-
-### ✅ P7-2b · Trần connection theo IP — trả 2026-10-04 trên Linux thuần
-
-Đo `slowlab -max-conns-per-ip 100` (`bench/linux/*/p7-2b-slowlab.txt`): Attacker reconnect liên tục $> 1.6\times 10^6$ lần
-nhưng proxy luôn duy trì đúng trần 100 connection và tự giải phóng về 0 khi attacker ngừng, không rò rỉ RAM hay file descriptor.
-
 ### ✅ P7-4 · chaoslab cân bằng (heal-weight 6) — trả 2026-10-04 trên Linux thuần
 
 Đo `chaoslab -heal-weight 6 -seed 3` (`bench/linux/*/p7-4-chaos-balanced.txt`): Đạt trọn vẹn 4 invariants (a, b, c, d),
 không panic, không rò rỉ goroutine (nền 1), không rò fd (nền 11).
-
-### ✅ P7-6 · Retry budget ở kịch bản overload — trả 2026-10-04 trên Linux thuần
-
-Đo `chaoslab -scenario overload` (`bench/linux/*/p7-6-overload-budget.txt`): Retry budget kiểm soát chặt chẽ tỷ lệ khuếch đại,
-bảo vệ goodput của cụm backend khi quá tải, vượt qua toàn bộ invariants.
 
 ### ✅ P8-1 · CPU handshake TLS trên Linux thuần — trả 2026-10-04 trên Linux thuần
 
@@ -164,11 +199,6 @@ chi phí CPU ký RSA đắt hơn ~3x so với ECDSA.
 
 Đo `scripts/bench-vs-nginx.sh` đối chứng Nginx 1.25 và httputil.ReverseProxy: Tại 10 000 rps, EdgeGate ($550\,\mu\text{s}$ p50 /
 $1.44\,\text{ms}$ p99) đạt hiệu năng tương đương Nginx ($460\,\mu\text{s}$ p50 / $1.61\,\text{ms}$ p99) và vượt trội hơn ReverseProxy về tail latency.
-
-### ✅ P9-6 · Heap và goroutines connection rỗi — trả 2026-10-04 trên Linux thuần
-
-Đo `perflab -mode idle -conns 10000` + pprof heap (`bench/linux/*/p9-6-pprof.txt`): Proxy duy trì 10 000 connection rỗi
-chỉ tốn $512.23\text{ kB}$ heap (chủ yếu là runtime buffer), tổng số goroutine rỗi chỉ là 7. Không rò rỉ goroutine.
 
 ### ✅ P10-8 · Đo CPU h2 vs h1 trên Linux thuần — trả 2026-10-04 trên Linux thuần
 
