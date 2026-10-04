@@ -248,6 +248,14 @@ func TestIdleClosedUpstream(t *testing.T) {
 			t.Fatalf("D4: muốn retries=%d (mỗi request cứu bằng retry): %+v", n, st)
 		}
 	})
+	t.Run("noprobe-PUT-body-retry", func(t *testing.T) {
+		// P5-4b: PUT có body ≤ 64 KiB là idempotent theo RFC 9110 §9.2.2 ⇒ được buffer và retry khi connection reused chết.
+		put := "PUT /x HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\nabcd"
+		st := run(t, false, put, "PUT", "4", 200)
+		if st.Retries != n || st.DeadOnProbe != 0 {
+			t.Fatalf("P5-4b: muốn retries=%d (mỗi PUT request có body cứu bằng retry): %+v", n, st)
+		}
+	})
 	t.Run("noprobe-POST-body-502", func(t *testing.T) {
 		// Body đã stream vào connection chết ⇒ KHÔNG retry ⇒ 502, client giữ
 		// được. Nhưng KHÔNG phải 50/50 như G4 đăng ký: 502 làm connection bị

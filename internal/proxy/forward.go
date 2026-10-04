@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"net"
@@ -91,6 +92,17 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	var start time.Time
 	repicked := false
 	var failed *lb.Backend // P7-1: backend vừa dial lỗi — lượt chọn lại D9 loại nó
+
+	var reqBodyBytes []byte
+	// P5-4b: Với method idempotent có body ≤ 64 KiB và không chunked,
+	// đọc sẵn body vào bộ nhớ để có thể replay nếu connection reused chết.
+	if idempotent(req.Method) && req.ContentLength > 0 && req.ContentLength <= 64<<10 && !req.Chunked {
+		b := make([]byte, req.ContentLength)
+		if _, err := io.ReadFull(req.Body, b); err == nil {
+			reqBodyBytes = b
+		}
+	}
+
 	for attempt := 0; ; attempt++ {
 		if attempt == 0 {
 			if failed != nil {
@@ -150,8 +162,11 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 		// connection — không tính dial. Mẫu đầu mỗi connection gồm dial (≈ 1 ms,
 		// gấp vài lần trả lời), tau 1 s ⇒ thứ hạng giây đầu là may rủi (P2C
 		// 15/28/29/28 % trên 4 node giống hệt nhau). Dial lỗi vẫn Done(start) ở trên.
+		if len(reqBodyBytes) > 0 {
+			req.Body = bytes.NewReader(reqBodyBytes)
+		}
 		xstart := time.Now()
-		keep, retry, upFail := s.exchange(c, br, bw, req, up, pc)
+		keep, retry, upFail := s.exchange(c, br, bw, req, up, pc, len(reqBodyBytes) > 0)
 		st.up.Store(nil)
 		if !retry {
 			bl.Done(be, time.Since(xstart), upFail) // D2: Done TRƯỚC khi request kế đến, SAU put
@@ -171,12 +186,12 @@ func (s *Server) roundTrip(c net.Conn, st *connState, br *bufio.Reader, bw *bufi
 	}
 }
 
-// canRetry: điều kiện (a) và (c) của D4 — connection là đồ dùng lại VÀ request
-// không có body (không replay được body đã stream sang connection chết) VÀ
+// canRetry: điều kiện (a) và (c) của D4 — connection là đồ dùng lại VÀ (request
+// không có body hoặc body idempotent đã buffer ≤ 64 KiB, P5-4b) VÀ
 // method idempotent (P5-4). Điều kiện (b) — lỗi I/O khi 0 byte response — do
 // exchange kiểm tại chỗ lỗi.
-func canRetry(pc *pooledConn, req *httpx.Request) bool {
-	return pc.reused && req.ContentLength == 0 && !req.Chunked && idempotent(req.Method)
+func canRetry(pc *pooledConn, req *httpx.Request, hasBufferedBody bool) bool {
+	return pc.reused && (req.ContentLength == 0 || hasBufferedBody) && !req.Chunked && idempotent(req.Method)
 }
 
 // idempotent (P5-4, trả 2026-10-02): RFC 9110 §9.2.2 "A proxy MUST NOT
@@ -198,7 +213,7 @@ func idempotent(method string) bool {
 // quyết. upFail=true ⇔ lỗi thuộc về UPSTREAM (transport hoặc 5xx) — nuôi
 // outlier ejection (phase 6 D7); client bỏ đi giữa body KHÔNG tính cho upstream.
 // Mọi đường ra đều qua release: pc về pool chỉ khi clean (D2), còn lại đóng.
-func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, up *httpx.Request, pc *pooledConn) (keep, retry, upFail bool) {
+func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, up *httpx.Request, pc *pooledConn, hasBufferedBody bool) (keep, retry, upFail bool) {
 	lim := s.cfg.Limits
 	uc, ubr, ubw := pc.c, pc.br, pc.bw
 	pc.in.n = 0
@@ -270,7 +285,7 @@ func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, u
 		s.writeError(c, bw, status, detail, false)
 		return false, false, false
 	case writeErr != nil:
-		if canRetry(pc, req) {
+		if canRetry(pc, req, hasBufferedBody) {
 			return false, true, false // D4: ghi lỗi ⇒ chắc chắn 0 byte response
 		}
 		s.cfg.Logf("proxy: ghi sang upstream: %v", writeErr)
@@ -289,7 +304,7 @@ func (s *Server) exchange(c net.Conn, br *bufio.Reader, bw *bufio.Writer, req, u
 			// D4 (b): 0 byte response đã tới VÀ không phải timeout (timeout với
 			// 0 byte = upstream sống nhưng chậm, có thể đang xử lý ⇒ không
 			// idempotent nữa ⇒ 504, không retry).
-			if pc.in.n == 0 && !isTimeout(err) && canRetry(pc, req) {
+			if pc.in.n == 0 && !isTimeout(err) && canRetry(pc, req, hasBufferedBody) {
 				return false, true, false
 			}
 			status, detail := 502, "upstream trả response không hợp lệ hoặc đóng sớm"

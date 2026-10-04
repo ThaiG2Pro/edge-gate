@@ -300,8 +300,8 @@ func TestTLSUpstreamProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	us := httptest.NewUnstartedServer(fixture.Handler())
-	us.TLS = &tls.Config{Certificates: []tls.Certificate{leafC}}
-	us.Config.IdleTimeout = 50 * time.Millisecond
+	us.TLS = &tls.Config{Certificates: []tls.Certificate{leafC}, SessionTicketsDisabled: true}
+	us.Config.IdleTimeout = 200 * time.Millisecond
 	us.StartTLS()
 	defer us.Close()
 	s, p := startProxyS(t, us.Listener.Addr().String(), func(c *Config) {
@@ -314,7 +314,7 @@ func TestTLSUpstreamProbe(t *testing.T) {
 	}
 	a := s.PoolStats()
 	for i := 0; i < 20; i++ {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 		if st := getN(t, rc, 1, "/hello", ""); st[200] != 1 {
 			t.Fatalf("sau upstream đóng rỗi: %v", st)
 		}

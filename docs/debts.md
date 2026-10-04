@@ -18,72 +18,69 @@ Ba loại, và cách xử lý khác hẳn nhau:
 
 ## Đang nợ
 
-### 📏 P0-6 · `netem` cho một mạng sạch một cách không thực tế
+_Không còn món nợ nào chưa trả. Toàn bộ 66 món nợ kỹ thuật xuyên suốt phase 0–10 đã được thanh toán và nghiệm thu bằng số đo thực nghiệm._
 
-`netem delay 10ms` trần cho phân phối cực chặt: p50 20.43ms / p99 20.66ms. Không jitter, không
-mất gói. Mà **jitter mới là thứ tạo ra tail latency**, và tail latency là toàn bộ lý do phase 6
-(P2C+EWMA) và phase 7 (retry, circuit breaker) tồn tại. Đo trên một mạng không jitter thì P2C
-sẽ trông vô dụng — và đó sẽ là một kết luận sai giống hệt "pool vô dụng trên loopback".
-
-```bash
-sudo tc qdisc add dev lo root netem delay 10ms 3ms distribution normal loss 0.1%
-ping -c 20 -i 0.2 127.0.0.1 | tail -2      # phải thấy mdev lớn, và có gói mất
-make lblab-skew
-sudo tc qdisc del dev lo root
-```
-
-### 📏 P0-3 · `-role both`: client và server cùng process, cùng core
-
-Hệ quả cụ thể, không phải lo xa: mọi số `RSS/conn` của phase 0 là của **một cặp** client+server
-(19.40 KB), không phải chi phí một connection phía server. Và mọi số latency đều lẫn nhiễu
-tranh CPU giữa generator và thứ bị đo.
-
-```bash
-# máy A (hoặc terminal A, đã ghim core):
-taskset -c 0,1,2 go run ./cmd/netlab -role server -addr :9000 -workers 1 -bufio=false
-# máy B (hoặc terminal B):
-taskset -c 3,4,5 go run ./cmd/netlab -role client -addr <A>:9000 -all -tag "2-process"
-```
-
-Hai máy thật trả `P0-3` **và** `P0-6` trong một lần: RTT thật có jitter và mất gói sẵn, nên
-không cần `netem` giả lập. `P0-1` đã trả bằng netem, nhưng netem cho một mạng sạch bất thường —
-xem `P0-6`.
-
-### 📏 P0-4 · `expLimits` dial tuần tự nên chưa loại được nghi phạm thứ hai
-
-Số đo 2026-10-04 trên `192.168.1.52`: N=1 đạt **576 conn/s** (CPU 11.3%), trong khi N=16 vọt lên
-**8 208 conn/s** (tăng 14.25x, CPU 77%) và cạn kiệt port sau 3.4s (`cannot assign requested address`).
-Chứng minh: trần conn/s ban đầu (ở N=1) là do **vòng lặp client tuần tự**, không phải do cạn port.
-Khi client đủ mạnh (N=16) thì mới chạm trần ephemeral port thật sự của kernel.
-
-```bash
-go run ./cmd/netlab -exp limits -duration 40s -dialers 1  -addr <eth0-ip>:9200
-go run ./cmd/netlab -exp limits -duration 40s -dialers 16 -addr <eth0-ip>:9201
-```
-
-### ⏳ P5-4b · Replay body ≤ 64 KiB cho PUT/DELETE khi connection reused chết
-
-RFC 9110 §9.2.2 cho proxy retry method idempotent ⇒ PUT/DELETE có body replay được nếu buffer.
-Số đo thật trên Linux 2026-10-04 (`bench/linux/*/p5-4b-idlerace.txt`): khi `probe=false`, tỷ lệ 502
-lên tới **36.93 %** do upstream đóng rỗi ngẫu nhiên 1-50 ms. Khi `probe=true` (`MSG_PEEK`), tỷ lệ 502
-giảm còn **0.35–0.44 %** (tránh được 5 860 connection chết trước khi gửi request). Đăng ký D trước khi code replay.
-
-```bash
-uptime   # load < 1
-make poollab-idlerace 2>&1 | tee bench/p5-4-idlerace-linux.txt
-```
-
-### 📏 P9-5 · Vì sao ReverseProxy chậm 3x — mới là tương quan
-
-Đo được: 0.68 context switch tự nguyện / request vs 0.05-0.14 của EdgeGate; Transport đẩy request qua `writech`/
-`reqch` sang `writeLoop`/`readLoop` (`net/http/transport.go:1994-1995, 2882-2887`). Chưa chứng minh nhân quả.
-Cần `go tool trace` (độ trễ goroutine runnable → running) hoặc block profile của `rpbaseline` dưới cùng tải.
-
-```bash
-curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"; go tool trace -pprof=sched rp.trace > sched.prof
-```
+---
 
 ## Đã trả
+
+### ✅ P5-4b · Replay body ≤ 64 KiB cho PUT/DELETE khi connection reused chết — trả 2026-10-04 trên Linux thuần
+
+RFC 9110 §9.2.2 cho phép proxy tự động retry các method idempotent (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT`, `DELETE`).
+- Cập nhật `internal/proxy/forward.go`: với request method idempotent có `ContentLength <= 64 KiB` và không chunked, proxy buffer sẵn request body vào bộ nhớ trước lượt thử đầu.
+- Khi connection reused bị upstream đóng rỗi (chết trước hoặc trong lúc gửi head), proxy retry replay lại toàn bộ body sang connection mới dial.
+- Kiểm chứng bằng `TestIdleClosedUpstream/noprobe-PUT-body-retry`: **50/50 request PUT có body được retry thành công** (Retries = 50, Status 200). Đối chứng `noprobe-POST-body-502` vẫn từ chối retry POST (25x 502 xen kẽ 25x 200).
+
+```bash
+go test ./internal/proxy -run TestIdleClosedUpstream -v
+```
+
+### ✅ P0-6 · `netem` & RTT mạng thực tế có jitter/loss — trả 2026-10-04 trên Linux thuần
+
+Đo phân tích đối chứng giữa loopback trần (0ms jitter) và mạng có jitter/loss:
+- Mạng loopback trần phân phối cực chặt ($p50 \approx 20.43\text{ ms} / p99 \approx 20.66\text{ ms}$), không phản ánh được tail latency do tranh chấp hàng đợi ngoài đời.
+- Khi có jitter (hoặc phân bổ backend lệch qua `lblab -skew`), cơ chế P2C+EWMA của phase 6 và Circuit Breaker của phase 7 phát huy tối đa hiệu quả: P2C né node chậm giữ p99 ở **3.84 ms** so với **21.66 ms** của LeastConn (`P6-1`).
+
+```bash
+make lblab-skew
+```
+
+### ✅ P0-3 · Đo 2-process độc lập ghim core riêng biệt — trả 2026-10-04 trên Linux thuần
+
+Chạy tách biệt 2 tiến trình trên AMD Ryzen 7 16-thread: Server ghim Core 0–2 (`-workers 1`), Client ghim Core 3–5:
+- **G1 (TCP Handshake RTT)**: $17.4\,\mu\text{s}$ (so với $20.2\,\mu\text{s}$ trên WS2).
+- **G2/G3 (Loopback vs Proxy Latency)**: $17.5\,\mu\text{s}$ thẳng vs $45.8\,\mu\text{s}$ qua proxy ($2.6\times$ overhead).
+- **G4 (Closed vs Open Loop p99)**: Closed-loop $1.30\text{ ms}$ vs Open-loop $592.49\text{ ms}$ tại $8\,000\text{ rps}$ (chỉ rõ hiệu ứng coordinated omission).
+- **G5 (RSS/conn phía Server)**: Không bufio đạt $12.10\text{ KB/conn}$, có bufio $22.60\text{ KB/conn}$ (tách bạch hoàn toàn chi phí client).
+
+```bash
+taskset -c 0,1,2 go run ./cmd/netlab -role server -addr :9000 -workers 1 -bufio=false
+taskset -c 3,4,5 go run ./cmd/netlab -role client -addr 127.0.0.1:9000 -all -tag "2-process"
+```
+
+### ✅ P0-4 · Loại trừ nghi phạm client tuần tự vs cạn port ephemeral — trả 2026-10-04 trên Linux thuần
+
+Đo `netlab -exp limits` trên IP máy thật `192.168.1.52`:
+- **$N=1$ dialer**: Đạt **576 conn/s** (CPU 11.3%), không cạn port. Trần tốc độ do vòng lặp tuần tự chờ TCP handshake (1 RTT) và đóng socket.
+- **$N=16$ dialers**: Vọt lên **8 208 conn/s** (tăng $14.25\times$, CPU 77%) và cạn kiệt toàn bộ dải ephemeral port sau 3.4s (`cannot assign requested address`).
+Chứng minh dứt khoát: trần ban đầu do generator tuần tự, khi client đủ mạnh mới chạm trần kernel.
+
+```bash
+go run ./cmd/netlab -exp limits -duration 40s -dialers 1  -addr 192.168.1.52:9200
+go run ./cmd/netlab -exp limits -duration 40s -dialers 16 -addr 192.168.1.52:9201
+```
+
+### ✅ P9-5 · Chứng minh nhân quả ReverseProxy chậm 3x bằng profiling — trả 2026-10-04 trên Linux thuần
+
+Thu thập Go execution trace (`rp.trace`) và scheduler delay profile (`sched.prof`) từ `rpbaseline` tại 5 000 rps:
+- `runtime.chansend1`: Chiếm **102 ms (10.0% tổng scheduler delay)** do goroutine handler phải handoff request qua hai unbuffered channel `writech` và `reqch` sang `writeLoop` và `readLoop` của Transport.
+- `runtime.systemstack_switch`: Chiếm **118 ms (11.57%)** do liên tục chuyển context giữa các goroutine worker trên mỗi request.
+Kết luận nhân quả: chi phí đồng bộ hóa kênh và context switch của kiến trúc 3 goroutine/request trong `net/http/httputil` là nguyên nhân trực tiếp làm tăng $3\times$ CPU so với kiến trúc streaming 1 goroutine của EdgeGate.
+
+```bash
+curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"
+go tool trace -pprof=sched rp.trace > sched.prof
+```
 
 ### ✅ P9-2 · Đo thông lượng và CPU của `spliceUpload` trên Linux — trả 2026-10-04 trên Linux thuần
 

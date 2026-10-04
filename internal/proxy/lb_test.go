@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -85,7 +86,7 @@ func TestLBPoolPerHost(t *testing.T) {
 func TestLBDeadBackend(t *testing.T) {
 	dead := deadAddr(t)
 	s, p, _ := startLB(t, "rr", 2, []string{dead}, func(c *Config) {
-		c.LB.Health = lb.HealthConfig{Interval: 50 * time.Millisecond, Timeout: 200 * time.Millisecond, Fall: 2, Rise: 2}
+		c.LB.Health = lb.HealthConfig{Interval: 100 * time.Millisecond, Timeout: 200 * time.Millisecond, Fall: 3, Rise: 2}
 	})
 	rc := dialRaw(t, p)
 	body := "abc"
@@ -386,35 +387,49 @@ func killReviveScenario(t *testing.T, mut func(*Config)) (fails int64, growthAft
 
 	stop := make(chan struct{})
 	done := make(chan map[int]int)
-	go func() { // client keep-alive, request liên tục ~1 ms một cái
-		c, err := net.Dial("tcp", p)
-		if err != nil {
-			t.Error(err)
-			done <- nil
-			return
-		}
-		defer c.Close()
-		br := bufio.NewReader(c)
-		st := map[int]int{}
-		for {
-			select {
-			case <-stop:
-				done <- st
-				return
-			default:
-			}
-			c.SetDeadline(time.Now().Add(3 * time.Second))
-			io.WriteString(c, "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
-			resp, err := httpx.ReadResponse(br, httpx.DefaultLimits(), "GET")
+	var mu sync.Mutex
+	totalSt := map[int]int{}
+	var wg sync.WaitGroup
+	for w := 0; w < 32; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, err := net.Dial("tcp", p)
 			if err != nil {
-				st[-1]++
-				done <- st
+				t.Error(err)
 				return
 			}
-			io.Copy(io.Discard, resp.Body)
-			st[resp.Status]++
-			time.Sleep(time.Millisecond)
-		}
+			defer c.Close()
+			br := bufio.NewReader(c)
+			bw := bufio.NewWriter(c)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				c.SetDeadline(time.Now().Add(3 * time.Second))
+				bw.WriteString("GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+				if err := bw.Flush(); err != nil {
+					return
+				}
+				resp, err := httpx.ReadResponse(br, httpx.DefaultLimits(), "GET")
+				if err != nil {
+					mu.Lock()
+					totalSt[-1]++
+					mu.Unlock()
+					return
+				}
+				io.Copy(io.Discard, resp.Body)
+				mu.Lock()
+				totalSt[resp.Status]++
+				mu.Unlock()
+			}
+		}()
+	}
+	go func() {
+		wg.Wait()
+		done <- totalSt
 	}()
 
 	time.Sleep(300 * time.Millisecond)

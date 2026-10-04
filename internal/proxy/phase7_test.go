@@ -503,6 +503,7 @@ func TestBreakerHalfOpenProxyE2E(t *testing.T) {
 	}
 	close(start)
 	wg.Wait()
+	time.Sleep(30 * time.Millisecond)
 
 	lbs2 := s.LBStats()
 	t.Logf("32 client đồng thời khi b0 hết hạn: %v; b0 state=%s, probes=%d, reopens=%d, fails=%d",

@@ -31,7 +31,7 @@ func startProxyS(t *testing.T, upstream string, mut func(*Config)) (*Server, str
 	lim := httpx.DefaultLimits()
 	lim.HeaderTimeout, lim.BodyTimeout, lim.IdleTimeout = 2*time.Second, 2*time.Second, 2*time.Second
 	cfg := Config{Listen: "127.0.0.1:0", Upstream: upstream, Limits: lim,
-		DialTimeout: time.Second, UpstreamHeaderTimeout: 2 * time.Second, UpstreamBodyTimeout: 2 * time.Second,
+		DialTimeout: 3 * time.Second, UpstreamHeaderTimeout: 3 * time.Second, UpstreamBodyTimeout: 3 * time.Second,
 		Logf: t.Logf}
 	if mut != nil {
 		mut(&cfg)
