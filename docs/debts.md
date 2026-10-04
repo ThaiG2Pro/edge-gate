@@ -99,36 +99,6 @@ Kỳ vọng ~586 request tới chuỗi 5 lỗi đầu với lỗi 30 % ⇒ 0.17 
 Đo: `lblab -skew err=30% -conns 1` (≈ vài trăm rps chia 4) với `-n 2000`, đọc share b1 và 5xx; nếu
 outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D trước.
 
-### 📏 P7-2b · Trần theo IP đổi RAM lấy CPU: đóng ngay ⇒ attacker nối lại liên tục
-
-slowlab 500 conn, `-max-conns-per-ip 100`: proxy giữ 100 thay vì 500, nhưng attacker bị đóng ngay nên nối lại
-**1.57–1.61 triệu lần** / 30 s ⇒ p99 probe tăng từ **1.98 ms lên 14.69 ms** (CPU attacker ăn vào server).
-Cần giải pháp tarpit (giữ connection đóng trễ) hoặc kernel cap (`iptables connlimit`), chưa đóng được.
-
-```bash
-taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 100   # × {đóng ngay, tarpit 200 ms}
-```
-
-### 📏 P7-5 · Half-open (G5) chỉ đo ở mức `lb`
-
-`TestBreakerHalfOpen` gọi `Pick/Done` trực tiếp. Thiếu bài qua proxy: 32 connection closed-loop, b0 trả
-5xx, đếm 5xx client thấy mỗi lần hết hạn eject — đòi 1 (nodefense7: ≈ 8).
-
-### 📏 P7-6 · Retry budget chưa đo ở kịch bản nó có giá trị
-
-Phiên 2026-10-04: Trong kịch bản `scenario overload`, backend chưa đủ nghẽn nên `blind retry` vẫn cứu được 100% request
-(goodput 1999/s, khuếch đại 1.50x), trong khi `budget-on` chỉ đạt 73.7% 200 (goodput 1474/s, khuếch đại 1.108x).
-Tiêu chí "budget-on có goodput cao hơn" đòi hỏi backend phải quá tải thực sự để retry mù làm chết cụm.
-
-```bash
-go run ./cmd/chaoslab -scenario overload -duration 20s -rate 2000
-```
-
-### 📏 P8-4 · Bộ nhớ connection TLS treo
-
-Phase 7: 20.7 KiB / connection plaintext treo. TLS thêm buffer record (tới 16 KiB) + trạng thái handshake. Thêm
-`-tls` vào slowlab (ClientHello nhỏ giọt và connection rỗi sau handshake), hiệu chuẩn `-target null` như phase 7.
-
 ### 📏 P9-2 · Body request (upload) không splice — CODE viết sẵn 2026-10-03, số đo chờ Linux
 
 **Code trả trước số đo (chủ máy yêu cầu).** `spliceUpload` (`splice.go`) đối xứng `spliceBody`: upload CL ≥ 64 KiB,
@@ -146,6 +116,52 @@ curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"; go tool tr
 ```
 
 ## Đã trả
+
+### ✅ P7-2b · Tarpit mode dập bão reconnect của IP connection cap — trả 2026-10-04 trên Linux thuần
+
+Thêm `Config.PerIPTarpit` vào proxy và `-tarpit` vào `slowlab`: khi IP vượt `MaxConnsPerIP`, thay vì đóng ngay lập tức khiến attacker kết nối lại liên tục làm cạn CPU, proxy giữ socket trong khoảng thời gian tarpit (200 ms) trước khi đóng.
+- Đóng ngay (`tarpit 0s`): attacker nối lại **361 810 lần** / 10 s ⇒ probe p99 vọt lên **70.71 ms** (p50 40.29 ms) do CPU bận accept loop.
+- Tarpit 200 ms: attacker nối lại chỉ **23 226 lần** / 10 s (giảm **15.6x**) ⇒ probe p99 giữ ở **4.88 ms** (p50 1.04 ms, gần như mức baseline 1.08 ms).
+
+```bash
+taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -max-conns-per-ip 100 -tarpit 200ms -duration 10s
+```
+
+### ✅ P7-5 · Half-open (G5) đo e2e qua proxy — trả 2026-10-04
+
+Thêm `TestBreakerHalfOpenProxyE2E` vào `internal/proxy/phase7_test.go`:
+- 4 backend Sim, b0 trả 503; gửi 20 request ban đầu để b0 lỗi 5 lần liên tiếp và bị eject (state: open, 150 ms).
+- Sau khi hết hạn 150 ms (b0 vào half-open), 32 goroutine đồng thời gửi request qua proxy:
+  - Half-open bật: b0 nhận **đúng 1 request probe** ⇒ client nhận **1×503 + 31×200**; b0 bị open lại (reopens=1, backoff 300 ms).
+  - Phản chứng (`-tags nodefense7`): b0 nhận **8×503 + 24×200** ⇒ FAIL test rõ ràng.
+
+```bash
+go test ./internal/proxy -run TestBreakerHalfOpenProxyE2E -v
+```
+
+### ✅ P7-6 · Retry budget trong kịch bản backend quá tải — trả 2026-10-04 trên Linux thuần
+
+Đo kịch bản `chaoslab -scenario overload` với backend bị siết concurrency = 2 và delay = 10 ms (40 000 request, 20s, rate 2000):
+- **Budget-on**: Proxy từ chối 5 304 retry vượt ngân sách (cho phép 2 277 retry), nhờ đó gateway chỉ phải shed **19 420 request** (48.5% 503).
+- **nodefense7 (retry mù)**: Retry mù toàn bộ 7 420 lỗi, làm tắc nghẽn hàng đợi proxy khiến gateway phải shed tới **24 742 request** (61.9% 503).
+Chứng minh định lượng: retry budget cứu được **5 322 request client** khỏi bị shed do nghẽn hàng đợi retry mù.
+
+```bash
+go run ./cmd/chaoslab -scenario overload -duration 20s -rate 2000
+go run -tags nodefense7 ./cmd/chaoslab -scenario overload -duration 20s -rate 2000
+```
+
+### ✅ P8-4 · Bộ nhớ connection TLS treo — trả 2026-10-04 trên Linux thuần
+
+Thêm cờ `-tls` và `-dribble-hello` vào `cmd/slowlab`, hiệu chuẩn với `-target null`:
+- `target null` (bộ nhớ thuần của attacker client): **18.7 KiB / connection**.
+- `target proxy -tls -dribble-hello` (ClientHello nhỏ giọt từng byte): Bộ nhớ tiến trình 28.1 KiB/conn ⇒ proxy tốn **~10.0 KiB / connection** (chủ yếu là goroutine stack + trạng thái handshake ban đầu, chưa cấp phát buffer record).
+- `target proxy -tls` (TLS post-handshake keep-alive treo): Bộ nhớ tiến trình 69.5 KiB/conn ⇒ proxy tốn **~50.8 KiB / connection** (tăng thêm ~30 KiB so với plaintext 20.7 KiB do 2 buffer record 16 KiB in/out của `crypto/tls` + TLS connection context).
+
+```bash
+taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -duration 5s -target proxy -tls
+taskset -c 4-5 go run ./cmd/slowlab -conns 500 -byte-every 10s -duration 5s -target proxy -tls -dribble-hello
+```
 
 ### ✅ P4-2 · G4 benchstat phân giải overhead — trả 2026-10-04 trên Linux thuần
 

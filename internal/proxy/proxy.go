@@ -79,6 +79,10 @@ type Config struct {
 	// ⇒ attacker nối lại liên tục (828 913 lần / 30 s) ⇒ đổi RAM lấy CPU: p99
 	// probe 4.7 → 89 ms (P7-2b).
 	MaxConnsPerIP int
+	// PerIPTarpit (P7-2b): khi IP vượt MaxConnsPerIP, giữ connection trong
+	// khoảng thời gian này trước khi đóng (tarpit) để giảm bão reconnect của attacker.
+	// 0 = đóng ngay (mặc định).
+	PerIPTarpit time.Duration
 	// ReusePort (D9): SO_REUSEPORT ở ListenAndServe — hai instance cùng port.
 	ReusePort bool
 	// DrainIdleGrace (D8′, phase 7 turn 2): lúc Drain, connection RỖI được chờ
@@ -361,10 +365,20 @@ func (s *Server) Serve(ln net.Listener) error {
 		st, ok := s.track(c)
 		if !ok {
 			// P7-2: IP này đã đủ MaxConnsPerIP — đóng trước khi có goroutine/bufio.
-			c.Close()
+			// P7-2b: nếu bật PerIPTarpit, giữ connection trong thời gian tarpit để dập bão reconnect.
 			s.res.perIPRejected.Add(1)
 			if s.res.connSem != nil {
 				<-s.res.connSem
+			}
+			if s.cfg.PerIPTarpit > 0 {
+				s.wg.Add(1)
+				go func(conn net.Conn, d time.Duration) {
+					defer s.wg.Done()
+					time.Sleep(d)
+					conn.Close()
+				}(c, s.cfg.PerIPTarpit)
+			} else {
+				c.Close()
 			}
 			continue
 		}

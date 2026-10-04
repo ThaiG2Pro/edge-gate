@@ -67,7 +67,11 @@ func main() {
 			fatal(err)
 		}
 		sims[i], ups[i] = ss, ss.Addr
-		if retryLike {
+		if *scenario == "overload" {
+			ss.Sim.SetDropReused(*drop)
+			ss.Sim.SetConcurrency(2)
+			ss.Sim.SetDelay(10 * time.Millisecond)
+		} else if retryLike {
 			ss.Sim.SetDropReused(*drop)
 		}
 	}

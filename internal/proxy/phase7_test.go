@@ -14,6 +14,7 @@ import (
 
 	"github.com/thaivro/edgegate/internal/fixture"
 	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/thaivro/edgegate/internal/lb"
 )
 
 const dl = 300 * time.Millisecond // mọi deadline trong TestDeadline
@@ -417,3 +418,101 @@ func TestDrainLazyIdle(t *testing.T) {
 		t.Fatal("connection rỗi phải bị đóng im lặng SAU grace")
 	}
 }
+
+// P7-5 (G5 e2e qua proxy) — Half-open đúng một request thử qua proxy.
+// 4 backend Sim, b0 trả 503 (errRate=1.0), b1..b3 tốt (200).
+// Gửi 20 request RR ⇒ b0 lỗi 5 lần liên tiếp ⇒ bị eject (open, 150 ms).
+// Hết hạn 150 ms, 32 connection đồng thời gửi qua proxy:
+// - Half-open bật: b0 chỉ nhận ĐÚNG 1 request probe ⇒ client thấy 1×503 + 31×200.
+// - nodefense7 (half-open tắt): b0 nhận ≈ 8 request ⇒ client thấy 8×503 + 24×200 ⇒ ĐỎ.
+func TestBreakerHalfOpenProxyE2E(t *testing.T) {
+	sims := make([]*fixture.Sim, 4)
+	ups := make([]string, 4)
+	for i := 0; i < 4; i++ {
+		errRate := 0.0
+		if i == 0 {
+			errRate = 1.0 // b0 trả 503 ngay
+		}
+		sims[i] = fixture.NewSim(fmt.Sprintf("b%d", i), 0, errRate)
+		up, stop, err := fixture.ListenAndServeSim("127.0.0.1:0", sims[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stop()
+		ups[i] = up
+	}
+
+	s, p := startProxyS(t, ups[0], func(c *Config) {
+		c.Upstreams = ups
+		c.LB = lb.Config{
+			Algo:    "rr",
+			Health:  lb.HealthConfig{Disabled: true},
+			Outlier: lb.OutlierConfig{Consecutive: 5, BaseEject: 150 * time.Millisecond, MaxEject: time.Second, MaxEjectPercent: 50},
+		}
+	})
+
+	// 1. Gửi 20 request tuần tự qua RR: mỗi backend nhận 5 request.
+	// b0 nhận 5 request và đều trả 503 ⇒ outlier eject b0.
+	rc := dialRaw(t, p)
+	st1 := getN(t, rc, 20, "/hello", "")
+	rc.c.Close()
+
+	if st1[503] != 5 || st1[200] != 15 {
+		t.Fatalf("vòng đầu: muốn 5×503, 15×200; được %v", st1)
+	}
+
+	lbs := s.LBStats()
+	if lbs.Backends[0].State != "open" || lbs.Backends[0].Ejections != 1 {
+		t.Fatalf("b0 phải ở trạng thái open (ejected): %+v", lbs.Backends[0])
+	}
+
+	// 2. Chờ hết hạn eject 150 ms
+	time.Sleep(160 * time.Millisecond)
+
+	// 3. Bắn 32 request đồng thời từ 32 goroutine (mỗi goroutine một connection)
+	var mu sync.Mutex
+	st2 := map[int]int{}
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, err := net.Dial("tcp", p)
+			if err != nil {
+				mu.Lock()
+				st2[-1]++
+				mu.Unlock()
+				return
+			}
+			defer c.Close()
+			<-start
+			io.WriteString(c, "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n")
+			c.SetReadDeadline(time.Now().Add(2 * time.Second))
+			resp, err := httpx.ReadResponse(bufio.NewReader(c), httpx.DefaultLimits(), "GET")
+			mu.Lock()
+			if err != nil {
+				st2[-1]++
+			} else {
+				st2[resp.Status]++
+				io.Copy(io.Discard, resp.Body)
+			}
+			mu.Unlock()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	lbs2 := s.LBStats()
+	t.Logf("32 client đồng thời khi b0 hết hạn: %v; b0 state=%s, probes=%d, reopens=%d, fails=%d",
+		st2, lbs2.Backends[0].State, lbs2.Backends[0].Probes, lbs2.Backends[0].Reopens, lbs2.Backends[0].Fails)
+
+	if st2[503] != 1 || st2[200] != 31 {
+		t.Fatalf("half-open qua proxy: muốn đúng 1×503 (chỉ 1 probe tới b0) và 31×200; nhận %v", st2)
+	}
+	if lbs2.Backends[0].Reopens != 1 || lbs2.Backends[0].State != "open" {
+		t.Fatalf("b0 probe hỏng phải open lại (reopens=1): %+v", lbs2.Backends[0])
+	}
+}
+

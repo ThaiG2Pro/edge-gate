@@ -9,6 +9,7 @@ package loadgen
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ type Config struct {
 	Duration time.Duration // tổng thời gian phát lịch
 	Workers  int           // connection tối đa; đủ lớn để không thành closed-loop (mặc định 256)
 	Timeout  time.Duration // deadline mỗi request phía client (mặc định 15 s) — quá ⇒ Kind "timeout" (treo)
+	TLS      *tls.Config   // nil = plaintext; khác nil = client bọc TLS sau khi dial
 	// Request trả raw request cho request thứ i (mặc định GET /hello).
 	Request func(i int) string
 	// LocalIP: bind nguồn (vd 127.0.0.2) — loopback nhận mọi 127/8; rỗng = mặc định.
@@ -123,6 +125,14 @@ func (w *worker) dial(local string) error {
 	c, err := d.Dial("tcp", w.cfg.Addr)
 	if err != nil {
 		return err
+	}
+	if w.cfg.TLS != nil {
+		tc := tls.Client(c, w.cfg.TLS)
+		if err := tc.Handshake(); err != nil {
+			c.Close()
+			return err
+		}
+		c = tc
 	}
 	w.c, w.br, w.local, w.reused = c, bufio.NewReader(c), local, false
 	return nil
