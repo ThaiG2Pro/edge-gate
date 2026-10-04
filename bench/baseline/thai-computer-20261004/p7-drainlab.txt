@@ -1,0 +1,45 @@
+### lần 1 — 10:52:08
+drainlab: restarts=20 every=500ms drain=5s grace=0s rate=2000 workers=64 service=5ms
+  (open-loop, loopback, SO_REUSEPORT, mọi instance cùng tiến trình)
+
+noretry        n=22000 200:95.3% io-nohead:1028
+               200: p50 6.25ms p90 6.95ms p99 7.26ms p99.9 8.45ms max 10.12ms · goodput 1907/s
+               lag generator (Start−Sched, nằm trong latency): p50 440µs p99 1.19ms max 3.47ms
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 1028, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 252 · drain: idle đóng 1040, cưỡng bức 0, lâu nhất 7ms
+
+retry          n=22000 200:100.0% retried:1049
+               200: p50 6.19ms p90 6.92ms p99 7.23ms p99.9 7.96ms max 9.37ms · goodput 2000/s
+               lag generator (Start−Sched, nằm trong latency): p50 430µs p99 1.19ms max 2.67ms
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 1049 · response mang Connection: close 231 · drain: idle đóng 1059, cưỡng bức 0, lâu nhất 7ms
+### lần 2 — 10:52:30
+drainlab: restarts=20 every=500ms drain=5s grace=0s rate=2000 workers=64 service=5ms
+  (open-loop, loopback, SO_REUSEPORT, mọi instance cùng tiến trình)
+
+noretry        n=22000 200:95.3% io-nohead:1038
+               200: p50 6.23ms p90 6.96ms p99 7.29ms p99.9 8.63ms max 10.42ms · goodput 1906/s
+               lag generator (Start−Sched, nằm trong latency): p50 440µs p99 1.2ms max 4.07ms
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 1038, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 242 · drain: idle đóng 1050, cưỡng bức 0, lâu nhất 7ms
+
+retry          n=22000 200:100.0% retried:1040
+               200: p50 6.22ms p90 6.93ms p99 7.26ms p99.9 8.6ms max 9.71ms · goodput 2000/s
+               lag generator (Start−Sched, nằm trong latency): p50 440µs p99 1.21ms max 3.49ms
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 1040 · response mang Connection: close 240 · drain: idle đóng 1049, cưỡng bức 0, lâu nhất 6ms
+### lần 3 — 10:52:52
+drainlab: restarts=20 every=500ms drain=5s grace=0s rate=2000 workers=64 service=5ms
+  (open-loop, loopback, SO_REUSEPORT, mọi instance cùng tiến trình)
+
+noretry        n=22000 200:95.3% io-nohead:1038
+               200: p50 6.23ms p90 6.96ms p99 7.32ms p99.9 9.38ms max 11.12ms · goodput 1906/s
+               lag generator (Start−Sched, nằm trong latency): p50 430µs p99 1.21ms max 5ms
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 1038, io-body 0, dial 0, timeout 0 · retried 0 · response mang Connection: close 242 · drain: idle đóng 1051, cưỡng bức 0, lâu nhất 7ms
+
+retry          n=22000 200:100.0% retried:1036
+               200: p50 6.22ms p90 6.94ms p99 7.26ms p99.9 8.62ms max 9.3ms · goodput 2000/s
+               lag generator (Start−Sched, nằm trong latency): p50 430µs p99 1.2ms max 3.36ms
+               io-nohead trên connection vừa dial (backlog RST): 0
+               mất: io-nohead 0, io-body 0, dial 0, timeout 0 · retried 1036 · response mang Connection: close 244 · drain: idle đóng 1045, cưỡng bức 0, lâu nhất 7ms

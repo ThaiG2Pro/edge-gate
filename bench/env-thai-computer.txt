@@ -1,0 +1,38 @@
+# chụp lúc: 2026-10-04T10:25:19+07:00
+# host: thai-computer
+
+$ uname -srmo
+Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+
+$ go version
+go version go1.26.0 linux/amd64
+
+$ nproc
+16
+
+$ ulimit -n
+65536
+
+$ grep "model name" /proc/cpuinfo | head -1
+model name	: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+
+$ free -m | head -2
+               total        used        free      shared  buff/cache   available
+Mem:           30855        4691       18531          60        8232       26163
+
+$ sysctl net.ipv4.ip_local_port_range net.core.somaxconn net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_tw_reuse
+net.ipv4.ip_local_port_range = 32768	60999
+net.core.somaxconn = 4096
+net.ipv4.tcp_max_syn_backlog = 2048
+net.ipv4.tcp_tw_reuse = 2
+
+$ ss -s | head -3
+Total: 840
+TCP:   151 (estab 85, closed 42, orphaned 0, timewait 2)
+
+
+$ tc qdisc show dev lo
+qdisc noqueue 0: root refcnt 2 
+
+$ grep -qi microsoft /proc/version && echo WSL2 || echo "Linux thuần"
+Linux thuần

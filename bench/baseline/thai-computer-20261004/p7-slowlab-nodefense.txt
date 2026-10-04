@@ -1,0 +1,36 @@
+### lần 1 — 10:39:23
+slowlab: conns=500 byte-every=10s src=127.0.0.2 duration=30s hold=12s probe=50 rps header-timeout=10s (áp dụng: false) max-conns=0 max-conns-per-ip=0 max-inflight=0
+  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)
+baseline       n=250 200:100.0%
+               200: p50 1.27ms p90 2.06ms p99 2.51ms p99.9 3.24ms max 3.56ms · goodput 50/s
+               lag generator (Start−Sched, nằm trong latency): p50 640µs p99 1.66ms max 3.14ms
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.7 MiB ⇒ 40.4 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 200:100.0%
+               200: p50 1.14ms p90 1.7ms p99 2.29ms p99.9 2.52ms max 4.29ms · goodput 50/s
+               lag generator (Start−Sched, nằm trong latency): p50 580µs p99 1.56ms max 2.4ms
+               attacker: reconnect 0, dial lỗi 0; proxy giữ 500 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 500 connection
+### lần 2 — 10:40:12
+slowlab: conns=500 byte-every=10s src=127.0.0.2 duration=30s hold=12s probe=50 rps header-timeout=10s (áp dụng: false) max-conns=0 max-conns-per-ip=0 max-inflight=0
+  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)
+baseline       n=250 200:100.0%
+               200: p50 1.12ms p90 1.78ms p99 2.25ms p99.9 2.91ms max 3.43ms · goodput 50/s
+               lag generator (Start−Sched, nằm trong latency): p50 500µs p99 1.42ms max 2.04ms
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.5 MiB ⇒ 39.9 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 200:100.0%
+               200: p50 1.21ms p90 1.82ms p99 2.28ms p99.9 2.57ms max 2.72ms · goodput 50/s
+               lag generator (Start−Sched, nằm trong latency): p50 660µs p99 1.61ms max 2.31ms
+               attacker: reconnect 0, dial lỗi 0; proxy giữ 500 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 500 connection
+### lần 3 — 10:41:01
+slowlab: conns=500 byte-every=10s src=127.0.0.2 duration=30s hold=12s probe=50 rps header-timeout=10s (áp dụng: false) max-conns=0 max-conns-per-ip=0 max-inflight=0
+  (probe open-loop, latency từ giờ hẹn; loopback; proxy + attacker + probe cùng tiến trình, không ghim core)
+baseline       n=250 200:100.0%
+               200: p50 1.17ms p90 2.14ms p99 2.41ms p99.9 2.86ms max 5.82ms · goodput 50/s
+               lag generator (Start−Sched, nằm trong latency): p50 550µs p99 1.56ms max 3.13ms
+attack:        proxy giữ 500 connection (trước 0); bộ nhớ tiến trình +19.2 MiB ⇒ 39.3 KiB / connection (gồm cả phía attacker)
+probe/attack   n=1500 200:100.0%
+               200: p50 1.09ms p90 1.68ms p99 2.15ms p99.9 2.64ms max 3.25ms · goodput 50/s
+               lag generator (Start−Sched, nằm trong latency): p50 540µs p99 1.55ms max 2.69ms
+               attacker: reconnect 0, dial lỗi 0; proxy giữ 500 connection lúc hết probe
+hold 12s:      attacker ngừng gửi, giữ socket ⇒ proxy còn giữ 500 connection

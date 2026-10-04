@@ -1,0 +1,22 @@
+### lần 1 — 10:41:50
+ratelab: ips=20 rate=50/s burst=10 per-ip=100 rps duration=5s ⇒ kỳ vọng mỗi IP ≈ 260 cái 200 / 500
+  (open-loop, loopback, proxy + generator cùng tiến trình)
+ip-that        mỗi IP 200: min 259 max 259 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 259 / 500 (kỳ vọng 260 ± 5 %), 429 = 241
+proxy          rate-limited 5061, khoá đang nhớ 21
+PASS
+### lần 2 — 10:42:00
+ratelab: ips=20 rate=50/s burst=10 per-ip=100 rps duration=5s ⇒ kỳ vọng mỗi IP ≈ 260 cái 200 / 500
+  (open-loop, loopback, proxy + generator cùng tiến trình)
+ip-that        mỗi IP 200: min 259 max 259 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 259 / 500 (kỳ vọng 260 ± 5 %), 429 = 241
+proxy          rate-limited 5061, khoá đang nhớ 21
+PASS
+### lần 3 — 10:42:10
+ratelab: ips=20 rate=50/s burst=10 per-ip=100 rps duration=5s ⇒ kỳ vọng mỗi IP ≈ 260 cái 200 / 500
+  (open-loop, loopback, proxy + generator cùng tiến trình)
+ip-that        mỗi IP 200: min 176 max 176 (kỳ vọng 260 ± 5 %); khác 200/429: 0
+spoof-xff      peer 127.0.0.3, XFF ngẫu nhiên mỗi request: 200 = 259 / 500 (kỳ vọng 260 ± 5 %), 429 = 241
+proxy          rate-limited 6721, khoá đang nhớ 21
+FAIL: rate limit per-IP sai (ngoài ± 5 %) hoặc XFF giả lọt qua ranh giới tin cậy
+!! lần 3 thoát mã 1 — cũng là kết quả

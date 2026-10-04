@@ -1,0 +1,69 @@
+### lần 1 — 10:26:01
+upstream 127.0.0.1:40853 · target /hello · n=2000 · conns=1 · closed-loop, cùng máy
+RTT = 44µs (srtt kernel, ss -tin, rttvar 0.015 ms) · ping = 72µs (ping avg, 5 gói) · chi phí một net.Dial (p50/20) = 215µs
+  một net.Dial = 4.9 RTT — phần vượt 1 RTT là dựng socket/accept/goroutine, không phải mạng (phase 0 G2)
+
+== baseline ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, keep-alive                     2000      38µs      58µs     162µs      94ms     0
+  [qua proxy, pool-off (dial mỗi request)] Δ TIME_WAIT: phía proxy (dport=40853) +2020 · phía upstream (sport=40853) +0
+  [qua proxy, pool-on] Δ TIME_WAIT: phía proxy (dport=40853) +0 · phía upstream (sport=40853) +0
+
+== qua proxy, GET /hello, closed-loop, n=2000, conns=1 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, pool-off (dial mỗi request)         2000     168µs     287µs     450µs     401ms     0
+qua proxy, pool-on                             2000     114µs     194µs     309µs     246ms     0
+  pool-off stats: {Dials:2020 Reuses:0 Puts:0 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+  pool-on  stats: {Dials:1 Reuses:2019 Puts:2020 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+
+  G1/G2 tỉ số        p50 off / p50 on   = 1.47x
+  G1/G2 tiết kiệm     p50 off − p50 on   = 54µs / request
+  G1/G2 theo RTT      tiết kiệm / RTT     = 1.22 RTT / request
+  overhead còn lại    p50 on − p50 thẳng = 77µs (= parse 2 chiều + goroutine, KHÔNG còn dial)
+  wall off / wall on = 1.63x
+### lần 2 — 10:26:03
+upstream 127.0.0.1:44211 · target /hello · n=2000 · conns=1 · closed-loop, cùng máy
+RTT = 46µs (srtt kernel, ss -tin, rttvar 0.009 ms) · ping = 67µs (ping avg, 5 gói) · chi phí một net.Dial (p50/20) = 141µs
+  một net.Dial = 3.1 RTT — phần vượt 1 RTT là dựng socket/accept/goroutine, không phải mạng (phase 0 G2)
+
+== baseline ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, keep-alive                     2000      39µs      65µs     129µs      95ms     0
+  [qua proxy, pool-off (dial mỗi request)] Δ TIME_WAIT: phía proxy (dport=44211) +2020 · phía upstream (sport=44211) +0
+  [qua proxy, pool-on] Δ TIME_WAIT: phía proxy (dport=44211) +0 · phía upstream (sport=44211) +0
+
+== qua proxy, GET /hello, closed-loop, n=2000, conns=1 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, pool-off (dial mỗi request)         2000     168µs     283µs     472µs     402ms     0
+qua proxy, pool-on                             2000      90µs     141µs     241µs     214ms     0
+  pool-off stats: {Dials:2020 Reuses:0 Puts:0 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+  pool-on  stats: {Dials:1 Reuses:2019 Puts:2020 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+
+  G1/G2 tỉ số        p50 off / p50 on   = 1.87x
+  G1/G2 tiết kiệm     p50 off − p50 on   = 78µs / request
+  G1/G2 theo RTT      tiết kiệm / RTT     = 1.70 RTT / request
+  overhead còn lại    p50 on − p50 thẳng = 51µs (= parse 2 chiều + goroutine, KHÔNG còn dial)
+  wall off / wall on = 1.87x
+### lần 3 — 10:26:05
+upstream 127.0.0.1:33171 · target /hello · n=2000 · conns=1 · closed-loop, cùng máy
+RTT = 41µs (srtt kernel, ss -tin, rttvar 0.006 ms) · ping = 76µs (ping avg, 5 gói) · chi phí một net.Dial (p50/20) = 143µs
+  một net.Dial = 3.5 RTT — phần vượt 1 RTT là dựng socket/accept/goroutine, không phải mạng (phase 0 G2)
+
+== baseline ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, keep-alive                     2000      39µs      67µs     143µs      99ms     0
+  [qua proxy, pool-off (dial mỗi request)] Δ TIME_WAIT: phía proxy (dport=33171) +2020 · phía upstream (sport=33171) +0
+  [qua proxy, pool-on] Δ TIME_WAIT: phía proxy (dport=33171) +0 · phía upstream (sport=33171) +0
+
+== qua proxy, GET /hello, closed-loop, n=2000, conns=1 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, pool-off (dial mỗi request)         2000     168µs     283µs     458µs     397ms     0
+qua proxy, pool-on                             2000     117µs     205µs     313µs     259ms     0
+  pool-off stats: {Dials:2020 Reuses:0 Puts:0 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:0}
+  pool-on  stats: {Dials:1 Reuses:2019 Puts:2020 Retries:0 DropDirty:0 DropFull:0 DropExpired:0 DeadOnProbe:0 Idle:1}
+
+  G1/G2 tỉ số        p50 off / p50 on   = 1.43x
+  G1/G2 tiết kiệm     p50 off − p50 on   = 51µs / request
+  G1/G2 theo RTT      tiết kiệm / RTT     = 1.24 RTT / request
+  overhead còn lại    p50 on − p50 thẳng = 78µs (= parse 2 chiều + goroutine, KHÔNG còn dial)
+  wall off / wall on = 1.54x

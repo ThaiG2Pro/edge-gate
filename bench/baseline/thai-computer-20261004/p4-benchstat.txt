@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: github.com/thaivro/edgegate/internal/httpx
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+               │ bench/baseline/thai-computer-20261004/p4-bench-readrequest.txt │
+               │                             sec/op                             │
+ReadRequest-16                                                      1.183µ ± 1%
+
+               │ bench/baseline/thai-computer-20261004/p4-bench-readrequest.txt │
+               │                              B/op                              │
+ReadRequest-16                                                       824.0 ± 0%
+
+               │ bench/baseline/thai-computer-20261004/p4-bench-readrequest.txt │
+               │                           allocs/op                            │
+ReadRequest-16                                                       24.00 ± 0%

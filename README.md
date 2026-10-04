@@ -58,12 +58,11 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | 9 | Performance & epoll | ✅ [`diary/phase9.md`](diary/phase9.md) — **3/8 giả thuyết sai**; pool: GC chứ không malloc (ns/op 2.4x); conn rỗi 28 → 8-9 KiB; giá L7 ở body = mất splice, lấy lại bằng splice body; epoll 55x ít RAM, rps ngang; EdgeGate ≈ nginx, ReverseProxy 3.1x chậm hơn (WSL2) |
 | 10 | HTTP/2 h2c (tùy chọn) | ✅ [`diary/phase10.md`](diary/phase10.md) — HPACK/frame/flow control tự viết; h2spec **145/145** qua TLS/ALPN (P10-5) và `h2c_only` (P10-6), **144/145** mặc định chung port (cố ý); **2/8 giả thuyết sai/nửa sai**; HOL TCP (loss 2 %) h2 2.7x tệ ở trung vị, 1.1x ở đuôi; Rapid Reset / CONTINUATION flood / H2.CL smuggling có phản chứng đỏ |
 
-### Nợ kỹ thuật (2026-10-03)
+### Nợ kỹ thuật (2026-10-04)
 
-Mười phase xong. **43 nợ đã trả, 22 còn mở** — tất cả là nợ `📏` (cần Linux thuần / netem / nhiều
-core) hoặc `⏳` (P5-4b, P9-2: chờ số đo PUT thật / workload upload thật). **Không còn nợ `🔧`** (sửa
-được ngay trên máy này). Phiên 2026-10-02/03 trả P2-5, P4-3, P10-5, P10-6, P3-2, P8-3, P7-3, P9-7,
-P4-6 và dựng công cụ cho P-env-2.
+Mười phase xong. **56 nợ đã trả, 10 còn mở** — các nợ `📏` cốt lõi về Linux thuần đã được chốt số
+(P-env-2, P0-4, P3-5, P4-2, P5-1, P6-2b, P7-2b, P7-4, P7-6, P8-1, P9-4, P9-6, P10-8). Không còn nợ `🔧`.
+Phiên 2026-10-04 chốt 13 nợ thực nghiệm trên máy Linux thuần (CachyOS, 16-thread).
 
 Tái hiện số đo thật: [`docs/REPRODUCE-LINUX.md`](./docs/REPRODUCE-LINUX.md) — bảng 23 nợ `📏` kèm
 lệnh và tiêu chí đạt, chạy bằng `./scripts/linux-baseline.sh` (phase 0–7) và

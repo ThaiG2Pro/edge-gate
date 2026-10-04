@@ -1,0 +1,108 @@
+### lần 1 — 10:26:07
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:26:07+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 12157 alloc 148 mem 1108
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:35739 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G4: coordinated omission (server capacity ≈ 1000 rps, áp 885 rps)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+closed-loop, 1 conn                closed       7060    1.41ms    1.28ms    1.80ms    2.19ms    5.07ms      0
+closed-loop, 50 conn               closed       8036   62.41ms   62.05ms   63.93ms   75.01ms   84.91ms      0
+open-loop, rate cố định            open         8832  325.40ms  328.60ms  570.33ms  604.86ms  607.45ms      0
+  rps closed-loop, 1 conn            yêu cầu      885  đạt được      706  (79.8%)
+  ghi chú closed-loop, 1 conn        client KHÔNG BAO GIỜ áp nổi 885 rps: nó chỉ gửi khi được trả lời
+  rps closed-loop, 50 conn           yêu cầu      885  đạt được      799  (90.2%)
+  ghi chú closed-loop, 50 conn       client KHÔNG BAO GIỜ áp nổi 885 rps: nó chỉ gửi khi được trả lời
+  rps open-loop, rate cố định        yêu cầu      885  đạt được      834  (94.2%)
+  ghi chú open-loop, rate cố định    18 request bị drop vì hết connection rỗi (backlog thật)
+  [G4] p99 open-loop / p99 closed-loop 1 conn         276.30x   (kỳ vọng >3x)
+  [G4] p99 open-loop / p99 closed-loop 50 conn          8.06x   (kỳ vọng >3x)
+
+  Đọc cột `rps yêu cầu` vs `đạt được`: closed-loop không đạt được rate đã đặt.
+  Nó báo p99 của một tải NHẸ HƠN tải mình tưởng đang áp. Đó là lời nói dối.
+### lần 2 — 10:26:37
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:26:37+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 12715 alloc 148 mem 1364
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:39385 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G4: coordinated omission (server capacity ≈ 1000 rps, áp 885 rps)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+closed-loop, 1 conn                closed       8260    1.21ms    1.21ms    1.23ms    1.31ms    3.48ms      0
+closed-loop, 50 conn               closed       8133   61.66ms   61.81ms   62.61ms   66.67ms   71.28ms      0
+open-loop, rate cố định            open         8784  338.02ms  340.49ms  604.45ms  625.49ms  627.31ms      0
+  rps closed-loop, 1 conn            yêu cầu      885  đạt được      826  (93.3%)
+  ghi chú closed-loop, 1 conn        client KHÔNG BAO GIỜ áp nổi 885 rps: nó chỉ gửi khi được trả lời
+  rps closed-loop, 50 conn           yêu cầu      885  đạt được      808  (91.3%)
+  ghi chú closed-loop, 50 conn       client KHÔNG BAO GIỜ áp nổi 885 rps: nó chỉ gửi khi được trả lời
+  rps open-loop, rate cố định        yêu cầu      885  đạt được      829  (93.7%)
+  ghi chú open-loop, rate cố định    66 request bị drop vì hết connection rỗi (backlog thật)
+  [G4] p99 open-loop / p99 closed-loop 1 conn         476.00x   (kỳ vọng >3x)
+  [G4] p99 open-loop / p99 closed-loop 50 conn          9.38x   (kỳ vọng >3x)
+
+  Đọc cột `rps yêu cầu` vs `đạt được`: closed-loop không đạt được rate đã đặt.
+  Nó báo p99 của một tải NHẸ HƠN tải mình tưởng đang áp. Đó là lời nói dối.
+### lần 3 — 10:27:08
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:27:08+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 1129 alloc 147 mem 1108
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:33667 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G4: coordinated omission (server capacity ≈ 1000 rps, áp 885 rps)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+closed-loop, 1 conn                closed       8248    1.21ms    1.21ms    1.23ms    1.33ms    3.39ms      0
+closed-loop, 50 conn               closed       8146   61.57ms   61.82ms   62.55ms   64.44ms   67.79ms      0
+open-loop, rate cố định            open         8770  350.47ms  356.18ms  611.93ms  620.64ms  621.86ms      0
+  rps closed-loop, 1 conn            yêu cầu      885  đạt được      825  (93.2%)
+  ghi chú closed-loop, 1 conn        client KHÔNG BAO GIỜ áp nổi 885 rps: nó chỉ gửi khi được trả lời
+  rps closed-loop, 50 conn           yêu cầu      885  đạt được      809  (91.5%)
+  ghi chú closed-loop, 50 conn       client KHÔNG BAO GIỜ áp nổi 885 rps: nó chỉ gửi khi được trả lời
+  rps open-loop, rate cố định        yêu cầu      885  đạt được      828  (93.6%)
+  ghi chú open-loop, rate cố định    80 request bị drop vì hết connection rỗi (backlog thật)
+  [G4] p99 open-loop / p99 closed-loop 1 conn         465.91x   (kỳ vọng >3x)
+  [G4] p99 open-loop / p99 closed-loop 50 conn          9.63x   (kỳ vọng >3x)
+
+  Đọc cột `rps yêu cầu` vs `đạt được`: closed-loop không đạt được rate đã đặt.
+  Nó báo p99 của một tải NHẸ HƠN tải mình tưởng đang áp. Đó là lời nói dối.

@@ -1,0 +1,63 @@
+### lần 1 — 10:49:30
+chaoslab: scenario=retry duration=10s rate=1000 tick=300ms seed=1 drop=0.50 body=0 splice=default-on client-timeout=7s
+  nền (trước proxy): goroutine 5, fd 15 (trước cả backend: 1 / 11)
+  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)
+
+retry          n=10000 200:74.9% 502:25.1%
+               200: p50 3.46ms p90 4.12ms p99 5.12ms p99.9 11.99ms max 18.64ms · goodput 749/s
+               lag generator (Start−Sched, nằm trong latency): p50 480µs p99 1.44ms max 4.95ms
+               127.0.0.1:40085 picks 2563 fails 642 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:36757 picks 2485 fails 627 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:35499 picks 2514 fails 631 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:46233 picks 2438 fails 609 ejections 0 probes 0 reopens 0 state closed healthy true
+               proxy: retry cho 1194 / từ chối 2509, shed 0+0, no-available 0, eject-refused 0
+               upstream nhận 11194 lần gửi cho 10000 request client ⇒ khuếch đại 1.119x; backend đóng 3703 connection dùng lại; 502 = 25.1 %
+
+invariant (c'): connection client còn mở ở proxy 500 ms sau tải: 0 (ngay khi tải xong: 0)
+invariant (b): goroutine sau Close proxy + kill backend: 1 (nền trước mọi thứ 1, ±2)
+invariant (c): fd sau Close proxy + kill backend: 11 (nền trước mọi thứ 11, ±0; trong đó pipe splice: 2)
+invariant (d): treo quá 7s: 0; đóng không trả gì (io-nohead): 0; body cụt (io-body): 0; dial lỗi: 0
+invariant (a): không panic — tới được dòng này
+PASS
+### lần 2 — 10:49:40
+chaoslab: scenario=retry duration=10s rate=1000 tick=300ms seed=1 drop=0.50 body=0 splice=default-on client-timeout=7s
+  nền (trước proxy): goroutine 5, fd 15 (trước cả backend: 1 / 11)
+  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)
+
+retry          n=10000 200:74.6% 502:25.4%
+               200: p50 3.47ms p90 4.09ms p99 4.74ms p99.9 9.34ms max 13.3ms · goodput 745/s
+               lag generator (Start−Sched, nằm trong latency): p50 480µs p99 1.18ms max 3.17ms
+               127.0.0.1:34335 picks 2567 fails 666 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:40803 picks 2557 fails 643 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:36547 picks 2539 fails 642 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:38921 picks 2337 fails 590 ejections 0 probes 0 reopens 0 state closed healthy true
+               proxy: retry cho 1149 / từ chối 2541, shed 0+0, no-available 0, eject-refused 0
+               upstream nhận 11149 lần gửi cho 10000 request client ⇒ khuếch đại 1.115x; backend đóng 3690 connection dùng lại; 502 = 25.4 %
+
+invariant (c'): connection client còn mở ở proxy 500 ms sau tải: 0 (ngay khi tải xong: 0)
+invariant (b): goroutine sau Close proxy + kill backend: 1 (nền trước mọi thứ 1, ±2)
+invariant (c): fd sau Close proxy + kill backend: 11 (nền trước mọi thứ 11, ±0; trong đó pipe splice: 2)
+invariant (d): treo quá 7s: 0; đóng không trả gì (io-nohead): 0; body cụt (io-body): 0; dial lỗi: 0
+invariant (a): không panic — tới được dòng này
+PASS
+### lần 3 — 10:49:51
+chaoslab: scenario=retry duration=10s rate=1000 tick=300ms seed=1 drop=0.50 body=0 splice=default-on client-timeout=7s
+  nền (trước proxy): goroutine 5, fd 15 (trước cả backend: 1 / 11)
+  (open-loop, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình)
+
+retry          n=10000 200:75.1% 502:24.9%
+               200: p50 3.46ms p90 4.07ms p99 4.69ms p99.9 11.33ms max 15.14ms · goodput 750/s
+               lag generator (Start−Sched, nằm trong latency): p50 500µs p99 1.17ms max 3ms
+               127.0.0.1:37829 picks 2285 fails 548 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:37397 picks 2309 fails 562 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:46359 picks 2716 fails 698 ejections 0 probes 0 reopens 0 state closed healthy true
+               127.0.0.1:37793 picks 2690 fails 686 ejections 0 probes 0 reopens 0 state closed healthy true
+               proxy: retry cho 1201 / từ chối 2494, shed 0+0, no-available 0, eject-refused 0
+               upstream nhận 11201 lần gửi cho 10000 request client ⇒ khuếch đại 1.120x; backend đóng 3695 connection dùng lại; 502 = 24.9 %
+
+invariant (c'): connection client còn mở ở proxy 500 ms sau tải: 0 (ngay khi tải xong: 0)
+invariant (b): goroutine sau Close proxy + kill backend: 1 (nền trước mọi thứ 1, ±2)
+invariant (c): fd sau Close proxy + kill backend: 11 (nền trước mọi thứ 11, ±0; trong đó pipe splice: 2)
+invariant (d): treo quá 7s: 0; đóng không trả gì (io-nohead): 0; body cụt (io-body): 0; dial lỗi: 0
+invariant (a): không panic — tới được dòng này
+PASS

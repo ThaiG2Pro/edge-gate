@@ -1,0 +1,48 @@
+### lần 1 — 10:50:33
+shedlab: 4 backend × conc 4 × 10ms ⇒ capacity 1600 rps; tải 3200 rps (2.0x) trong 10s; shed inflight=16 queue=16 queue-timeout=50ms; generator 256 worker
+  (OPEN-LOOP, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình, không ghim core)
+
+noshed         n=32000 200:100.0%
+               200: p50 5.67718s p90 10.36182s p99 11.41291s p99.9 11.51733s max 11.5289s · goodput 1487/s
+               lag generator (Start−Sched, nằm trong latency): p50 5.5029s p99 11.23885s max 11.35561s
+               bắn xong lịch sau 21.525s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:0 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0 Tunnels:0 PerIPRejected:0}
+               p99 200 theo giây: s0:1.136s s1:2.273s s2:3.397s s3:4.523s s4:5.665s s5:6.838s s6:8.008s s7:9.181s s8:10.35s s9:11.517s
+
+shed           n=32000 200:46.5% 503:53.5%
+               200: p50 20.31ms p90 22.25ms p99 23.57ms p99.9 29.76ms max 31.64ms · goodput 1486/s
+               lag generator (Start−Sched, nằm trong latency): p50 510µs p99 1.21ms max 4.22ms
+               bắn xong lịch sau 10.019s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:17107 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0 Tunnels:0 PerIPRejected:0}
+               503: p50 650µs p99 1.35ms
+               p99 200 theo giây: s0:23ms s1:24ms s2:23ms s3:24ms s4:23ms s5:23ms s6:24ms s7:24ms s8:24ms s9:23ms
+### lần 2 — 10:51:05
+shedlab: 4 backend × conc 4 × 10ms ⇒ capacity 1600 rps; tải 3200 rps (2.0x) trong 10s; shed inflight=16 queue=16 queue-timeout=50ms; generator 256 worker
+  (OPEN-LOOP, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình, không ghim core)
+
+noshed         n=32000 200:100.0%
+               200: p50 5.69597s p90 10.37572s p99 11.42581s p99.9 11.5297s max 11.54526s · goodput 1485/s
+               lag generator (Start−Sched, nằm trong latency): p50 5.52275s p99 11.25264s max 11.37315s
+               bắn xong lịch sau 21.546s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:0 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0 Tunnels:0 PerIPRejected:0}
+               p99 200 theo giây: s0:1.136s s1:2.273s s2:3.408s s3:4.543s s4:5.684s s5:6.846s s6:8.014s s7:9.188s s8:10.364s s9:11.53s
+
+shed           n=32000 200:46.5% 503:53.5%
+               200: p50 19.98ms p90 22.17ms p99 23.58ms p99.9 29.64ms max 31.32ms · goodput 1486/s
+               lag generator (Start−Sched, nằm trong latency): p50 500µs p99 1.21ms max 3.93ms
+               bắn xong lịch sau 10.013s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:17118 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0 Tunnels:0 PerIPRejected:0}
+               503: p50 650µs p99 1.35ms
+               p99 200 theo giây: s0:23ms s1:23ms s2:23ms s3:24ms s4:24ms s5:24ms s6:28ms s7:24ms s8:24ms s9:24ms
+### lần 3 — 10:51:37
+shedlab: 4 backend × conc 4 × 10ms ⇒ capacity 1600 rps; tải 3200 rps (2.0x) trong 10s; shed inflight=16 queue=16 queue-timeout=50ms; generator 256 worker
+  (OPEN-LOOP, latency từ giờ hẹn; loopback; 4 backend + proxy + generator cùng tiến trình, không ghim core)
+
+noshed         n=32000 200:100.0%
+               200: p50 5.68704s p90 10.30566s p99 11.36169s p99.9 11.4667s max 11.47865s · goodput 1490/s
+               lag generator (Start−Sched, nằm trong latency): p50 5.51237s p99 11.18706s max 11.30497s
+               bắn xong lịch sau 21.475s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:0 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0 Tunnels:0 PerIPRejected:0}
+               p99 200 theo giây: s0:1.124s s1:2.252s s2:3.396s s3:4.527s s4:5.675s s5:6.82s s6:7.948s s7:9.12s s8:10.294s s9:11.467s
+
+shed           n=32000 200:46.5% 503:53.5%
+               200: p50 20.1ms p90 22.26ms p99 23.67ms p99.9 29.88ms max 32.34ms · goodput 1484/s
+               lag generator (Start−Sched, nằm trong latency): p50 510µs p99 1.2ms max 2.57ms
+               bắn xong lịch sau 10.02s (lịch 10s); proxy {RateLimited:0 ShedQueueFull:17135 ShedTimeout:0 Inflight:0 Queued:0 RetryAllowed:0 RetryDenied:0 LimiterKeys:0 ConnsActive:0 DrainedIdle:0 DrainForced:0 Misdirected:0 HandshakeFail:0 Tunnels:0 PerIPRejected:0}
+               503: p50 640µs p99 1.35ms
+               p99 200 theo giây: s0:23ms s1:24ms s2:24ms s3:24ms s4:24ms s5:24ms s6:23ms s7:27ms s8:23ms s9:28ms

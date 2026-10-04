@@ -1,0 +1,78 @@
+### lần 1 — 10:27:39
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:27:39+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 1640 alloc 147 mem 852
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:35749 (workers=1 bufio=true)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G5: bộ nhớ của 10000 connection rỗi (bufio=true)
+  RSS       : 13836 KB -> 249892 KB   (delta 236056 KB)
+  RSS/conn  : 23.61 KB   (đây là CẶP client+server trong 1 process)
+  HeapAlloc : 1.4 MB -> 179.7 MB  => 17.41 KB/conn
+  goroutine : 2 -> 10002   (1.0/conn)
+  StackSys  : 0.5 MB -> 41.8 MB  => 4.04 KB/conn
+  => so với 2KB stack khởi tạo của goroutine: 11.80x
+### lần 2 — 10:27:41
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:27:41+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 11640 alloc 147 mem 852
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:33189 (workers=1 bufio=true)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G5: bộ nhớ của 10000 connection rỗi (bufio=true)
+  RSS       : 11776 KB -> 245868 KB   (delta 234092 KB)
+  RSS/conn  : 23.41 KB   (đây là CẶP client+server trong 1 process)
+  HeapAlloc : 1.4 MB -> 179.7 MB  => 17.41 KB/conn
+  goroutine : 2 -> 10002   (1.0/conn)
+  StackSys  : 0.5 MB -> 41.8 MB  => 4.04 KB/conn
+  => so với 2KB stack khởi tạo của goroutine: 11.70x
+### lần 3 — 10:27:42
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:27:42+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 21128 alloc 147 mem 1364
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:45515 (workers=1 bufio=true)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G5: bộ nhớ của 10000 connection rỗi (bufio=true)
+  RSS       : 13800 KB -> 249920 KB   (delta 236120 KB)
+  RSS/conn  : 23.61 KB   (đây là CẶP client+server trong 1 process)
+  HeapAlloc : 1.4 MB -> 179.7 MB  => 17.41 KB/conn
+  goroutine : 2 -> 10002   (1.0/conn)
+  StackSys  : 0.5 MB -> 41.8 MB  => 4.04 KB/conn
+  => so với 2KB stack khởi tạo của goroutine: 11.81x

@@ -28,14 +28,18 @@ docker run -d --rm --name edgegate-bench-nginx --network host --cpuset-cpus 0-1 
 sleep 2
 docker exec edgegate-bench-nginx nginx -v 2>&1
 
+NCPU=$(nproc)
+GEN_CPUS="4-$((NCPU-1))"
+[ "$NCPU" -le 5 ] && GEN_CPUS="4-5"
+
 declare -A ADDR=([direct]=127.0.0.1:18100 [edgegate]=127.0.0.1:18091 [nginx]=127.0.0.1:18090 [rp]=127.0.0.1:18092)
 for t in direct edgegate nginx rp; do   # khởi động: pool upstream, JIT của chính loadgen
-  taskset -c 4-5 bin/perflab -mode open -addr "${ADDR[$t]}" -rate 1000 -duration 2s -label "warm-$t" >/dev/null
+  taskset -c "$GEN_CPUS" bin/perflab -mode open -addr "${ADDR[$t]}" -rate 2000 -duration 2s -label "warm-$t" >/dev/null 2>&1 || true
 done
 order=(edgegate nginx rp direct)
 for r in $RATES; do
   for t in "${order[@]}"; do
-    taskset -c 4-5 bin/perflab -mode open -addr "${ADDR[$t]}" -rate "$r" -duration "$DUR" -workers 64 -label "$t"
+    taskset -c "$GEN_CPUS" bin/perflab -mode open -addr "${ADDR[$t]}" -rate "$r" -duration "$DUR" -workers 256 -label "$t" || true
   done
   order=("${order[@]:1}" "${order[0]}")   # xoay thứ tự mỗi rate
 done

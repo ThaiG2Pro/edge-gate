@@ -1,0 +1,92 @@
+### lần 1 — 10:27:49
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:27:49+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 61127 alloc 147 mem 1364
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 192.168.1.52:9200 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G6: cái gì chạm trần trước khi không pool (dialers=1)
+  ulimit -n            : 65536
+  ip_local_port_range  : 32768	60999
+  sockstat TRƯỚC       : TCP: inuse 40 orphan 0 tw 61127 alloc 148 mem 1364
+  sockstat SAU         : TCP: inuse 40 orphan 0 tw 82857 alloc 148 mem 596
+  connection thành công: 21782 trong 20.002s = 1089 conn/s
+  connection lỗi       : 0
+  CPU toàn máy         : 14.9% busy trong suốt thí nghiệm (15 core)
+  => nếu conn/s thấp mà CPU rỗi thì trần KHÔNG ở CPU. Đó là điểm của G6.
+  => chưa chạm trần trong 20s. Tăng -duration, hoặc so conn/s này với
+     (số port khả dụng / 60s) để biết mức bền vững thật.
+### lần 2 — 10:28:09
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:28:09+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 82857 alloc 147 mem 596
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 192.168.1.52:9200 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G6: cái gì chạm trần trước khi không pool (dialers=1)
+  ulimit -n            : 65536
+  ip_local_port_range  : 32768	60999
+  sockstat TRƯỚC       : TCP: inuse 40 orphan 0 tw 82857 alloc 148 mem 596
+  sockstat SAU         : TCP: inuse 40 orphan 0 tw 88791 alloc 148 mem 596
+  connection thành công: 6447 trong 16.694s = 386 conn/s
+  connection lỗi       : 101
+  CPU toàn máy         : 14.9% busy trong suốt thí nghiệm (15 core)
+  => nếu conn/s thấp mà CPU rỗi thì trần KHÔNG ở CPU. Đó là điểm của G6.
+  lỗi đầu tiên         : dial tcp 192.168.1.52:9200: connect: cannot assign requested address
+  => ĐỌC KỸ lỗi này. "cannot assign requested address" = cạn port,
+     "too many open files" = cạn fd. Hai thứ này KHÁC nhau và cách sửa khác nhau.
+### lần 3 — 10:28:25
+=== netlab · môi trường ===
+thời điểm        : 2026-10-04T10:28:25+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 88791 alloc 147 mem 596
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 192.168.1.52:9200 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G6: cái gì chạm trần trước khi không pool (dialers=1)
+  ulimit -n            : 65536
+  ip_local_port_range  : 32768	60999
+  sockstat TRƯỚC       : TCP: inuse 40 orphan 0 tw 88791 alloc 148 mem 596
+  sockstat SAU         : TCP: inuse 40 orphan 0 tw 88791 alloc 148 mem 596
+  connection thành công: 0 trong 1.423s = 0 conn/s
+  connection lỗi       : 101
+  CPU toàn máy         : 14.7% busy trong suốt thí nghiệm (15 core)
+  => nếu conn/s thấp mà CPU rỗi thì trần KHÔNG ở CPU. Đó là điểm của G6.
+  lỗi đầu tiên         : dial tcp 192.168.1.52:9200: connect: cannot assign requested address
+  => ĐỌC KỸ lỗi này. "cannot assign requested address" = cạn port,
+     "too many open files" = cạn fd. Hai thứ này KHÁC nhau và cách sửa khác nhau.

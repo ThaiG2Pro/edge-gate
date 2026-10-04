@@ -1,0 +1,16 @@
+goos: linux
+goarch: amd64
+pkg: github.com/thaivro/edgegate/internal/httpx
+cpu: AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+BenchmarkReadRequest-16    	 1025606	      1179 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  879739	      1185 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	 1014586	      1180 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  893758	      1176 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  864316	      1176 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  973070	      1190 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	 1013272	      1182 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  879162	      1184 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  907629	      1189 ns/op	     824 B/op	      24 allocs/op
+BenchmarkReadRequest-16    	  952418	      1187 ns/op	     824 B/op	      24 allocs/op
+PASS
+ok  	github.com/thaivro/edgegate/internal/httpx	14.245s

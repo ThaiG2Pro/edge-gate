@@ -1,0 +1,99 @@
+### lần 1
+2026/10/04 10:28:27 edgegate: :8080 → [127.0.0.1:8081] lb=rr (nodelay=true, trusted_proxies=[], pool=true max_idle=64 max_idle_time=30000ms, health=true outlier=true)
+
+== G2: overhead L7, GET /hello, closed-loop, cùng máy, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, 1 conn keep-alive              2000      42µs      65µs     180µs     102ms     0
+qua proxy, 1 conn keep-alive (D1: dial mới)     2000      96µs     143µs     412µs     231ms     0
+  G2 p50 proxy / p50 thẳng = 2.29x (kỳ vọng 3-5x)
+  G2 p99 proxy / p99 thẳng = 2.29x (kỳ vọng —)
+  chênh tuyệt đối p50: 54µs (= parse 2 chiều + Dial upstream mới + goroutine)
+
+== G3: keep-alive client, GET /hello, closed-loop, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, 1 conn keep-alive                   2000      94µs     152µs     515µs     233ms     0
+qua proxy, mỗi request 1 conn mới              2000     203µs     302µs     775µs     478ms     0
+  G3 p50 mỗi-conn / p50 keep-alive = 2.16x (kỳ vọng 1.2-1.6x)
+  G3 wall mỗi-conn / wall keep-alive = 2.05x (kỳ vọng —)
+  D1 làm proxy Dial upstream mới cho CẢ hai mẫu; khác biệt chỉ là dial client↔proxy.
+
+== G4: Nagle, 5 chunk cách 0 ms, closed-loop, n=100 [nodelay=true] ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, GET /chunked?n=5&ms=0 [nodelay=true]      100     169µs     338µs     571µs      20ms     0
+  So p50 giữa hai lần chạy (-nodelay=true / false). Đăng ký: +40 ms hằng số. Đo được turn 2: SÀN ≈ 44 ms (terminator chunk chờ delayed-ACK).
+2026/10/04 10:28:29 edgegate: SIGTERM ⇒ drain tối đa 30s
+2026/10/04 10:28:29 edgegate: drain xong, 0 connection bị đóng cưỡng bức
+2026/10/04 10:28:29 edgegate: :8080 → [127.0.0.1:8081] lb=rr (nodelay=false, trusted_proxies=[], pool=true max_idle=64 max_idle_time=30000ms, health=true outlier=true)
+
+== G4: Nagle, 5 chunk cách 0 ms, closed-loop, n=100 [nodelay=false] ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, GET /chunked?n=5&ms=0 [nodelay=false]      100  41.007ms  41.174ms  41.976ms    4.108s     0
+  So p50 giữa hai lần chạy (-nodelay=true / false). Đăng ký: +40 ms hằng số. Đo được turn 2: SÀN ≈ 44 ms (terminator chunk chờ delayed-ACK).
+2026/10/04 10:28:36 edgegate: SIGTERM ⇒ drain tối đa 30s
+2026/10/04 10:28:36 edgegate: drain xong, 0 connection bị đóng cưỡng bức
+### lần 2
+2026/10/04 10:28:36 edgegate: :8080 → [127.0.0.1:8081] lb=rr (nodelay=true, trusted_proxies=[], pool=true max_idle=64 max_idle_time=30000ms, health=true outlier=true)
+
+== G2: overhead L7, GET /hello, closed-loop, cùng máy, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, 1 conn keep-alive              2000      41µs      69µs     168µs      99ms     0
+qua proxy, 1 conn keep-alive (D1: dial mới)     2000      91µs     140µs     379µs     216ms     0
+  G2 p50 proxy / p50 thẳng = 2.24x (kỳ vọng 3-5x)
+  G2 p99 proxy / p99 thẳng = 2.26x (kỳ vọng —)
+  chênh tuyệt đối p50: 50µs (= parse 2 chiều + Dial upstream mới + goroutine)
+
+== G3: keep-alive client, GET /hello, closed-loop, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, 1 conn keep-alive                   2000      89µs     138µs     348µs     206ms     0
+qua proxy, mỗi request 1 conn mới              2000     203µs     297µs     818µs     477ms     0
+  G3 p50 mỗi-conn / p50 keep-alive = 2.28x (kỳ vọng 1.2-1.6x)
+  G3 wall mỗi-conn / wall keep-alive = 2.31x (kỳ vọng —)
+  D1 làm proxy Dial upstream mới cho CẢ hai mẫu; khác biệt chỉ là dial client↔proxy.
+
+== G4: Nagle, 5 chunk cách 0 ms, closed-loop, n=100 [nodelay=true] ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, GET /chunked?n=5&ms=0 [nodelay=true]      100     144µs     183µs     463µs      16ms     0
+  So p50 giữa hai lần chạy (-nodelay=true / false). Đăng ký: +40 ms hằng số. Đo được turn 2: SÀN ≈ 44 ms (terminator chunk chờ delayed-ACK).
+2026/10/04 10:28:38 edgegate: SIGTERM ⇒ drain tối đa 30s
+2026/10/04 10:28:38 edgegate: drain xong, 0 connection bị đóng cưỡng bức
+2026/10/04 10:28:38 edgegate: :8080 → [127.0.0.1:8081] lb=rr (nodelay=false, trusted_proxies=[], pool=true max_idle=64 max_idle_time=30000ms, health=true outlier=true)
+
+== G4: Nagle, 5 chunk cách 0 ms, closed-loop, n=100 [nodelay=false] ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, GET /chunked?n=5&ms=0 [nodelay=false]      100  41.044ms  41.959ms  42.843ms    4.127s     0
+  So p50 giữa hai lần chạy (-nodelay=true / false). Đăng ký: +40 ms hằng số. Đo được turn 2: SÀN ≈ 44 ms (terminator chunk chờ delayed-ACK).
+2026/10/04 10:28:44 edgegate: SIGTERM ⇒ drain tối đa 30s
+2026/10/04 10:28:44 edgegate: drain xong, 0 connection bị đóng cưỡng bức
+### lần 3
+2026/10/04 10:28:45 edgegate: :8080 → [127.0.0.1:8081] lb=rr (nodelay=true, trusted_proxies=[], pool=true max_idle=64 max_idle_time=30000ms, health=true outlier=true)
+
+== G2: overhead L7, GET /hello, closed-loop, cùng máy, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+thẳng upstream, 1 conn keep-alive              2000      49µs      96µs     320µs     127ms     0
+qua proxy, 1 conn keep-alive (D1: dial mới)     2000      93µs     153µs     369µs     225ms     0
+  G2 p50 proxy / p50 thẳng = 1.92x (kỳ vọng 3-5x)
+  G2 p99 proxy / p99 thẳng = 1.15x (kỳ vọng —)
+  chênh tuyệt đối p50: 45µs (= parse 2 chiều + Dial upstream mới + goroutine)
+
+== G3: keep-alive client, GET /hello, closed-loop, n=2000 ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, 1 conn keep-alive                   2000      91µs     146µs     376µs     217ms     0
+qua proxy, mỗi request 1 conn mới              2000     207µs     320µs     867µs     491ms     0
+  G3 p50 mỗi-conn / p50 keep-alive = 2.28x (kỳ vọng 1.2-1.6x)
+  G3 wall mỗi-conn / wall keep-alive = 2.27x (kỳ vọng —)
+  D1 làm proxy Dial upstream mới cho CẢ hai mẫu; khác biệt chỉ là dial client↔proxy.
+
+== G4: Nagle, 5 chunk cách 0 ms, closed-loop, n=100 [nodelay=true] ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, GET /chunked?n=5&ms=0 [nodelay=true]      100     155µs     228µs   1.733ms      21ms     0
+  So p50 giữa hai lần chạy (-nodelay=true / false). Đăng ký: +40 ms hằng số. Đo được turn 2: SÀN ≈ 44 ms (terminator chunk chờ delayed-ACK).
+2026/10/04 10:28:46 edgegate: SIGTERM ⇒ drain tối đa 30s
+2026/10/04 10:28:46 edgegate: drain xong, 0 connection bị đóng cưỡng bức
+2026/10/04 10:28:46 edgegate: :8080 → [127.0.0.1:8081] lb=rr (nodelay=false, trusted_proxies=[], pool=true max_idle=64 max_idle_time=30000ms, health=true outlier=true)
+
+== G4: Nagle, 5 chunk cách 0 ms, closed-loop, n=100 [nodelay=false] ==
+mẫu                                               n       p50       p90       p99      wall   err
+qua proxy, GET /chunked?n=5&ms=0 [nodelay=false]      100  41.001ms  41.157ms  42.015ms    4.109s     0
+  So p50 giữa hai lần chạy (-nodelay=true / false). Đăng ký: +40 ms hằng số. Đo được turn 2: SÀN ≈ 44 ms (terminator chunk chờ delayed-ACK).
+2026/10/04 10:28:53 edgegate: SIGTERM ⇒ drain tối đa 30s
+2026/10/04 10:28:53 edgegate: drain xong, 0 connection bị đóng cưỡng bức

@@ -1,0 +1,39 @@
+### lần 1 — 10:29:08
+lblab: n=20000 conns=32 base=2ms skew="" flap=false recover=false tau=1s tau-slow=30s outlier=true health=true sessions=1000
+  b0 127.0.0.1:40765 delay=2ms err=?
+  b1 127.0.0.1:38201 delay=2ms err=?
+  b2 127.0.0.1:33591 delay=2ms err=?
+  b3 127.0.0.1:38483 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          2.72ms   3.03ms   3.92ms   9.03ms  0.00%  11567  25.0/25.0/25.0/25.0         0/0 0
+leastconn    2.7ms   3.03ms   3.71ms   4.44ms  0.00%  11689  25.0/25.0/25.0/25.0         0/0 0
+p2c          2.7ms   2.94ms   3.53ms   4.77ms  0.00%  11763  25.3/25.0/24.2/25.5         0/0 0
+chash       2.75ms   3.02ms    3.9ms   4.96ms  0.00%  11543  22.8/29.0/23.2/25.0         0/0 0
+### lần 2 — 10:29:15
+lblab: n=20000 conns=32 base=2ms skew="" flap=false recover=false tau=1s tau-slow=30s outlier=true health=true sessions=1000
+  b0 127.0.0.1:35651 delay=2ms err=?
+  b1 127.0.0.1:45717 delay=2ms err=?
+  b2 127.0.0.1:44593 delay=2ms err=?
+  b3 127.0.0.1:34889 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          2.72ms   3.04ms   3.77ms   5.83ms  0.00%  11610  25.0/25.0/25.0/25.0         0/0 0
+leastconn   2.74ms   3.04ms   3.81ms   4.57ms  0.00%  11555  25.0/25.0/25.0/25.0         0/0 0
+p2c         2.73ms      3ms   3.71ms   4.72ms  0.00%  11612  25.2/25.0/25.2/24.6         0/0 0
+chash       2.73ms   3.02ms   3.54ms   4.88ms  0.00%  11618  24.4/25.4/23.5/26.7         0/0 0
+### lần 3 — 10:29:22
+lblab: n=20000 conns=32 base=2ms skew="" flap=false recover=false tau=1s tau-slow=30s outlier=true health=true sessions=1000
+  b0 127.0.0.1:33225 delay=2ms err=?
+  b1 127.0.0.1:34137 delay=2ms err=?
+  b2 127.0.0.1:40153 delay=2ms err=?
+  b3 127.0.0.1:45401 delay=2ms err=?
+  (closed-loop, coordinated omission chưa loại trừ; loopback; 4 backend + proxy + client cùng tiến trình)
+
+algo           p50      p90      p99      max   5xx%    rps  share b0/b1/b2/b3 (%)       eject/refused ioErr
+rr          2.71ms   3.01ms   3.87ms    6.9ms  0.00%  11642  25.0/25.0/25.0/25.0         0/0 0
+leastconn   2.71ms   2.98ms    3.6ms   5.25ms  0.00%  11699  25.0/25.0/25.0/25.0         0/0 0
+p2c         2.69ms   2.95ms   3.65ms   4.62ms  0.00%  11754  25.5/24.9/25.1/24.5         0/0 0
+chash       2.71ms   2.99ms   3.76ms    4.7ms  0.00%  11666  20.6/29.5/22.9/27.0         0/0 0

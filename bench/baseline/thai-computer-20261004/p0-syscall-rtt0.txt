@@ -1,0 +1,96 @@
+### lần 1 — 10:25:26
+=== netlab · môi trường ===
+tag              : rtt0
+thời điểm        : 2026-10-04T10:25:26+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 3 alloc 149 mem 1620
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:39051 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G1: 1 lần Write vs 2 lần Write (1 connection reuse, không pool)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+1 Write (resp 1024B)               -            5000    37.3µs    36.2µs    38.9µs    65.2µs   921.2µs      0
+2 Write (resp 1024B)               -            5000    55.3µs    53.9µs    56.9µs    95.8µs    1.16ms      0
+2 Write + Nagle server (resp 1024B) -             100   41.13ms   41.01ms   41.75ms   42.06ms   42.24ms      0
+  LƯU Ý ĐỌC SỐ: nếu server chạy -bufio=true thì hai lần Write bị bufio.Writer
+  gộp thành MỘT syscall lúc Flush, và tỉ số dưới đây sẽ ra ~1.0x. Đó là bộ đo
+  sai, không phải kết luận "syscall miễn phí". Đo G1 phải chạy -bufio=false.
+  [G1] p50 2-Write / p50 1-Write                        1.49x   (kỳ vọng 1.5-2x)
+  [G1] p99 2-Write / p99 1-Write                        1.47x   (kỳ vọng 1.5-2x)
+  [G1] p50 2-Write+Nagle / p50 2-Write                761.10x   (kỳ vọng ?)
+### lần 2 — 10:25:34
+=== netlab · môi trường ===
+tag              : rtt0
+thời điểm        : 2026-10-04T10:25:34+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 5 alloc 150 mem 1364
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:34957 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G1: 1 lần Write vs 2 lần Write (1 connection reuse, không pool)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+1 Write (resp 1024B)               -            5000    38.5µs    38.1µs    40.1µs    56.7µs   721.2µs      0
+2 Write (resp 1024B)               -            5000    53.9µs    53.3µs    56.2µs    75.0µs   421.0µs      0
+2 Write + Nagle server (resp 1024B) -             100   41.12ms   41.03ms   41.63ms   42.27ms   42.56ms      0
+  LƯU Ý ĐỌC SỐ: nếu server chạy -bufio=true thì hai lần Write bị bufio.Writer
+  gộp thành MỘT syscall lúc Flush, và tỉ số dưới đây sẽ ra ~1.0x. Đó là bộ đo
+  sai, không phải kết luận "syscall miễn phí". Đo G1 phải chạy -bufio=false.
+  [G1] p50 2-Write / p50 1-Write                        1.40x   (kỳ vọng 1.5-2x)
+  [G1] p99 2-Write / p99 1-Write                        1.32x   (kỳ vọng 1.5-2x)
+  [G1] p50 2-Write+Nagle / p50 2-Write                770.29x   (kỳ vọng ?)
+### lần 3 — 10:25:43
+=== netlab · môi trường ===
+tag              : rtt0
+thời điểm        : 2026-10-04T10:25:43+07:00
+role             : both
+go               : go1.26.0 linux/amd64
+NumCPU / GOMAXPROCS: 15 / 15
+kernel           : Linux 7.2.8-1-cachyos x86_64 GNU/Linux
+ulimit -n        : 65536
+port range       : 32768	60999
+somaxconn        : 4096
+tcp_max_syn_backlog: 2048
+sockstat         : TCP: inuse 39 orphan 0 tw 7 alloc 149 mem 1364
+qdisc lo         : qdisc noqueue 0: root refcnt 2
+cpu              : AMD Ryzen 7 H 255 w/ Radeon 780M Graphics
+===========================
+server nội bộ: 127.0.0.1:43193 (workers=1 bufio=false)
+⚠️  chế độ -role both: client và server CÙNG process, cùng core, và loopback KHÔNG có RTT.
+⚠️  Mọi số ở đây chỉ dùng để so TỈ SỐ với nhau. Xem G2/G3 để biết vì sao.
+
+--- G1: 1 lần Write vs 2 lần Write (1 connection reuse, không pool)
+biến thể                           loop            n      mean       p50       p90       p99       max    err
+----------------------------------------------------------------------------------------------------------------------
+1 Write (resp 1024B)               -            5000    38.8µs    37.6µs    41.6µs    61.5µs    2.20ms      0
+2 Write (resp 1024B)               -            5000    54.2µs    53.2µs    54.6µs    67.0µs   278.9µs      0
+2 Write + Nagle server (resp 1024B) -             100   41.26ms   41.05ms   41.99ms   42.64ms   43.75ms      0
+  LƯU Ý ĐỌC SỐ: nếu server chạy -bufio=true thì hai lần Write bị bufio.Writer
+  gộp thành MỘT syscall lúc Flush, và tỉ số dưới đây sẽ ra ~1.0x. Đó là bộ đo
+  sai, không phải kết luận "syscall miễn phí". Đo G1 phải chạy -bufio=false.
+  [G1] p50 2-Write / p50 1-Write                        1.42x   (kỳ vọng 1.5-2x)
+  [G1] p99 2-Write / p99 1-Write                        1.09x   (kỳ vọng 1.5-2x)
+  [G1] p50 2-Write+Nagle / p50 2-Write                771.52x   (kỳ vọng ?)
