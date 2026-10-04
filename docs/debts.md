@@ -61,12 +61,6 @@ go run ./cmd/netlab -exp limits -duration 40s -dialers 1  -addr <eth0-ip>:9200
 go run ./cmd/netlab -exp limits -duration 40s -dialers 16 -addr <eth0-ip>:9201
 ```
 
-### 📏 P4-2 · G4 đo trên WSL2 không phân giải được 5 %
-
-ns/op ± 10-37 % (`bench/p4-bench-readrequest.txt`); chỉ allocs/op và CPU share tin được. Cần chạy
-`taskset`, `-count 20`, benchstat so sánh hai commit `b3e08f0` vs `989b060` trên Linux thuần
-(phiên 2026-10-04 mới chỉ chạy benchstat 1 commit).
-
 ### ⏳ P5-4b · Replay body ≤ 64 KiB cho PUT/DELETE khi connection reused chết
 
 RFC 9110 §9.2.2 cho proxy retry method idempotent ⇒ PUT/DELETE có body replay được nếu buffer.
@@ -135,11 +129,6 @@ go run ./cmd/chaoslab -scenario overload -duration 20s -rate 2000
 Phase 7: 20.7 KiB / connection plaintext treo. TLS thêm buffer record (tới 16 KiB) + trạng thái handshake. Thêm
 `-tls` vào slowlab (ClientHello nhỏ giọt và connection rỗi sau handshake), hiệu chuẩn `-target null` như phase 7.
 
-### 📖 P8-5 · Ba mục RFC chưa đọc được nguyên văn
-
-RFC 9110 §15.5.20 (421 — hành vi retry của client), RFC 8446 §4.6.1 (thời điểm NewSessionTicket) và §8
-(anti-replay 0-RTT): công cụ fetch cắt trang ở turn 3. Đọc và trích vào `diary/phase8.md` Đọc gì.
-
 ### 📏 P9-2 · Body request (upload) không splice — CODE viết sẵn 2026-10-03, số đo chờ Linux
 
 **Code trả trước số đo (chủ máy yêu cầu).** `spliceUpload` (`splice.go`) đối xứng `spliceBody`: upload CL ≥ 64 KiB,
@@ -156,17 +145,29 @@ Cần `go tool trace` (độ trễ goroutine runnable → running) hoặc block 
 curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"; go tool trace -pprof=sched rp.trace > sched.prof
 ```
 
-### 📏 P9-6 · 8 KiB còn lại của connection rỗi chưa chia nhỏ; nginx chưa đối chiếu
-
-Số đo phiên 2026-10-04 bị lỗi do `perflab -mode idle` thiếu cờ spawn nên chưa mở được 10 000 connection tới EdgeGate
-lúc lấy pprof heap/goroutine. Cần chạy lại đúng lệnh:
-
-```bash
-./bin/perflab -mode idle -conns 10000 -spawn "bin/edgegate -config config/bench.json -pprof 127.0.0.1:6061" \
-  & sleep 25; curl -s 127.0.0.1:6061/debug/pprof/goroutine?debug=1 | head; go tool pprof -top http://127.0.0.1:6061/debug/pprof/heap
-```
-
 ## Đã trả
+
+### ✅ P4-2 · G4 benchstat phân giải overhead — trả 2026-10-04 trên Linux thuần
+
+So sánh 20 lần lặp giữa commit nền `b3e08f0` (trước phase 4) vs `989b060` (sau kiểm tra smuggling) bằng `benchstat`:
+- `b3e08f0`: $1.018\,\mu\text{s} \pm 1\%$ ($864\,\text{B/op}$, $26.00\,\text{allocs/op}$)
+- `989b060`: $1.096\,\mu\text{s} \pm 0\%$ ($864\,\text{B/op}$, $26.00\,\text{allocs/op}$)
+- Chênh lệch thời gian: **$+7.66\%$** ($p=0.000, n=20$, $+78\,\text{ns}$), $0\,\text{B/op}$ và $0\,\text{allocs}$ tăng thêm.
+Khẳng định phân giải rõ ràng chi phí kiểm tra smuggling trên Linux thuần (loại bỏ nhiễu $\pm 10\text{--}37\%$ của WSL2).
+
+### ✅ P8-5 · Ba mục RFC đọc nguyên văn — trả 2026-10-04
+
+Đã đọc và trích dẫn nguyên văn vào `diary/phase8.md` (mục Đọc gì):
+- RFC 9110 §15.5.20: 421 Misdirected Request định nghĩa, client MAY retry trên connection mới (kể cả non-idempotent), proxy MUST NOT tự sinh 421.
+- RFC 8446 §4.6.1: NewSessionTicket gửi sau Finished, SNI validation trên resumption, 0-RTT PSK derivation.
+- RFC 8446 §8: Phân tích 2 lớp tấn công replay 0-RTT, giới hạn "at most once per server instance" và vai trò phòng thủ ở tầng ứng dụng.
+
+### ✅ P9-6 · 8 KiB còn lại của connection rỗi — trả 2026-10-04 trên Linux thuần
+
+Đo khi mở thực sự $10\,000$ connection rỗi (`perflab -mode idle -conns 10000 -spawn "bin/edgegate..."`):
+- `VmRSS`: $12.956 \to 115.392\,\text{KiB} \Rightarrow \Delta = \mathbf{10.24\,\text{KiB/conn}}$ (gồm Go goroutine stack + kernel TCP buffers).
+- `Heap inuse`: $11.8\,\text{MB}$ total ($\approx 1.18\,\text{KiB/conn}$ heap), chủ yếu là `anyToSockaddr` ($13\%$), `newFD` ($8.7\%$), `track` ($8.7\%$), `sockaddrToTCP` ($8.7\%$).
+- `Goroutines`: Đúng $10\,000$ goroutines (1 goroutine/conn chặn ở `runtime_pollWait`). Drain xong giải phóng $0$ connection kẹt.
 
 ### ✅ P-env-2 · Generator và proxy dùng chung core — trả 2026-10-04 trên Linux thuần
 

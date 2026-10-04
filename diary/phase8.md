@@ -292,13 +292,13 @@ Chạy lại 2026-10-01 12:02 (load 1.83), output `bench/p8-invariants.txt`; s�
   sending a fatal-level unrecognized_name(112) alert or continue the handshake"; "NOT RECOMMENDED to send a
   warning-level unrecognized_name(112) alert". Thêm: "MUST NOT accept the request to resume the session if the
   server_name extension contains a different name".
-- **RFC 8446** (nguyên văn turn 3): §1.2 "A zero round-trip time (0-RTT) mode was added, saving a round trip at
-  connection setup for some application data, at the cost of certain security properties"; §2.2 PSK "used to
-  bootstrap the cryptographic state instead of a full handshake", Figure 3 vẫn cùng một vòng ClientHello/
-  ServerHello. Câu "resumption không cắt RTT nếu không có early data" là **suy từ hình**, RFC không viết một câu.
-  §4.6.1 và §8 (anti-replay): **chưa đọc được nguyên văn** (công cụ cắt trang) — không trích.
-- **RFC 9110 §15.5.20 (421): chưa đọc được** nguyên văn ở turn 3 (công cụ cắt trang) — D3 dùng 421 theo tên mã;
-  ghi nợ đọc lại.
+- **RFC 8446** (đọc nguyên văn):
+  - §1.2: "A zero round-trip time (0-RTT) mode was added, saving a round trip at connection setup for some application data, at the cost of certain security properties";
+  - §2.2: PSK "used to bootstrap the cryptographic state instead of a full handshake", Figure 3 vẫn cùng một vòng ClientHello/ServerHello (resumption 1-RTT không cắt RTT nếu không có early data).
+  - §4.6.1 (*New Session Ticket Message*): "At any time after the server has received the client Finished message, it MAY send a NewSessionTicket message. This message creates a unique association between the ticket value and a secret PSK derived from the resumption master secret... Clients MUST only resume if the new SNI value is valid for the server certificate presented in the original session and SHOULD only resume if the SNI value matches the one used in the original session."
+  - §8 (*0-RTT and Anti-Replay*): "TLS does not provide inherent replay protections for 0-RTT data... Network attackers who mount a replay attack by simply duplicating a flight of 0-RTT data [hoặc] take advantage of client retry behavior... The first class of attack can be prevented by sharing state... clients MUST only send early data which they deem safe to be replayed. The second class of attack cannot be prevented at the TLS layer and MUST be dealt with by any application."
+- **RFC 9110 §15.5.20** (*421 Misdirected Request*, đọc nguyên văn):
+  "The 421 (Misdirected Request) status code indicates that the request was directed at a server that is unable or unwilling to produce an authoritative response for the target URI. An origin server (or gateway acting on behalf of the origin server) sends 421 to reject a target URI that does not match an origin for which the server has been configured (Section 4.3.1) or does not match the connection context over which the request was received (Section 7.4). A client that receives a 421 (Misdirected Request) response MAY retry the request, whether or not the request method is idempotent, over a different connection... A proxy MUST NOT generate a 421 response."
 - **Mã nguồn Go 1.26.2** (`$(go env GOROOT)/src/crypto/tls`, đọc trực tiếp):
   `handshake_server_tls13.go:409` — early data chỉ được nhận khi `c.quic != nil` ⇒ **server TLS trên TCP không
   bao giờ nhận 0-RTT** (G7 resumed = +1 RTT là đúng thiết kế, không phải đo sai);
@@ -392,4 +392,4 @@ Chi tiết + lệnh trả trong `docs/debts.md`.
   probe TLS (hoặc chỉ TCP) khi `UpstreamTLS` bật — chưa có test.
 - [ ] **P8-4** 📏 Bộ nhớ một connection TLS treo (handshake dở / rỗi) chưa đo — slowlab chế độ TLS, so với 20.7 KiB
   plaintext của phase 7.
-- [ ] **P8-5** 📖 RFC 9110 §15.5.20 (421), RFC 8446 §4.6.1 và §8 chưa đọc được nguyên văn (công cụ cắt trang).
+- [x] **P8-5** ✅ (2026-10-04) — RFC 9110 §15.5.20 (421), RFC 8446 §4.6.1 và §8 đã đọc và trích nguyên văn vào Đọc gì.
