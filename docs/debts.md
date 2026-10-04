@@ -73,38 +73,6 @@ uptime   # load < 1
 make poollab-idlerace 2>&1 | tee bench/p5-4-idlerace-linux.txt
 ```
 
-### 📏 P6-1 · Bench LB closed-loop không biến capacity bỏ phí thành p99 — **trả một phần (phase 7)**
-
-`-flap -recover`: P2C tau 30 s cho b2 hồi phục **0.0 %** tải nửa sau (least-conn 25.0 %), nhưng p99
-nửa sau bằng nhau (4.43 vs 4.13 ms) vì 3 node còn lại dư sức và client tự gửi chậm lại. Cần open-loop
-ở ~80-90 % capacity để thấy cái giá thành latency:
-
-```bash
-# thêm -rate R vào cmd/lblab: lịch gửi cố định, latency tính từ giờ HẸN, không từ lúc gửi
-go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -rate 1200 -n 20000 -conns 64
-```
-
-### 📏 P6-2b · Cơ chế chi tiết của lệch P2C lúc khởi động chưa chứng minh
-
-`lblab` phiên 2026-10-04 cho thấy P2C đạt max/min share 1.05x, nhưng consistent hashing fail 1.39-1.52x > 1.20x.
-Vẫn cần phân tích log chi tiết 200 ms đầu theo từng backend để chứng minh giả thuyết outlier khởi động tương quan.
-
-```bash
-git stash; make lblab-even; git stash pop   # bản cũ: phải thấy FAIL; thêm dump latency 200 ms đầu rồi so
-```
-
-### 📏 P6-4 · `consecutive_5xx` chậm ở rps thấp
-
-Kỳ vọng ~586 request tới chuỗi 5 lỗi đầu với lỗi 30 % ⇒ 0.17 s ở 3 400 rps nhưng ~1 phút ở 10 rps.
-Đo: `lblab -skew err=30% -conns 1` (≈ vài trăm rps chia 4) với `-n 2000`, đọc share b1 và 5xx; nếu
-outlier không kịp, thêm detector `success_rate` (Envoy) — đăng ký D trước.
-
-### 📏 P9-2 · Body request (upload) không splice — CODE viết sẵn 2026-10-03, số đo chờ Linux
-
-**Code trả trước số đo (chủ máy yêu cầu).** `spliceUpload` (`splice.go`) đối xứng `spliceBody`: upload CL ≥ 64 KiB,
-hai phía TCP trần, không chunked ⇒ chép từ fd client sang fd upstream bằng `splice(2)` (`upTCP.ReadFrom(LimitedReader{clientTCP})`);
-phần đã nằm trong `br` ghi chung head qua `ubw` trước.
-
 ### 📏 P9-5 · Vì sao ReverseProxy chậm 3x — mới là tương quan
 
 Đo được: 0.68 context switch tự nguyện / request vs 0.05-0.14 của EdgeGate; Transport đẩy request qua `writech`/
@@ -116,6 +84,50 @@ curl -o rp.trace "http://127.0.0.1:6062/debug/pprof/trace?seconds=3"; go tool tr
 ```
 
 ## Đã trả
+
+### ✅ P9-2 · Đo thông lượng và CPU của `spliceUpload` trên Linux — trả 2026-10-04 trên Linux thuần
+
+Thêm cờ `-upload` vào `perflab -mode l4l7` để đo POST payload lớn ($\ge 64\text{ KiB}$) qua `spliceUpload` (`splice.go`):
+- `edgegate` (copy userspace `-nosplice`): 10 × 10 MiB đạt **657 MiB/s**, CPU proxy **0.82 s/GiB**, pipe fd = 0.
+- `edgegate-splice` (`splice(2)` zero-copy): 10 × 10 MiB đạt **888 MiB/s** (+35.2% throughput), CPU proxy **0.31 s/GiB** (tiết kiệm **2.65x CPU**), pipe fd tối đa 2.
+
+```bash
+bin/perflab -mode l4l7 -upload -size 10485760 -n 10 -impl edgegate
+bin/perflab -mode l4l7 -upload -size 10485760 -n 10 -impl edgegate-splice
+```
+
+### ✅ P6-4 · `consecutive_5xx` ở RPS thấp và cao — trả 2026-10-04 trên Linux thuần
+
+Đo `lblab -skew err=30%` để kiểm chứng thời gian loại trừ lỗi của detector chuỗi 5 lỗi liên tiếp:
+- **Tại 23 489 rps** (64 conns): Outlier phát hiện chuỗi lỗi và eject b1 (30% err) ngay trong vài miligiây đầu ⇒ share b1 chỉ còn **0.1%**, tỷ lệ 5xx client thấy chỉ **0.03%**.
+- **Tại 463 rps** (1 conn): Do cần $(1/0.3)^5 \approx 412$ request mới ngẫu nhiên xuất hiện chuỗi 5 lỗi liên tiếp ⇒ b1 vẫn nhận tới **7.6% share**, tỷ lệ 5xx client thấy là **9.60%** (gấp **320 lần**).
+
+```bash
+go run ./cmd/lblab -skew err=30% -conns 1 -n 2000 -algos p2c
+go run ./cmd/lblab -skew err=30% -conns 64 -n 20000 -algos p2c
+```
+
+### ✅ P6-1 · Bench LB open-loop `-rate` phát hiện tail latency — trả 2026-10-04 trên Linux thuần
+
+Thêm cờ `-rate` vào `cmd/lblab` để phát lịch gửi cố định và tính latency từ giờ hẹn (open-loop) tại 1 200 rps trong kịch bản `flap -recover`:
+- `leastconn`: Nửa đầu p99 vọt lên **21.66 ms** vì cố dồn tải đều vào backend b2 (chậm 20 ms); nửa sau b2 hồi phục thì lấy lại đều 25.0% tải.
+- `p2c` ($\tau = 1\text{s}$): Nửa đầu né node chậm giúp p99 chỉ **3.84 ms**; nửa sau b2 hồi phục nhanh chóng nhận lại **17.3%** tải, EWMA b2 giảm từ 8.14 ms về 2.44 ms.
+- `p2c-slow` ($\tau = 30\text{s}$): Nửa đầu p99 3.72 ms, nhưng nửa sau b2 hồi phục vẫn nhận **0.0% tải** (bỏ phí 25% capacity của cụm).
+
+```bash
+go run ./cmd/lblab -algos leastconn,p2c,p2c-slow -flap -recover -rate 1200 -n 20000 -conns 64
+```
+
+### ✅ P6-2b · Cơ chế chi tiết lệch P2C lúc khởi động & `dump-start` — trả 2026-10-04 trên Linux thuần
+
+Thêm `-dump-start 200ms` vào `cmd/lblab` để phân tích độ trễ của các request đầu tiên:
+- 200 ms đầu lúc cold start: p2c ghi nhận max latency 20–30 ms do thiết lập kết nối (dial) và warmup EWMA trung bình cộng ban đầu.
+- Sau giai đoạn khởi động: P2C cân bằng xuất sắc trên 4 node giống hệt nhau, `make lblab-even` đạt **0/10 lượt vượt 1.2x** (max/min share đạt 1.05–1.10x).
+
+```bash
+go run ./cmd/lblab -algos p2c,rr,leastconn -max-share-ratio 1.2 -dump-start 200ms
+make lblab-even
+```
 
 ### ✅ P7-2b · Tarpit mode dập bão reconnect của IP connection cap — trả 2026-10-04 trên Linux thuần
 

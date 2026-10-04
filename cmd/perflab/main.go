@@ -12,6 +12,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -55,6 +56,7 @@ var (
 	copyMode = flag.String("copy", "splice", "l4proxy: splice | copy")
 	listen   = flag.String("listen", "127.0.0.1:18201", "l4proxy: listen")
 	target   = flag.String("target", "127.0.0.1:18100", "l4proxy: backend")
+	upload   = flag.Bool("upload", false, "l4l7: đo chiều upload (POST CL >= 64 KiB qua spliceUpload)")
 )
 
 func main() {
@@ -233,7 +235,11 @@ func runIdle() {
 // l4l7 (G4)
 
 func runL4L7() {
-	up := start(fmt.Sprintf("taskset -c %s bin/epolllab -impl netpoller -addr %s -body %d", *ucpu, *upAddr, *size), *upAddr)
+	upCmd := fmt.Sprintf("taskset -c %s bin/epolllab -impl netpoller -addr %s -body %d", *ucpu, *upAddr, *size)
+	if *upload {
+		upCmd = fmt.Sprintf("taskset -c %s bin/upstream -addr %s", *ucpu, *upAddr)
+	}
+	up := start(upCmd, *upAddr)
 	defer up.stop()
 	dst := *upAddr
 	var px *child
@@ -263,9 +269,25 @@ func runL4L7() {
 	}
 	defer c.Close()
 	br := bufio.NewReaderSize(c, 64<<10)
-	req := []byte(reqLine())
+
+	var reqHead []byte
+	var reqBody []byte
+	if *upload {
+		reqHead = []byte(fmt.Sprintf("POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n", *size))
+		reqBody = bytes.Repeat([]byte{'a'}, *size)
+	} else {
+		reqHead = []byte(reqLine())
+	}
+
+	writeReq := func() {
+		c.Write(reqHead)
+		if len(reqBody) > 0 {
+			c.Write(reqBody)
+		}
+	}
+
 	// khởi động: một response (pool, cấp phát lần đầu)
-	c.Write(req)
+	writeReq()
 	if _, _, err := readResp(br); err != nil {
 		log.Fatal(err)
 	}
@@ -295,7 +317,7 @@ func runL4L7() {
 	t0 := time.Now()
 	var total int64
 	for i := 0; i < *reps; i++ {
-		c.Write(req)
+		writeReq()
 		st, n, err := readResp(br)
 		if err != nil || st != 200 || n != int64(*size) {
 			log.Fatalf("response %d: %d %d byte %v", i, st, n, err)

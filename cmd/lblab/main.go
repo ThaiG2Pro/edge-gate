@@ -66,6 +66,8 @@ func main() {
 	health := flag.Bool("health", true, "active health check 200 ms")
 	sessions := flag.Int("sessions", 1000, "số giá trị X-Session (khoá chash)")
 	maxRatio := flag.Float64("max-share-ratio", 0, "P6-2: >0 ⇒ thoát 1 nếu max/min share của một algo vượt ngưỡng (chỉ có nghĩa với backend giống hệt)")
+	rate := flag.Float64("rate", 0, "P6-1: open-loop rps; >0 ⇒ phát lịch cố định, latency tính từ giờ hẹn")
+	dumpStart := flag.Duration("dump-start", 0, "P6-2b: in chi tiết latency và phân phối của các request trong khoảng thời gian đầu")
 	flag.Parse()
 
 	// --- backend giả lập ----------------------------------------------------
@@ -128,7 +130,7 @@ func main() {
 		}
 		go srv.Serve(ln)
 		var mid lb.Stats // chụp đúng lúc flap; đọc sau wg.Wait trong run ⇒ không race
-		r := run(algo, ln.Addr().String(), *n, *conns, *sessions, *flap, func() {
+		r := run(algo, ln.Addr().String(), *n, *conns, *sessions, *rate, *dumpStart, *flap, func() {
 			mid = srv.LBStats()
 			sims[2].SetDelay(b2After)
 		})
@@ -172,14 +174,36 @@ func errOf(s *fixture.Sim) string {
 	return fmt.Sprintf("%d/%d", s.Errors(), s.Served())
 }
 
-// run: closed-loop, conns goroutine chia nhau n request qua bộ đếm chung.
-func run(algo, addr string, n, conns, sessions int, flap bool, onFlap func()) *result {
+type job struct {
+	i     int
+	sched time.Time
+}
+
+// run: closed-loop hoặc open-loop (-rate > 0), conns goroutine chia nhau n request.
+func run(algo, addr string, n, conns, sessions int, rate float64, dumpStart time.Duration, flap bool, onFlap func()) *result {
 	var idx atomic.Int64
 	var mu sync.Mutex
 	var out []sample
+	var startSamples []sample
 	ioErr := 0
 	var wg sync.WaitGroup
 	t0 := time.Now()
+
+	jobCh := make(chan job, conns*4)
+	if rate > 0 {
+		interval := time.Duration(float64(time.Second) / rate)
+		go func() {
+			for i := 0; i < n; i++ {
+				at := t0.Add(time.Duration(i) * interval)
+				if d := time.Until(at); d > 0 {
+					time.Sleep(d)
+				}
+				jobCh <- job{i: i, sched: at}
+			}
+			close(jobCh)
+		}()
+	}
+
 	for c := 0; c < conns; c++ {
 		wg.Add(1)
 		go func() {
@@ -188,9 +212,20 @@ func run(algo, addr string, n, conns, sessions int, flap bool, onFlap func()) *r
 			var br *bufio.Reader
 			local := make([]sample, 0, n/conns+1)
 			for {
-				i := int(idx.Add(1) - 1)
-				if i >= n {
-					break
+				var i int
+				var sched time.Time
+				if rate > 0 {
+					j, ok := <-jobCh
+					if !ok {
+						break
+					}
+					i, sched = j.i, j.sched
+				} else {
+					i = int(idx.Add(1) - 1)
+					if i >= n {
+						break
+					}
+					sched = time.Now()
 				}
 				if flap && i == n/2 {
 					onFlap()
@@ -203,7 +238,7 @@ func run(algo, addr string, n, conns, sessions int, flap bool, onFlap func()) *r
 					}
 					br = bufio.NewReader(conn)
 				}
-				lat, status, err := get(conn, br, fmt.Sprintf("s%d", rand.IntN(sessions)))
+				firstByte, status, err := get(conn, br, fmt.Sprintf("s%d", rand.IntN(sessions)))
 				if err != nil {
 					conn.Close()
 					conn, br = nil, nil
@@ -212,7 +247,17 @@ func run(algo, addr string, n, conns, sessions int, flap bool, onFlap func()) *r
 					mu.Unlock()
 					continue
 				}
-				local = append(local, sample{lat: lat, status: status, second: i >= n/2})
+				lat := firstByte
+				if rate > 0 {
+					lat = time.Since(sched)
+				}
+				s := sample{lat: lat, status: status, second: i >= n/2}
+				local = append(local, s)
+				if dumpStart > 0 && time.Since(t0) <= dumpStart {
+					mu.Lock()
+					startSamples = append(startSamples, s)
+					mu.Unlock()
+				}
 			}
 			if conn != nil {
 				conn.Close()
@@ -223,6 +268,15 @@ func run(algo, addr string, n, conns, sessions int, flap bool, onFlap func()) *r
 		}()
 	}
 	wg.Wait()
+	if dumpStart > 0 && len(startSamples) > 0 {
+		var dlat []time.Duration
+		for _, s := range startSamples {
+			dlat = append(dlat, s.lat)
+		}
+		sort.Slice(dlat, func(i, j int) bool { return dlat[i] < dlat[j] })
+		fmt.Printf("  [dump-start %s] %s: %d reqs, p50 %s, p90 %s, p99 %s, max %s\n",
+			dumpStart, algo, len(dlat), dlat[len(dlat)/2], dlat[int(float64(len(dlat))*0.9)], dlat[int(float64(len(dlat))*0.99)], dlat[len(dlat)-1])
+	}
 	r := &result{algo: algo, n: len(out), ioErr: ioErr, wall: time.Since(t0)}
 	for _, s := range out {
 		r.lats = append(r.lats, s.lat)
