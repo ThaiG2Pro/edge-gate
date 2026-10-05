@@ -319,13 +319,16 @@ func TestLBKillRevive(t *testing.T) {
 	// P6-5: so cửa sổ dial lỗi (số request đập vào backend chết trước khi bị
 	// loại) giữa chỉ-active-health và có-passive-outlier. Active mất Fall×Interval
 	// = 3×200 ms = 600 ms mới đánh dấu down; passive (Consecutive 5) loại sau ~5
-	// lỗi (~5 ms ở 1 ms/request). Đây là ĐẾM qua máy trạng thái, không phải
-	// percentile latency ⇒ đo được cả trên WSL2.
+	// lỗi liên tiếp. Đây là ĐẾM qua máy trạng thái, không phải percentile
+	// latency ⇒ đo được cả trên WSL2. Từ 37cd9d9 kịch bản chạy 32 client không
+	// nghỉ (trước: 1 client, 1 ms/request ⇒ 116-122 vs 8): WSL2 đo active-only
+	// 6500-7200, outlier-on 11-34 — tối đa 32 request đang bay tới b3 lúc nó
+	// chết đều lỗi trước khi passive kịp loại.
 	t.Run("active-only", func(t *testing.T) {
 		fails, growth := killReviveScenario(t, nil)
 		t.Logf("active-only: fails trong cửa sổ = %d (cửa sổ rộng vì chỉ active 600 ms)", fails)
-		if fails < 50 {
-			t.Fatalf("active-only: cửa sổ phải rộng, fails=%d (kỳ vọng ~110)", fails)
+		if fails < 500 {
+			t.Fatalf("active-only: cửa sổ phải rộng, fails=%d (kỳ vọng vài nghìn)", fails)
 		}
 		if growth != 0 {
 			t.Fatalf("active-only: unhealthy rồi không được pick nữa, nhưng picks tăng %d", growth)
@@ -338,10 +341,10 @@ func TestLBKillRevive(t *testing.T) {
 		})
 		// Passive loại sau 5 lỗi; eject 150 ms, hết hạn ⇒ half-open cho 1 probe
 		// (dial lỗi, D9 né sang backend khác ⇒ client vẫn 200). Qua ~600 ms cửa
-		// sổ down: ~5 + vài probe. Phải « ~110 của active-only.
-		t.Logf("outlier-on: fails trong cửa sổ = %d (passive cắt còn ~1 con số)", fails)
-		if fails > 30 {
-			t.Fatalf("outlier-on: passive phải cắt cửa sổ, fails=%d (active-only ~110)", fails)
+		// sổ down: ≤ 32 đang bay + 5 + vài probe. Phải « vài nghìn của active-only.
+		t.Logf("outlier-on: fails trong cửa sổ = %d (passive cắt còn vài chục)", fails)
+		if fails > 100 {
+			t.Fatalf("outlier-on: passive phải cắt cửa sổ, fails=%d (active-only vài nghìn)", fails)
 		}
 	})
 }
@@ -360,6 +363,11 @@ func killReviveScenario(t *testing.T, mut func(*Config)) (fails int64, growthAft
 	go us.Serve(ln)
 	s, p, _ := startLB(t, "rr", 3, []string{b3}, func(c *Config) {
 		c.LB.Health = lb.HealthConfig{Interval: 200 * time.Millisecond, Timeout: 200 * time.Millisecond, Fall: 3, Rise: 2}
+		// 32 client, rr 4 node ⇒ ~25 % request trúng b3 lúc chết ⇒ cần retry
+		// D9 cho 25 % > budget mặc định 10 % (phase 7 D6) ⇒ phần vượt thành 502
+		// đúng thiết kế (đo: 502 = RetryDenied = 1160). Kịch bản này đo HEALTH,
+		// không đo budget ⇒ nới budget để invariant « toàn 200 » chỉ còn phụ thuộc D9.
+		c.RetryBudget = RetryBudgetConfig{Percent: 1}
 		if mut != nil {
 			mut(c)
 		}
@@ -461,7 +469,7 @@ func killReviveScenario(t *testing.T, mut func(*Config)) (fails int64, growthAft
 		down.Round(time.Millisecond), picksKill, picksDown.Picks, picksDown.Fails, picksAfter)
 	t.Logf("revive→healthy %s (rise 2), healthy→pick đầu %s; client: %v", up.Round(time.Millisecond), firstPick.Round(time.Millisecond), st)
 	if st[200] == 0 || len(st) != 1 {
-		t.Fatalf("client phải thấy toàn 200: %v", st)
+		t.Fatalf("client phải thấy toàn 200: %v (retry bị budget từ chối: %d)", st, s.ResilienceStats().RetryDenied)
 	}
 	if down > time.Second || up > time.Second {
 		t.Fatalf("health quá chậm: down %s up %s", down, up)

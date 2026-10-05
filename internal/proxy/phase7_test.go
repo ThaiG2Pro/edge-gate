@@ -516,4 +516,3 @@ func TestBreakerHalfOpenProxyE2E(t *testing.T) {
 		t.Fatalf("b0 probe hỏng phải open lại (reopens=1): %+v", lbs2.Backends[0])
 	}
 }
-

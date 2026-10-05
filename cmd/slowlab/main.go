@@ -299,4 +299,3 @@ func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "slowlab:", err)
 	os.Exit(1)
 }
-
