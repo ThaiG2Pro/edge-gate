@@ -244,6 +244,12 @@ sang backend khác). `active-only` còn khẳng định unhealthy ⇒ 0 pick th�
 go test ./internal/proxy -run 'TestLBKillRevive' -count=5 -v
 ```
 
+> **Cập nhật 2026-10-05.** Từ 37cd9d9 kịch bản chạy 32 client không nghỉ thay vì 1 client 1 ms/request,
+> nên lệnh trên không còn tái hiện 116-122 vs 8. Số mới trên WSL2: **active-only 6500-7200, outlier-on
+> 11-34** — passive vẫn cắt cửa sổ hàng trăm lần. Sàn outlier-on cao hơn vì tối đa 32 request đang bay tới
+> b3 lúc nó chết đều lỗi trước khi passive loại. Kịch bản đặt `RetryBudget.Percent = 1`: ở 32 client, 25 %
+> request cần retry D9 vượt budget mặc định 10 % ⇒ 502 đúng thiết kế phase 7 D6, không phải lỗi health.
+
 ### ✅ P4-6 · Oracle thứ hai + thứ ba cho `TestSmugglingOracle` — trả 2026-10-03
 
 `cmd/smuggleoracle` + `make oracle-ext` (docker): phát lại 59 ca request-kind qua TCP trần vào nginx 1.25-alpine và

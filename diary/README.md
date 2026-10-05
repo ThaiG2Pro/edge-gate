@@ -1,12 +1,12 @@
 # Nhật ký EdgeGate — tổng quan
 
 Mục lục 11 cuốn nhật ký phase + trạng thái hiện tại. Mỗi `phaseN.md` là kết luận (giả thuyết nào
-sai, số đo nói gì); `phaseN-log.md` là nhật ký thao tác theo giờ. Cập nhật 2026-10-03.
+sai, số đo nói gì); `phaseN-log.md` là nhật ký thao tác theo giờ. Cập nhật 2026-10-05.
 
 ## Trạng thái một dòng
 
-**Mười phase xong.** 43 nợ đã trả, **22 còn mở** — toàn bộ là `📏` (cần Linux thuần / netem /
-nhiều core) hoặc `⏳` (chờ số đo thật). Không còn nợ `🔧`.
+**Mười phase xong. 66/66 nợ đã trả, 0 còn mở.** Các nợ `📏` cuối cùng được đo trên Linux thuần
+(CachyOS, 16 thread) ngày 2026-10-04.
 
 - Sổ nợ: [`../docs/debts.md`](../docs/debts.md)
 - Tái hiện số đo thật: [`../docs/REPRODUCE-LINUX.md`](../docs/REPRODUCE-LINUX.md)
@@ -49,8 +49,15 @@ Chín nợ trả + công cụ đo:
 Công cụ tái hiện đã dựng: `scripts/linux-measure.sh`, cờ `netlab -dialers`, `chaoslab -heal-weight`,
 `chaoslab -scenario overload`.
 
-## Còn lại
+## Phiên trả nợ 2026-10-04 (Linux thuần)
 
-22 nợ `📏`/`⏳` chờ máy Linux thuần hoặc số đo thật (PUT replay P5-4b, upload splice P9-2). Thứ tự
-đề xuất khi có máy: P-env-2 (mở khoá hầu hết món 📏) → phase 9/10 → phần netem (cần sudo). Chi tiết
-lệnh và tiêu chí đạt trong [`../docs/REPRODUCE-LINUX.md`](../docs/REPRODUCE-LINUX.md).
+13 nợ đo trên CachyOS + các nợ code cuối (P5-4b replay body ≤ 64 KiB, P7-2b tarpit per-IP,
+P9-2 splice upload, P0-3/P0-4/P0-6, P9-5). Chi tiết từng món trong [`../docs/debts.md`](../docs/debts.md).
+
+## Phiên polish 2026-10-05
+
+- `TestLBKillRevive/active-only` đỏ 3/3 sau 37cd9d9: kịch bản đổi sang 32 client ⇒ 25 % request
+  trúng b3 lúc chết cần retry D9, vượt retry budget mặc định 10 % ⇒ 502 đúng thiết kế
+  (502 = `RetryDenied` = 1160). Test nới budget vì nó đo health, không đo budget; ngưỡng
+  cập nhật theo tải mới. Xanh 8/8 lượt `-count=8`, full suite xanh dưới `-race`.
+- Thêm LICENSE (MIT), CI GitHub Actions (gofmt, vet, build, test -race), README tiếng Anh.

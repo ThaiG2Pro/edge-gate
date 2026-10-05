@@ -1,5 +1,7 @@
 # EdgeGate
 
+> 🇬🇧 English: [`README.md`](./README.md)
+
 L7 reverse proxy + load balancer viết từ socket trần bằng Go. **Không dùng `net/http`** cho
 đường dữ liệu — chỉ `net`.
 
@@ -58,15 +60,14 @@ mạng, và hai trong ba cái được dựng sẵn thành bẫy cho phase 0.
 | 9 | Performance & epoll | ✅ [`diary/phase9.md`](diary/phase9.md) — **3/8 giả thuyết sai**; pool: GC chứ không malloc (ns/op 2.4x); conn rỗi 28 → 8-9 KiB; giá L7 ở body = mất splice, lấy lại bằng splice body; epoll 55x ít RAM, rps ngang; EdgeGate ≈ nginx, ReverseProxy 3.1x chậm hơn (WSL2) |
 | 10 | HTTP/2 h2c (tùy chọn) | ✅ [`diary/phase10.md`](diary/phase10.md) — HPACK/frame/flow control tự viết; h2spec **145/145** qua TLS/ALPN (P10-5) và `h2c_only` (P10-6), **144/145** mặc định chung port (cố ý); **2/8 giả thuyết sai/nửa sai**; HOL TCP (loss 2 %) h2 2.7x tệ ở trung vị, 1.1x ở đuôi; Rapid Reset / CONTINUATION flood / H2.CL smuggling có phản chứng đỏ |
 
-### Nợ kỹ thuật (2026-10-04)
+### Nợ kỹ thuật (2026-10-05)
 
-Mười phase xong. **53 nợ đã trả, 13 còn mở** — các nợ `📏` cốt lõi về Linux thuần đã được đo và chốt số
-(P-env-2, P3-5, P4-2, P5-1, P7-4, P8-1, P8-5, P9-4, P9-6, P10-8). Không còn nợ `🔧`.
-Phiên 2026-10-04 chốt 10 nợ thực nghiệm trên máy Linux thuần (CachyOS, 16-thread), đồng thời làm rõ bản chất của các nợ P0-4, P7-2b, P7-6, P6-2b.
+Mười phase xong. **66/66 nợ đã trả, 0 còn mở** — kể cả các nợ `📏` phải đo trên Linux thuần
+(CachyOS, 16 thread, 2026-10-04). Chi tiết từng món kèm lệnh tái hiện: [`docs/debts.md`](./docs/debts.md).
 
-Tái hiện số đo thật: [`docs/REPRODUCE-LINUX.md`](./docs/REPRODUCE-LINUX.md) — bảng 23 nợ `📏` kèm
-lệnh và tiêu chí đạt, chạy bằng `./scripts/linux-baseline.sh` (phase 0–7) và
-`./scripts/linux-measure.sh` (P-env-2, phase 8/9/10). Trên WSL2 số không chốt được; script tự cảnh báo.
+Tái hiện số đo thật: [`docs/REPRODUCE-LINUX.md`](./docs/REPRODUCE-LINUX.md) — chạy bằng
+`./scripts/linux-baseline.sh` (phase 0–7) và `./scripts/linux-measure.sh` (P-env-2, phase 8/9/10).
+Trên WSL2 số latency không chốt được; script tự cảnh báo.
 
 ## Ba con số của phase 0
 
@@ -88,9 +89,3 @@ máy, cách nhau 30 phút. Số tuyệt đối đổi 2.5x; tỉ số thì sốn
 
 Ba cái bẫy trong `SKILL.md` đều nổ thật: `bufio` che chi phí syscall *và* che spike 44ms;
 `tcp_tw_reuse=2` che port exhaustion trên loopback; loopback che RTT.
-
-## Đã có gì (trước khi phase 0 chạy)
-
-`internal/httpx/`: `Header` (`map[string][]string`, canonical hoá, `StripHopByHop`), `Limits`,
-`ProtoError`. Thuộc phase 2, **chưa có test nào** ⇒ chưa phải bằng chứng của gì cả.
-Xem nợ `P-code-1` trong [`docs/debts.md`](./docs/debts.md).
