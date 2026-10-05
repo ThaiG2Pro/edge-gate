@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/lb"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/lb"
 )
 
 const dl = 300 * time.Millisecond // mọi deadline trong TestDeadline

@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/frame"
+	"github.com/ThaiG2Pro/edge-gate/internal/frame"
 )
 
 // countingReader đếm số lần Read và tổng byte — chỉ để đo, không đổi hành vi.

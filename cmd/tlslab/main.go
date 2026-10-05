@@ -30,11 +30,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/lb"
-	"github.com/thaivro/edgegate/internal/proxy"
-	"github.com/thaivro/edgegate/internal/tlsx"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/lb"
+	"github.com/ThaiG2Pro/edge-gate/internal/proxy"
+	"github.com/ThaiG2Pro/edge-gate/internal/tlsx"
 )
 
 var noHealth = lb.Config{Health: lb.HealthConfig{Disabled: true}}

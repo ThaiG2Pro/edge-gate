@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // HealthConfig: active health check (D6). Zero value = bật, Interval 2 s,

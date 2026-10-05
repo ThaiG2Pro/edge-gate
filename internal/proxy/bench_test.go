@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // Phase 9 G1: allocs/op, B/op của PROXY. Client và upstream tối giản, gần như

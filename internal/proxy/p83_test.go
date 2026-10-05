@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/tlsx"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/tlsx"
 )
 
 // P8-3 — health check active với upstream TLS: probe phải bắt tay TLS rồi mới

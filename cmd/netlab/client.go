@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/frame"
+	"github.com/ThaiG2Pro/edge-gate/internal/frame"
 )
 
 // conn là một đầu client. Cố ý KHÔNG dùng bufio ở client cho các phép đo latency:

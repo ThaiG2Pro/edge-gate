@@ -28,11 +28,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/h2"
-	"github.com/thaivro/edgegate/internal/h2/hpack"
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/proxy"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2/hpack"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/proxy"
 )
 
 var (

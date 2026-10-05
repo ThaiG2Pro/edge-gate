@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thaivro/edgegate/internal/smugglecase"
+	"github.com/ThaiG2Pro/edge-gate/internal/smugglecase"
 )
 
 const smuggleDir = "../../testdata/smuggle"

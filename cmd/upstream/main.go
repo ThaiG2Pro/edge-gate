@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
 )
 
 func main() {

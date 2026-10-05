@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thaivro/edgegate/internal/h2/hpack"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2/hpack"
 )
 
 // Request: head của một stream đã kiểm (§8.3.1). Header thường giữ tên

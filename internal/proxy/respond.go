@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 var reasons = map[int]string{

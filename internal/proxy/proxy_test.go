@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // startProxy chạy proxy trên :0 trỏ tới upstream, trả địa chỉ proxy.

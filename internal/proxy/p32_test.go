@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // P3-2 — D13: client xin Upgrade (GET, không body) ⇒ Connection: Upgrade +

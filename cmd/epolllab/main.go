@@ -16,7 +16,7 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/thaivro/edgegate/internal/epollsrv"
+	"github.com/ThaiG2Pro/edge-gate/internal/epollsrv"
 )
 
 func main() {

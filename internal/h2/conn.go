@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/h2/hpack"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2/hpack"
 )
 
 // Config của một Server h2. Zero value được điền mặc định.

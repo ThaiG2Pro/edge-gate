@@ -16,7 +16,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/thaivro/edgegate/internal/frame"
+	"github.com/ThaiG2Pro/edge-gate/internal/frame"
 )
 
 const (

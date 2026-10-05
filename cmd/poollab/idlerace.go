@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/proxy"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/proxy"
 )
 
 func idleRaceUpstream() (string, *atomic.Int64) {

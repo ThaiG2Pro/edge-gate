@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/lb"
-	"github.com/thaivro/edgegate/internal/tlsx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/lb"
+	"github.com/ThaiG2Pro/edge-gate/internal/tlsx"
 )
 
 // VHost (D2): một server_name — tên, nhóm upstream, LB riêng. Chỉ số trong

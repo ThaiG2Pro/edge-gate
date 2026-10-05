@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/h2"
-	"github.com/thaivro/edgegate/internal/h2/hpack"
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2/hpack"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // Phase 10 D7-D8: h2c prior knowledge trên listener plaintext, mỗi stream

@@ -28,8 +28,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/loadgen"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/loadgen"
 )
 
 var (

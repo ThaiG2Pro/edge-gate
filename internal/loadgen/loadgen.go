@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // Config của một lượt bắn.

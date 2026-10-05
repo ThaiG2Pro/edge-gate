@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/h2/hpack"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2/hpack"
 )
 
 // testServer: listener + ServeConn mỗi connection với handler h.

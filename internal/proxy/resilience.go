@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
-	"github.com/thaivro/edgegate/internal/limit"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/limit"
 )
 
 // RateLimitConfig: token bucket per-IP. Rate 0 = tắt.

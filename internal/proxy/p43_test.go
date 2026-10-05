@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // stubConn: net.Conn chỉ có địa chỉ — forwardedHeaders không đọc/ghi byte.

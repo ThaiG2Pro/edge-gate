@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // P3-3: upstream chết giữa body response. Head (CL 100) đã gửi cho client ⇒

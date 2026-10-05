@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/smugglecase"
+	"github.com/ThaiG2Pro/edge-gate/internal/smugglecase"
 )
 
 func main() {

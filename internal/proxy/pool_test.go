@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // rawServer: upstream tay (chỉ net + httpx) — mỗi connection một goroutine

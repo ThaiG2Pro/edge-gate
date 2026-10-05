@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/thaivro/edgegate/internal/tlsx"
+	"github.com/ThaiG2Pro/edge-gate/internal/tlsx"
 )
 
 func main() {

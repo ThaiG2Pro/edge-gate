@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/loadgen"
-	"github.com/thaivro/edgegate/internal/proxy"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/loadgen"
+	"github.com/ThaiG2Pro/edge-gate/internal/proxy"
 )
 
 func main() {

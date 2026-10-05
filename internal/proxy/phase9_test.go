@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/fixture"
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/fixture"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 // waitLive chờ liveBufio về want (goroutine server trả bufio sau khi ghi xong

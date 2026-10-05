@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
-	"github.com/thaivro/edgegate/internal/frame"
+	"github.com/ThaiG2Pro/edge-gate/internal/frame"
 	"io"
 	"log"
 	"net"

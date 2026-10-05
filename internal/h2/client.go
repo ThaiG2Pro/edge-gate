@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"net"
 
-	"github.com/thaivro/edgegate/internal/h2/hpack"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2/hpack"
 )
 
 // RawClient: client h2 tối giản, KHÔNG có logic giao thức — chỉ ghi/đọc frame

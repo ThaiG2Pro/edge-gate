@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/httpx"
+	"github.com/ThaiG2Pro/edge-gate/internal/httpx"
 )
 
 var lim = httpx.DefaultLimits()

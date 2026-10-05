@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thaivro/edgegate/internal/h2"
-	"github.com/thaivro/edgegate/internal/lb"
-	"github.com/thaivro/edgegate/internal/proxy"
-	"github.com/thaivro/edgegate/internal/tlsx"
+	"github.com/ThaiG2Pro/edge-gate/internal/h2"
+	"github.com/ThaiG2Pro/edge-gate/internal/lb"
+	"github.com/ThaiG2Pro/edge-gate/internal/proxy"
+	"github.com/ThaiG2Pro/edge-gate/internal/tlsx"
 )
 
 type fileConfig struct {
