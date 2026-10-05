@@ -55,16 +55,23 @@ More configs live in `config/`: load balancing, resilience, TLS, and HTTP/2.
 
 ## Findings that surprised me
 
-These are measured results. Each links to the diary entry with the exact command and raw output.
+These are measured results. WSL2 numbers come from the original phase runs. Bare-Linux numbers
+come from a re-run on CachyOS, 15 threads, on 2026-10-04, with raw output in
+[`bench/baseline/thai-computer-20261004/`](./bench/baseline/thai-computer-20261004/).
 
-| Finding | Number | Source |
-|---|---|---|
-| Closed-loop load generators hide overload. Same system, two tools, different p99. | **1787×** gap | [phase 0](./diary/phase0.md) |
-| Nagle + delayed ACK is a constant floor, not a tail effect. | **44 ms** at p50 and p99 | [phase 0](./diary/phase0.md) |
-| Ephemeral port exhaustion shows no errors. Throughput just drops. | **1502 → 455** conn/s | [phase 0](./diary/phase0.md) |
-| P2C+EWMA only helps when the slow node takes under 1% of traffic. It loses when a node recovers. | 3.4× vs 0.98× | [phase 6](./diary/phase6.md) |
-| Load shedding under overload. | p99 **352×** better | [phase 7](./diary/phase7.md) |
-| epoll vs goroutine-per-connection: same throughput, far less memory. | **55×** less RAM | [phase 9](./diary/phase9.md) |
+| Finding | WSL2 | Bare Linux | Source |
+|---|---|---|---|
+| Closed-loop load generators hide overload. Same system, two tools, different p99. | **1787×** | **276×** | [phase 0](./diary/phase0.md) |
+| Nagle + delayed ACK is a constant floor, not a tail effect. p50 ≈ p99. | **44 ms** | **41 ms** | [phase 0](./diary/phase0.md) |
+| L7 proxy overhead vs direct connection, p50. Hypothesis was 3-5×. | 3.39× | **2.29×** | [phase 3](./diary/phase3.md) |
+| P2C+EWMA only helps when the slow node takes under 1% of traffic. It loses when a node recovers. | 3.4× vs 0.98× | | [phase 6](./diary/phase6.md) |
+| Load shedding under overload. | p99 **352×** better | | [phase 7](./diary/phase7.md) |
+| epoll vs goroutine-per-connection: same throughput, far less memory. | **55×** less RAM | | [phase 9](./diary/phase9.md) |
+
+One finding did not survive the move to bare Linux. On WSL2, running out of ephemeral ports
+showed **0 errors**, only falling throughput (1502 → 455 conn/s). On bare Linux the same test
+failed loudly with `EADDRNOTAVAIL` after the rate fell from 1089 to 386 conn/s.
+The quiet failure was an artifact of the environment.
 
 The wrong hypotheses are recorded too. Phase 0 got 5 of 8 wrong.
 
@@ -93,7 +100,7 @@ cmd/
 | 0 | TCP physics: RTT, Nagle, port exhaustion | 5/8 hypotheses wrong |
 | 1 | Framing | 4/7 wrong; fuzzed 1.58M execs clean |
 | 2 | HTTP/1.1 engine | differential fuzz: 0 diffs; manual table found 2 real diffs |
-| 3 | Vertical slice: first end-to-end `curl` | L7 overhead 3.39× on WSL2 |
+| 3 | Vertical slice: first end-to-end `curl` | L7 overhead 3.39× on WSL2, 2.29× on bare Linux |
 | 4 | RFC 9112 compliance and smuggling | 61 cases; counter-proof red 20/52 |
 | 5 | Upstream connection pool | dirty-connection counter-proof red 20/20 |
 | 6 | Load balancing and health | 4/7 wrong |
