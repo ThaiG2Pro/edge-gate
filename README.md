@@ -61,17 +61,22 @@ come from a re-run on CachyOS, 15 threads, on 2026-10-04, with raw output in
 
 | Finding | WSL2 | Bare Linux | Source |
 |---|---|---|---|
-| Closed-loop load generators hide overload. Same system, two tools, different p99. | **1787×** | **276×** | [phase 0](./diary/phase0.md) |
+| Closed-loop load generators hide overload. Same system, two tools, different p99. | **370×** | **276–476×** | [phase 0](./diary/phase0.md) |
 | Nagle + delayed ACK is a constant floor, not a tail effect. p50 ≈ p99. | **44 ms** | **41 ms** | [phase 0](./diary/phase0.md) |
-| L7 proxy overhead vs direct connection, p50. Hypothesis was 3-5×. | 3.39× | **2.29×** | [phase 3](./diary/phase3.md) |
+| L7 proxy overhead vs direct connection, p50, new upstream dial per request. Hypothesis was 3-5×. | 3.39× | | [phase 3](./diary/phase3.md) |
+| Extra latency through the proxy with the connection pool on. | +101 µs | +51–78 µs | [phase 5](./diary/phase5.md) |
 | P2C+EWMA only helps when the slow node takes under 1% of traffic. It loses when a node recovers. | 3.4× vs 0.98× | | [phase 6](./diary/phase6.md) |
 | Load shedding under overload. | p99 **352×** better | | [phase 7](./diary/phase7.md) |
 | epoll vs goroutine-per-connection: same throughput, far less memory. | **55×** less RAM | | [phase 9](./diary/phase9.md) |
 
-One finding did not survive the move to bare Linux. On WSL2, running out of ephemeral ports
-showed **0 errors**, only falling throughput (1502 → 455 conn/s). On bare Linux the same test
-failed loudly with `EADDRNOTAVAIL` after the rate fell from 1089 to 386 conn/s.
-The quiet failure was an artifact of the environment.
+Two numbers were withdrawn. The first published coordinated-omission ratio, **1787×**, was
+measured with an open-loop generator that had a race. After the fix it is 370× on WSL2
+([errata in phase 0](./diary/phase0.md)).
+
+The second is a claim about ephemeral port exhaustion. On WSL2 it showed **0 errors**, only
+falling throughput (1502 → 455 conn/s). On bare Linux the same test ended in `EADDRNOTAVAIL`
+after falling from 1089 to 386 conn/s. The two runs never reached the same TIME_WAIT level, so it
+is still open whether WSL2 really stays quiet. See [blog post 4](./blog/04-het-port.md).
 
 The wrong hypotheses are recorded too. Phase 0 got 5 of 8 wrong.
 
@@ -100,7 +105,7 @@ cmd/
 | 0 | TCP physics: RTT, Nagle, port exhaustion | 5/8 hypotheses wrong |
 | 1 | Framing | 4/7 wrong; fuzzed 1.58M execs clean |
 | 2 | HTTP/1.1 engine | differential fuzz: 0 diffs; manual table found 2 real diffs |
-| 3 | Vertical slice: first end-to-end `curl` | L7 overhead 3.39× on WSL2, 2.29× on bare Linux |
+| 3 | Vertical slice: first end-to-end `curl` | L7 overhead 3.39× on WSL2 with a new dial per request |
 | 4 | RFC 9112 compliance and smuggling | 61 cases; counter-proof red 20/52 |
 | 5 | Upstream connection pool | dirty-connection counter-proof red 20/20 |
 | 6 | Load balancing and health | 4/7 wrong |
@@ -110,6 +115,7 @@ cmd/
 | 10 | HTTP/2 | h2spec 145/145; Rapid Reset and CONTINUATION flood defended |
 
 Full write-ups: [`diary/`](./diary/). Roadmap and architecture: [`ROADMAP.md`](./ROADMAP.md).
+A 17-post blog series in Vietnamese, one experiment per post: [`blog/`](./blog/).
 
 ## Running the tests
 

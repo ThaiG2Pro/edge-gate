@@ -79,6 +79,8 @@ Trên WSL2 số latency không chốt được; script tự cảnh báo.
   Đơn vị đúng: **1 RTT phí cho mỗi connection dựng mới** (0.33ms → 20.47ms → 40.47ms).
 - **1787x** — chênh lệch p99 giữa closed-loop và open-loop trên **cùng một hệ thống quá tải**.
   Chọn sai dụng cụ đo thì p99 báo về sai 3 bậc độ lớn.
+  **Đã rút (errata phase 0):** generator open-loop có race. Sau khi sửa: **370x** (WSL2), **276–476x**
+  (Linux thuần). Kết luận định tính giữ, con số 1787 thì không.
 - **44.03ms** (Linux thuần: 41 ms) — spike Nagle + delayed ACK, và nó là *hằng số* (p50 44.03, p99 47.99), không
   phải hiện tượng ở đuôi. Lý do mọi socket phải `SetNoDelay(true)` tường minh.
 - **1502 → 455 conn/s, 0 lỗi, CPU 29.5%** — trần ephemeral port không báo bằng exception, nó
@@ -86,7 +88,8 @@ Trên WSL2 số latency không chốt được; script tự cảnh báo.
   **Cập nhật 2026-10-04, Linux thuần:** kết luận "không báo lỗi" **không sống sót**. Cùng phép đo
   trên CachyOS tụt 1089 → 386 conn/s rồi báo `cannot assign requested address` (101 lỗi,
   [`bench/baseline/thai-computer-20261004/p0-limits.txt`](./bench/baseline/thai-computer-20261004/p0-limits.txt)).
-  Sự im lặng là đặc thù của môi trường WSL2, không phải của kernel.
+  Nhưng hai máy chưa từng được so ở cùng mức TIME_WAIT (WSL2 tới tw 32759, Linux lỗi ở tw 88791),
+  nên chưa kết luận được WSL2 im lặng thật hay chưa bị đẩy đủ xa. Xem [`blog/04-het-port.md`](./blog/04-het-port.md).
 
 Và một con số về chính bộ đo: `dial p50` đo được **861.7µs** rồi **341.3µs** — cùng lệnh, cùng
 máy, cách nhau 30 phút. Số tuyệt đối đổi 2.5x; tỉ số thì sống sót. Đó là lý do nguyên tắc 3.
